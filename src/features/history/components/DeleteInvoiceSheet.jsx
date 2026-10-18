@@ -1,9 +1,9 @@
 /**
- * DeleteInvoiceSheet – deleteInvoice() confirmation: the invoice number has to be typed before the delete button
+ * DeleteInvoiceSheet – deleteInvoice() confirmation: the Invoice No has to be typed before the delete button
  * is enabled. The invoice goes to the Recycle Bin (restorable), so the wording says that.
  *
- * Props: open (bool) · invoiceNo · onClose() · onConfirm() ·
- *        noun (default "Invoice": "Delete Invoice", "Move to Recycle Bin"; pass "Bill" for purchases) ·
+ * Props: open (bool) · invoiceNo (the number as shown = what must be typed) · onClose() · onConfirm() ·
+ *        noun (default "Invoice": the sheet title "Delete Invoice"; the number is always called "Invoice No") ·
  *        note? (string shown in the amber note box; default: later invoices are recalculated).
  */
 import { AlertTriangle, Trash2, X } from 'lucide-react';
@@ -62,8 +62,8 @@ export function DeleteInvoiceSheet({
         </div>
         <div className="rounded-2xl border border-red-200 bg-red-50/70 p-3.5 text-center">
           <p className="text-sm text-slate-700">
-            You are about to delete {noun}{' '}
-            <strong className="font-display text-base font-extrabold text-red-700">#{invoiceNo}</strong>. It
+            You are about to delete Invoice No{' '}
+            <strong className="font-display text-base font-extrabold text-red-700">{invoiceNo}</strong>. It
             will be moved to the Recycle Bin, and you can restore it from there.
           </p>
         </div>
@@ -74,13 +74,13 @@ export function DeleteInvoiceSheet({
           </p>
         ) : null}
         <TextField
-          label={`Type the ${noun.toLowerCase()} number ${invoiceNo} to confirm:`}
-          placeholder={`Enter ${noun.toLowerCase()} number`}
+          label={`Type the Invoice No ${invoiceNo} to confirm:`}
+          placeholder="Enter Invoice No"
           value={typed}
           onChange={setTyped}
           autoComplete="off"
           autoCapitalize="none"
-          error={typed.length > 0 && !confirmed ? `${noun} number does not match` : undefined}
+          error={typed.length > 0 && !confirmed ? 'Invoice No does not match' : undefined}
         />
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
       </form>

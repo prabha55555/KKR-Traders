@@ -7,6 +7,7 @@ import {
   calcPurchaseTotals,
   calcSubtotal,
   suggestPurchaseInvoiceNumber,
+  totalRolls,
 } from '@/core/billing';
 import { COMPANY, CREDIT_LINE } from '@/core/branding';
 import { db } from '@/core/db';
@@ -22,7 +23,7 @@ export function emptyPurchaseForm() {
     supplierPhone: '',
     supplierName: '',
     supplierAddress: '',
-    rows: [{ description: '', qty: '0', rate: '0' }],
+    rows: [{ description: '', rolls: '', qty: '0', rate: '0' }],
     previousBalance: 0,
     manualPreviousBalance: '0',
     discountAmount: '0',
@@ -47,7 +48,7 @@ export function purchaseFormTotals(form) {
 /** Validation order/messages follow purchase.js. */
 export function validatePurchaseBill(form, shortcuts) {
   if (!form.invoiceNo.trim())
-    return { title: 'Missing Information', message: 'Please enter an Invoice Number.' };
+    return { title: 'Missing Information', message: 'Please enter the Invoice No.' };
   if (!form.invoiceDate) return { title: 'Missing Information', message: 'Please select an Invoice Date.' };
   if (!form.supplierName.trim())
     return { title: 'Missing Information', message: 'Please enter the Supplier Name.' };
@@ -72,9 +73,10 @@ export function validatePurchaseBill(form, shortcuts) {
 export function buildPurchaseBill(form) {
   // purchase.js stores line items without `sno`
   const products = buildProductLines(form.rows, { requirePositiveQty: true }).map(
-    ({ description, qty, rate, amount }) => ({
+    ({ description, qty, rolls, rate, amount }) => ({
       description,
       qty,
+      rolls,
       rate,
       amount,
     }),
@@ -176,8 +178,11 @@ export async function buildAcknowledgementMessage(form) {
   if (form.supplierName.trim()) message += `Supplier: ${form.supplierName.trim()}\n\n`;
   message += 'Products Received:\n';
   lines.forEach((p, i) => {
-    message += `${i + 1}. ${p.description} - Qty: ${p.qty} - Amount: ₹${p.amount.toFixed(2)}\n`;
+    const rolls = p.rolls > 0 ? ` - Rolls: ${p.rolls}` : '';
+    message += `${i + 1}. ${p.description} - Qty: ${p.qty}${rolls} - Amount: ₹${p.amount.toFixed(2)}\n`;
   });
+  const rollsReceived = totalRolls(lines);
+  if (rollsReceived > 0) message += `\nTotal Rolls: ${rollsReceived}`;
   message += `\nTotal Amount: ₹${grandTotal.toFixed(2)}\n`;
 
   const invoiceNo = form.invoiceNo.trim();
@@ -237,7 +242,8 @@ export async function buildAcknowledgementMessage(form) {
         message += '\nReturn History:\n';
         returns.forEach((r) => {
           const date = new Date(r.returnDate).toLocaleDateString('en-IN');
-          message += `- ${date}: ${r.description} (Qty: ${r.qty}) - ₹${r.returnAmount.toFixed(2)}\n`;
+          const rolls = toNum(r.rolls) > 0 ? `, Rolls: ${toNum(r.rolls)}` : '';
+          message += `- ${date}: ${r.description} (Qty: ${r.qty}${rolls}) - ₹${r.returnAmount.toFixed(2)}\n`;
         });
       }
     } catch (error) {

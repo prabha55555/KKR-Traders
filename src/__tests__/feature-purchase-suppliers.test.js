@@ -268,7 +268,7 @@ describe('buildSuppliersCsv (exportCSV)', () => {
       },
     ]);
     expect(csv.split('\n')).toEqual([
-      '"Supplier Name","Phone","Address","Total Bills","Total Amount","Amount Paid","Discount","Balance Due","Invoice Numbers"',
+      '"Supplier Name","Phone","Address","Total Bills","Total Amount","Amount Paid","Discount","Balance Due","Invoice Nos"',
       '"Bob ""The"" Mills","9000000001","Tirupur, TN","2","1650.00","940.50","50.00","709.50","020; 012"',
     ]);
   });

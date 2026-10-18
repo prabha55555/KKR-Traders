@@ -4,6 +4,7 @@
  *  - shareInvoicePdf():  print dialog / share sheet, then opens customer's WhatsApp — ORIGINAL page + slip image (if present)
  */
 import logoUrl from '@/assets/brand/logo.png';
+import { formatInvoiceNo } from '@/core/format';
 import { printHtml, sharePdfHtml } from '@/platform';
 import { loadInvoiceContext } from './invoiceContext';
 import { buildInvoiceHtml } from './invoiceHtml';
@@ -48,8 +49,8 @@ export async function printInvoice(invoice) {
  */
 export async function shareInvoicePdf(invoice) {
   const html = buildInvoiceHtml(await buildContext(invoice));
-  if ((await sharePdfHtml(html, `SS ${invoice.invoiceNo}.pdf`, `SS ${invoice.invoiceNo}`)) === 'shared')
-    return 'shared';
+  const shownNo = formatInvoiceNo(invoice.invoiceNo);
+  if ((await sharePdfHtml(html, `SS ${shownNo}.pdf`, `SS ${shownNo}`)) === 'shared') return 'shared';
   await printHtml(html);
   if (normalizeWhatsAppPhone(invoice.customerPhone)) await openWhatsApp(invoice.customerPhone);
   return 'fallback';

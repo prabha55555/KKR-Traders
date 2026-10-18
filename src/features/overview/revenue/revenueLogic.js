@@ -6,9 +6,15 @@
  * description. The bill's profit is the sum over its products minus the bill discount.
  */
 import { toNum } from '@/core/format';
+import { lotStockMovements } from '@/features/processing/lotLogic';
 const normalise = (description) => description.trim().toUpperCase();
 /** Average purchase or manufactured cost per unit of a product description; 0 for unknown products. */
-export function buildAvgCostLookup(purchaseBills = [], dyeingBatches = [], combingBatches = []) {
+export function buildAvgCostLookup(
+  purchaseBills = [],
+  dyeingBatches = [],
+  combingBatches = [],
+  processingLots = [],
+) {
   const stats = new Map();
   purchaseBills.forEach((bill) => {
     if (!bill.products || !Array.isArray(bill.products)) return;
@@ -56,6 +62,19 @@ export function buildAvgCostLookup(purchaseBills = [], dyeingBatches = [], combi
     });
   }
 
+  // Received processing lots: the finished fabric at its cost per kg (grey + dyeing + combing)
+  (processingLots || []).forEach((lot) => {
+    lotStockMovements(lot)
+      .filter((m) => m.kind === 'receipt')
+      .forEach((m) => {
+        const key = normalise(m.description);
+        const entry = stats.get(key) ?? { qty: 0, cost: 0 };
+        entry.qty += m.qty;
+        entry.cost += m.qty * m.rate;
+        stats.set(key, entry);
+      });
+  });
+
   return (description) => {
     if (!description) return 0;
     const entry = stats.get(normalise(description));
@@ -72,11 +91,17 @@ export function invoiceDiscount(invoice) {
  * PARITY NOTE: the sort key is `parseInt(billNo)`; bill numbers that do not start with a digit give NaN, which JS sort
  * treats as "equal", so such invoices keep their incoming (newest-first) position relative to their neighbours.
  */
-export function computeRevenueRows(invoices, purchaseBills, dyeingBatches = [], combingBatches = []) {
+export function computeRevenueRows(
+  invoices,
+  purchaseBills,
+  dyeingBatches = [],
+  combingBatches = [],
+  processingLots = [],
+) {
   const avgCost =
     typeof purchaseBills === 'function'
       ? purchaseBills
-      : buildAvgCostLookup(purchaseBills, dyeingBatches, combingBatches);
+      : buildAvgCostLookup(purchaseBills, dyeingBatches, combingBatches, processingLots);
   const rows = invoices.map((invoice) => {
     let totalCost = 0;
     let totalBillProfit = 0;

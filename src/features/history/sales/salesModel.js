@@ -28,6 +28,8 @@ export function toHistoryReturn(r) {
     returnDate: r.returnDate || r.date || '',
     description: r.description,
     qty: r.qty,
+    // optional roll count (older returns have none = 0)
+    rolls: toNum(r.rolls),
     rate: r.rate,
     returnAmount: r.returnAmount,
     reason: r.reason,

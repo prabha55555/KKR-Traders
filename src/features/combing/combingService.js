@@ -165,7 +165,7 @@ export async function addCombingBatchPayment(batchId, paymentData) {
 
   const batch = await db.getCombingBatch(batchId);
   if (!batch) {
-    throw new Error(`Combing batch #${batchId} was not found.`);
+    throw new Error(`Combing batch ${batchId} was not found.`);
   }
 
   const paymentId = `cb_pay_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -202,7 +202,7 @@ export async function addCombingBatchPayment(batchId, paymentData) {
         amount: paymentRecord.amount,
         fromAccount: source,
         bankAccountId: paymentRecord.mode !== 'Cash' ? paymentRecord.bankAccountId : null,
-        notes: `Combing Batch #${batch.batchId} (${batch.processorName || 'Processor'})${
+        notes: `Combing Batch ${batch.batchId} (${batch.processorName || 'Processor'})${
           paymentRecord.reference ? ` - Ref: ${paymentRecord.reference}` : ''
         }`,
       });
@@ -228,7 +228,7 @@ export async function deleteCombingBatchPayment(batchId, paymentId) {
     batch = all.find((b) => b.batchId === batchId || b.id === batchId);
   }
   if (!batch) {
-    throw new Error(`Combing batch #${batchId} was not found.`);
+    throw new Error(`Combing batch ${batchId} was not found.`);
   }
 
   const updatedPayments = (batch.payments || []).filter((p) => p.id !== paymentId);

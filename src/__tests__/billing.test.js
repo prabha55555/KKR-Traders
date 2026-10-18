@@ -12,6 +12,7 @@ import {
   purchaseBalanceDue,
   suggestPurchaseInvoiceNumber,
   suggestSalesInvoiceNumber,
+  totalRolls,
 } from '@/core/billing';
 import { db } from '@/core/db';
 const inv = (over) => ({
@@ -86,6 +87,31 @@ describe('totals', () => {
       'A',
       'C',
     ]);
+  });
+  test('buildProductLines keeps the optional roll count; rolls never decide a line or change its amount', () => {
+    const rows = [
+      { description: 'Cotton Grey', rolls: '12', qty: '80', rate: '100' },
+      // an older form row without the field, and a blank box
+      { description: 'Yarn', qty: '2', rate: '10' },
+      { description: 'Silk', rolls: '', qty: '1', rate: '5' },
+      // rolls alone do not make a line: no description / no qty
+      { description: '', rolls: '4', qty: '3', rate: '1' },
+      { description: 'Zero', rolls: '6', qty: '0', rate: '1' },
+    ];
+    expect(buildProductLines(rows)).toEqual([
+      { sno: 1, description: 'Cotton Grey', qty: 80, rolls: 12, rate: 100, amount: 8000 },
+      { sno: 2, description: 'Yarn', qty: 2, rolls: 0, rate: 10, amount: 20 },
+      { sno: 3, description: 'Silk', qty: 1, rolls: 0, rate: 5, amount: 5 },
+      { sno: 4, description: 'Zero', qty: 0, rolls: 6, rate: 1, amount: 0 },
+    ]);
+    expect(buildProductLines(rows, { requirePositiveQty: true }).map((l) => l.description)).toEqual([
+      'Cotton Grey',
+      'Yarn',
+      'Silk',
+    ]);
+    expect(calcSubtotal(rows)).toBe(8028);
+    expect(totalRolls(buildProductLines(rows))).toBe(18);
+    expect(totalRolls([{ rolls: '3' }, {}, null, { rolls: 'x' }])).toBe(3);
   });
   test('breakdownFromPayments: Cash / Account; legacy UPI, GPay and bank count as account; unknown counts as cash', () => {
     expect(

@@ -1,6 +1,6 @@
 /** Deleting a purchase bill from history (purchase-history.js window.deletePurchaseBill / proceedWithDelete). */
 import { db } from '@/core/db';
-import { PURCHASE_LABELS } from './purchaseModel';
+import { invoiceNoLabel } from '@/core/format';
 export { DELETE_BLOCKED_MESSAGE, DELETE_BLOCKED_TITLE } from '../sales/salesDelete';
 /** 'P-5' / '5' -> '005': the zero-padded number older bills were also stored under (payments / returns are looked up under both). */
 export function paddedInvoiceNo(invoiceNo) {
@@ -34,4 +34,4 @@ export async function deletePurchaseBill(invoiceNo) {
   await db.deletePurchaseBill(invoiceNo);
 }
 export const purchaseDeleteSuccessMessage = (invoiceNo) =>
-  `Invoice #${PURCHASE_LABELS.formatInvoiceNo?.(invoiceNo) ?? invoiceNo} and all related data have been permanently deleted.`;
+  `${invoiceNoLabel(invoiceNo)} and all related data have been permanently deleted.`;

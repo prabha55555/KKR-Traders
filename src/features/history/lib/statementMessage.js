@@ -10,7 +10,7 @@ const DOTTED = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄�
 const rs = (amount) => `₹${formatCurrency(amount)}`;
 function invoiceBlock(invoice, isLast, labels) {
   const lines = [
-    `*INVOICE #${displayInvoiceNo(labels, invoice.invoiceNo)}* ${isLast ? '' : DOTTED}`.trimEnd(),
+    `*INVOICE NO ${displayInvoiceNo(labels, invoice.invoiceNo)}* ${isLast ? '' : DOTTED}`.trimEnd(),
     `📅 Date: ${formatDateIN(invoice.invoiceDate)}`,
     '',
     '💰 *BILL SUMMARY:*',
@@ -109,11 +109,11 @@ export function buildCombinedStatementMessage(statement, labels) {
   if (hasReturns)
     lines.push('*RETURN SUMMARY*', LIGHT, `📦 Total Return Amount: ${rs(totals.totalReturns)}`, '');
   lines.push(
-    '*INVOICE NUMBERS*',
+    '*INVOICE NOS*',
     LIGHT,
     ...invoices.map(
       (i) =>
-        `• #${displayInvoiceNo(labels, i.invoiceNo)} - ${formatDateIN(i.invoiceDate)} - Due: ${rs(invoiceDue(i))}`,
+        `• ${displayInvoiceNo(labels, i.invoiceNo)} - ${formatDateIN(i.invoiceDate)} - Due: ${rs(invoiceDue(i))}`,
     ),
     '',
     HEAVY,

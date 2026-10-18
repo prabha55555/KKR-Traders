@@ -53,8 +53,10 @@ describe('Edit Purchase page', () => {
     vi.spyOn(db, 'getPurchasePaymentsByInvoice').mockResolvedValue([]);
     vi.spyOn(db, 'getAllShortcuts').mockResolvedValue([]);
     shell('/purchase/edit/P-005', '/purchase/edit/:invoiceNo', <PurchaseEditPage />);
-    await waitFor(() => expect(screen.getByDisplayValue('P-005')).toBeInTheDocument());
-    expect(screen.getByDisplayValue('P-005')).toHaveAttribute('readonly');
+    // shown as the plain number; the bill is still looked up (and saved) under the stored 'P-005'
+    await waitFor(() => expect(screen.getByDisplayValue('005')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('005')).toHaveAttribute('readonly');
+    expect(screen.getAllByText(/Invoice No 005/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Update Purchase Bill').length).toBeGreaterThan(0);
     expect(db.getPurchaseBill).toHaveBeenCalledWith('P-005');
   });
@@ -64,5 +66,6 @@ describe('Edit Purchase page', () => {
     vi.spyOn(db, 'getAllShortcuts').mockResolvedValue([]);
     shell('/purchase/edit/X1', '/purchase/edit/:invoiceNo', <PurchaseEditPage />);
     expect(await screen.findByText('Purchase bill not found')).toBeInTheDocument();
+    expect(screen.getByText('There is no purchase bill with Invoice No X1.')).toBeInTheDocument();
   });
 });

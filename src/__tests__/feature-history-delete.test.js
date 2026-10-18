@@ -35,7 +35,7 @@ describe('deleting a sales invoice from history', () => {
   });
   test('success wording is accurate: moved to the Recycle Bin, restorable — not "permanently deleted"', () => {
     const message = deleteSuccessMessage('003');
-    expect(message).toBe('Invoice #003 moved to the Recycle Bin — you can restore it from there.');
+    expect(message).toBe('Invoice No 003 moved to the Recycle Bin — you can restore it from there.');
     expect(message).not.toMatch(/permanent/i);
   });
 });

@@ -81,7 +81,7 @@ export function CombingPaymentHistoryModal({ open, batch, onClose, onPaymentDele
     <Modal
       open={open}
       onClose={onClose}
-      title={`Payment History — Batch #${batch.batchId}`}
+      title={`Payment History — Batch ${batch.batchId}`}
       size="md"
       footer={
         <div className="flex w-full items-center justify-between gap-2">

@@ -275,3 +275,54 @@ describe('invoice outputs use the stored paid / due (payment documents only spli
     expect(html).toContain('Returns (refunded):');
   });
 });
+describe('rolls on the invoice outputs (only when a line has a roll count)', () => {
+  const withRolls = {
+    ...invoice,
+    products: [
+      { sno: 1, description: 'Cotton Shirt', qty: 10, rolls: 3, rate: 120.5, amount: 1205 },
+      { sno: 2, description: 'T Shirt', qty: 2, rate: 99, amount: 198 },
+    ],
+  };
+  const rolledReturn = [{ ...returns[0], rolls: 1 }];
+  test('printed invoice: bills without rolls print exactly as before', () => {
+    const html = buildInvoiceHtml({ invoice, returns, totalReturns: 99, adjustedBalanceDue: 904 });
+    expect(html).not.toContain('Rolls');
+    expect(html).toContain('<th style="width: 52%">Product Description</th>');
+    expect(html).toContain('<th style="width: 45%">Product</th>');
+    expect(html).toContain('colspan="4"');
+  });
+  test('printed invoice: a Rolls column between description and qty, "-" for a line without rolls', () => {
+    const html = buildInvoiceHtml({ invoice: withRolls });
+    expect(html.match(/>Rolls<\/th>/g)).toHaveLength(1);
+    expect(html).toContain('<th style="width: 44%">Product Description</th>');
+    expect(html).toMatch(/Cotton Shirt<\/td>\s*<td>3<\/td>\s*<td>10<\/td>/);
+    expect(html).toMatch(/T Shirt<\/td>\s*<td>-<\/td>\s*<td>2<\/td>/);
+    // the money is unchanged
+    expect(html).toContain('1,205.00');
+    expect(html).toContain('Rupees One Thousand Seven Hundred Three Only');
+  });
+  test('printed invoice: the return table gets its own Rolls column when a return has rolls', () => {
+    const html = buildInvoiceHtml({
+      invoice,
+      returns: rolledReturn,
+      totalReturns: 99,
+      adjustedBalanceDue: 904,
+    });
+    expect(html.match(/>Rolls<\/th>/g)).toHaveLength(1);
+    expect(html).toContain('<th style="width: 37%">Product</th>');
+    expect(html).toMatch(/T Shirt<\/td>\s*<td>1<\/td>\s*<td>1<\/td>/);
+    expect(html).toContain('colspan="5"');
+  });
+  test('WhatsApp statement: a Rolls line under products / returns that have one', () => {
+    const msg = buildStatementMessage({
+      invoice: withRolls,
+      returns: rolledReturn,
+      totalReturns: 99,
+      adjustedBalanceDue: 904,
+    });
+    expect(msg).toContain('│ 🧵 Cotton Shirt\n│ 🧻 Rolls: 3\n│ 10 x Rs. 120.50 = Rs. 1205');
+    expect(msg).toContain('│ 🧵 T Shirt\n│ 2 x Rs. 99 = Rs. 198');
+    expect(msg).toContain('│ 🧵 T Shirt\n│ 🧻 Rolls: 1\n│ 1 x Rs. 99 = -Rs. 99');
+    expect(buildStatementMessage({ invoice, returns, totalReturns: 99 })).not.toContain('Rolls');
+  });
+});

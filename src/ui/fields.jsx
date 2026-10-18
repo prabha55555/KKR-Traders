@@ -105,16 +105,27 @@ export function sanitizeDecimal(text, allowNegative = false) {
   return (negative ? '-' : '') + t;
 }
 
-/** Decimal input that keeps its value as a *string* so partially typed numbers ("12.") are never mangled. */
-export const NumberField = forwardRef(function NumberField({ onChange, allowNegative, ...rest }, ref) {
+/** Keep digits only (counts such as rolls: "12.5" becomes "125", "-3" becomes "3"). */
+export function sanitizeWholeNumber(text) {
+  return String(text ?? '').replace(/\D/g, '');
+}
+
+/**
+ * Decimal input that keeps its value as a *string* so partially typed numbers ("12.") are never mangled.
+ * `wholeNumber`: digits only, numeric keypad (counts such as rolls).
+ */
+export const NumberField = forwardRef(function NumberField(
+  { onChange, allowNegative, wholeNumber, ...rest },
+  ref,
+) {
   return (
     <TextField
       ref={ref}
-      inputMode={allowNegative ? 'text' : 'decimal'}
-      placeholder="0.00"
+      inputMode={wholeNumber ? 'numeric' : allowNegative ? 'text' : 'decimal'}
+      placeholder={wholeNumber ? '0' : '0.00'}
       alignRight
       onFocus={(e) => e.target.select()}
-      onChange={(v) => onChange?.(sanitizeDecimal(v, allowNegative))}
+      onChange={(v) => onChange?.(wholeNumber ? sanitizeWholeNumber(v) : sanitizeDecimal(v, allowNegative))}
       {...rest}
     />
   );

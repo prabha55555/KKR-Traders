@@ -27,7 +27,8 @@ const storedBill = {
   supplierPhone: '9000000001',
   supplierAddress: 'Coimbatore',
   products: [
-    { description: 'Yarn 30s', qty: 5, rate: 200, amount: 1000 },
+    { description: 'Yarn 30s', qty: 5, rolls: 12, rate: 200, amount: 1000 },
+    // an older line without a roll count
     { description: 'Yarn 40s', qty: 2, rate: 33.333, amount: 66.666 },
   ],
   subtotal: 1066.67,
@@ -80,8 +81,8 @@ describe('purchaseEditFormFromBill', () => {
     });
     expect(form).not.toHaveProperty('upi');
     expect(form.rows).toEqual([
-      { description: 'Yarn 30s', qty: '5', rate: '200' },
-      { description: 'Yarn 40s', qty: '2', rate: '33.333' },
+      { description: 'Yarn 30s', rolls: '12', qty: '5', rate: '200' },
+      { description: 'Yarn 40s', rolls: '', qty: '2', rate: '33.333' },
     ]);
   });
   test('missing optional fields: blank opening balance / discount / payments, one empty row', () => {
@@ -105,7 +106,7 @@ describe('purchaseEditFormFromBill', () => {
       previousBalance: 0,
       additionalPaymentsTotal: 0,
     });
-    expect(form.rows).toEqual([{ description: '', qty: '0', rate: '0' }]);
+    expect(form.rows).toEqual([{ description: '', rolls: '', qty: '0', rate: '0' }]);
   });
   test('a bill paid when written but without initial payment documents keeps that payment (Update used to erase it)', () => {
     // the legacy nested `upi` amount is folded into Account (nothing hidden the user cannot edit)
@@ -183,8 +184,8 @@ describe('buildPurchaseEditBill (exact field set written by the Update button)',
       supplierName: 'ABC Mills',
       supplierAddress: 'Coimbatore',
       products: [
-        { description: 'Yarn 30s', qty: 5, rate: 200, amount: 1000 },
-        { description: 'Yarn 40s', qty: 2, rate: 33.333, amount: 66.666 },
+        { description: 'Yarn 30s', qty: 5, rolls: 12, rate: 200, amount: 1000 },
+        { description: 'Yarn 40s', qty: 2, rolls: 0, rate: 33.333, amount: 66.666 },
       ],
       subtotal: 1066.67,
       previousBalance: 100,
@@ -240,7 +241,7 @@ describe('buildPurchaseEditBill (exact field set written by the Update button)',
         { description: '', qty: '3', rate: '10' },
       ],
     });
-    expect(bill.products).toEqual([{ description: 'Yarn 30s', qty: 1, rate: 10, amount: 10 }]);
+    expect(bill.products).toEqual([{ description: 'Yarn 30s', qty: 1, rolls: 0, rate: 10, amount: 10 }]);
     expect(bill.subtotal).toBe(40);
   });
   test('validation is the create rules without the shortcut-list rule', () => {

@@ -1,10 +1,10 @@
 /**
- * AddPaymentSheet – "Add Payment - Invoice #x": Cash / Account split + payment date (addPayment dialog).
+ * AddPaymentSheet – "Add Payment - Invoice No x": Cash / Account split + payment date (addPayment dialog).
  * Validation and save errors are shown inside the sheet.
  *
  * Props:
  *   open (bool) · invoiceNo · balanceDue? (number, shows "Current Balance Due") · onClose()
- *   title?                 default `Add Payment - Invoice #<no>`
+ *   title?                 default `Add Payment - Invoice No <no>`
  *   invalidAmountMessage?  shown when no amount was entered (default: the sales wording)
  *   mode?                  'sales' | 'purchase' (default: 'sales')
  *   onSubmit({ cash, account, bankAccountId, paymentDate }) => Promise<string | null>
@@ -14,7 +14,7 @@
 import { AlertTriangle, Banknote, Check, Landmark } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { accountLabel } from '@/core/accountLabel';
-import { formatCurrency, todayISO } from '@/core/format';
+import { formatCurrency, invoiceNoLabel, todayISO } from '@/core/format';
 import { Button, DateField, NumberField, SelectField } from '@/ui';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 import { parsePaymentAmounts, totalOf, validatePaymentInput } from '../lib/payments';
@@ -84,7 +84,9 @@ export function AddPaymentSheet({
   };
 
   const defaultTitle =
-    mode === 'purchase' ? `Pay Supplier - Invoice #${invoiceNo}` : `Add Payment - Invoice #${invoiceNo}`;
+    mode === 'purchase'
+      ? `Pay Supplier - ${invoiceNoLabel(invoiceNo)}`
+      : `Add Payment - ${invoiceNoLabel(invoiceNo)}`;
 
   return (
     <HistorySheet

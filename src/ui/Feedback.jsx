@@ -3,7 +3,7 @@
  * and showLoading()/hideLoading().
  *
  *   const { toast, confirm, loading } = useFeedback();
- *   toast('Bill Saved', 'Invoice #001', 'success');            // types: success | error | warning | info
+ *   toast('Bill Saved', 'Invoice No 001', 'success');            // types: success | error | warning | info
  *   if (await confirm({ title: 'Delete?', message: '…', tone: 'danger', confirmText: 'Delete' })) { … }
  *   await loading.run('Saving…', () => save(), 'Please wait');   // overlay while the promise runs
  */

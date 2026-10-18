@@ -136,14 +136,14 @@ describe('list helpers', () => {
     const d = salesItem({ id: 'd', deletedAt: ts(new Date(2026, 9, 3)) });
     expect(sortNewestFirst([a, c, b, d]).map((i) => i.id)).toEqual(['b', 'd', 'a', 'c']);
   });
-  test('purchase bill numbers lose the "P-" prefix, sales numbers are untouched', () => {
+  test('purchase bill numbers lose the "P-" prefix, sales numbers are untouched; the name says "Invoice No"', () => {
     expect(displayBillNo(purchaseItem())).toBe('007');
     expect(displayBillNo(salesItem({ originalId: 'INV-12' }))).toBe('INV-12');
-    expect(binItemName(purchaseItem())).toBe('Invoice 007');
+    expect(binItemName(purchaseItem())).toBe('Invoice No 007');
   });
   test('search text = what the card shows (name, invoice date, deletion date + age, party, amount), lower-cased', () => {
     expect(binSearchText(salesItem(), NOW)).toBe(
-      'invoice 001 28/9/2026 1/10/2026 (2 days ago) sln tex ₹1,703.00',
+      'invoice no 001 28/9/2026 1/10/2026 (2 days ago) sln tex ₹1,703.00',
     );
   });
   test('search matches name, bill no, date, age text, party and amount; not the button captions', () => {
@@ -187,7 +187,7 @@ describe('list helpers', () => {
 describe('buildBinDetail', () => {
   test('sales invoice: products, totals as stored, payments and returns', () => {
     const d = buildBinDetail(salesItem(), BIN_CONFIG.sales);
-    expect(d.heading).toBe('Invoice #001');
+    expect(d.heading).toBe('Invoice No 001');
     expect(d.dateText).toBe('28/9/2026');
     expect(d.partyLabel).toBe('Customer');
     expect([d.partyName, d.phone, d.address]).toEqual(['SLN TEX', '9876543210', 'Tirupur']);
@@ -241,9 +241,9 @@ describe('buildBinDetail', () => {
       )?.dateText,
     ).toBe('N/A');
   });
-  test('purchase bill: "Purchase Bill #", supplier, paid / due read through the nested payment object', () => {
+  test('purchase bill: "Purchase Bill - Invoice No", supplier, paid / due read through the nested payment object', () => {
     const d = buildBinDetail(purchaseItem(), BIN_CONFIG.purchase);
-    expect(d.heading).toBe('Purchase Bill #007');
+    expect(d.heading).toBe('Purchase Bill - Invoice No 007');
     expect(d.partyLabel).toBe('Supplier');
     expect([d.partyName, d.phone, d.address]).toEqual(['ABC YARNS', 'N/A', 'Erode']);
     expect(d.summary).toEqual({

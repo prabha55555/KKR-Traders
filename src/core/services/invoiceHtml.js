@@ -3,7 +3,7 @@
  * Pure string builder (no platform APIs) so it is unit-testable and renders in any browser (and in the print dialog).
  */
 import { COMPANY } from '@/core/branding';
-import { formatCurrency, formatDateIN, numberToWords, toNum } from '@/core/format';
+import { formatCurrency, formatDateIN, formatInvoiceNo, numberToWords, toNum } from '@/core/format';
 import { foldBreakdown, methodLabel, normalizeMethod } from '@/core/paymentMethods';
 const esc = (value) =>
   String(value ?? '')
@@ -68,10 +68,13 @@ const CSS = `
   .manual-bill-img-box { width: 100%; flex: 1; display: flex; justify-content: center; align-items: center; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; }
   .manual-bill-img { max-width: 100%; max-height: 800px; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 `;
+/** Roll count cell: the number, or '-' for a line without one. */
+const rollsCell = (rolls) => (toNum(rolls) > 0 ? esc(toNum(rolls)) : '-');
 /**
  * One page (ORIGINAL or COPY) of the invoice. `balanceReturns` = the returns settled against the balance (they lower
  * the due); the rest were refunded in cash / bank and are only listed. Without it every return counts against the
- * balance.
+ * balance. The product (and return) table gets a Rolls column only when one of its lines has a roll count, so bills
+ * without rolls print exactly as before.
  */
 export function invoiceBody(input) {
   const {
@@ -93,12 +96,19 @@ export function invoiceBody(input) {
   const pb = foldBreakdown(invoice.paymentBreakdown);
   const showReturns = totalReturns > 0 && returns.length > 0;
   const showPayments = payments && payments.length > 0;
+  const productRolls = invoice.products.some((p) => toNum(p?.rolls) > 0);
+  const returnRolls = returns.some((r) => toNum(r?.rolls) > 0);
   const productRows = invoice.products
     .map(
       (p, i) => `
         <tr>
           <td>${p.sno ?? i + 1}</td>
-          <td>${esc(p.description)}</td>
+          <td>${esc(p.description)}</td>${
+            productRolls
+              ? `
+          <td>${rollsCell(p.rolls)}</td>`
+              : ''
+          }
           <td>${esc(p.qty)}</td>
           <td>${formatCurrency(p.rate)}</td>
           <td>${formatCurrency(p.amount)}</td>
@@ -110,7 +120,12 @@ export function invoiceBody(input) {
       (r) => `
         <tr>
           <td>${formatDateIN(r.returnDate)}</td>
-          <td>${esc(r.description)}</td>
+          <td>${esc(r.description)}</td>${
+            returnRolls
+              ? `
+          <td>${rollsCell(r.rolls)}</td>`
+              : ''
+          }
           <td>${esc(r.qty)}</td>
           <td>${formatCurrency(r.rate)}</td>
           <td>${formatCurrency(r.returnAmount)}</td>
@@ -144,7 +159,7 @@ export function invoiceBody(input) {
     returnNote += `${returnNote ? ' ' : ''}Returns of Rs. ${formatCurrency(refundedReturns)} were refunded to the customer.`;
   }
   return `
-  <div class="watermark">${esc(COMPANY.monogram)} ${esc(invoice.invoiceNo)}</div>
+  <div class="watermark">${esc(COMPANY.monogram)} ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
   <div class="invoice-container">
     <div class="invoice-header">
       <div class="company-info">
@@ -159,7 +174,7 @@ export function invoiceBody(input) {
       </div>
       <div class="invoice-title">
         <h2>ESTIMATED COPY <br><span style="font-size: 11px; color: #777;">(${copyType === 'BOTH' ? 'ORIGINAL' : copyType})</span></h2>
-        <div><strong>Invoice No:</strong> ${esc(invoice.invoiceNo)}</div>
+        <div><strong>Invoice No:</strong> ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
         <div><strong>Date:</strong> ${formatDateIN(invoice.invoiceDate)}</div>
       </div>
     </div>
@@ -175,8 +190,14 @@ export function invoiceBody(input) {
     <table>
       <thead>
         <tr>
-          <th style="width: 8%">S.No.</th>
-          <th style="width: 52%">Product Description</th>
+          <th style="width: 8%">S.No.</th>${
+            productRolls
+              ? `
+          <th style="width: 44%">Product Description</th>
+          <th style="width: 8%">Rolls</th>`
+              : `
+          <th style="width: 52%">Product Description</th>`
+          }
           <th style="width: 10%">Qty</th>
           <th style="width: 15%">Rate (Rs.)</th>
           <th style="width: 15%">Amount (Rs.)</th>
@@ -193,8 +214,14 @@ export function invoiceBody(input) {
       <table>
         <thead>
           <tr>
-            <th style="width: 15%">Date</th>
-            <th style="width: 45%">Product</th>
+            <th style="width: 15%">Date</th>${
+              returnRolls
+                ? `
+            <th style="width: 37%">Product</th>
+            <th style="width: 8%">Rolls</th>`
+                : `
+            <th style="width: 45%">Product</th>`
+            }
             <th style="width: 10%">Qty</th>
             <th style="width: 15%">Rate (Rs.)</th>
             <th style="width: 15%">Amount (Rs.)</th>
@@ -203,7 +230,7 @@ export function invoiceBody(input) {
         <tbody>
           ${returnRows}
           <tr style="background: #fff4e6; font-weight: bold;">
-            <td colspan="4" style="text-align: right;">Total Return Amount:</td>
+            <td colspan="${returnRolls ? 5 : 4}" style="text-align: right;">Total Return Amount:</td>
             <td>Rs. ${formatCurrency(totalReturns)}</td>
           </tr>
         </tbody>
@@ -316,7 +343,7 @@ export function manualBillPage(input) {
   const { invoice } = input;
   if (!invoice.manualBillImage) return '';
   return `
-  <div class="watermark">${esc(COMPANY.monogram)} ${esc(invoice.invoiceNo)}</div>
+  <div class="watermark">${esc(COMPANY.monogram)} ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
   <div class="manual-bill-page">
     <div class="manual-bill-header">
       <div>
@@ -324,12 +351,12 @@ export function manualBillPage(input) {
         <div class="manual-bill-subtitle">${esc(COMPANY.name)}</div>
       </div>
       <div style="text-align: right;">
-        <div><strong>Invoice No:</strong> ${esc(invoice.invoiceNo)}</div>
+        <div><strong>Invoice No:</strong> ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
         <div style="font-size: 11px; color: #555;"><strong>Party:</strong> ${esc(invoice.customerName || 'N/A')}</div>
       </div>
     </div>
     <div class="manual-bill-img-box">
-      <img class="manual-bill-img" src="${invoice.manualBillImage}" alt="Manual Bill Slip #${esc(invoice.invoiceNo)}" />
+      <img class="manual-bill-img" src="${invoice.manualBillImage}" alt="Manual Bill Slip - Invoice No ${esc(formatInvoiceNo(invoice.invoiceNo))}" />
     </div>
   </div>`;
 }
@@ -354,7 +381,7 @@ export function buildInvoiceHtml(input) {
   if (input.invoice?.manualBillImage) {
     pages.push(manualBillPage(input));
   }
-  return wrap(`SS ${input.invoice.invoiceNo}`, pages);
+  return wrap(`SS ${formatInvoiceNo(input.invoice.invoiceNo)}`, pages);
 }
 export function buildCombinedInvoiceHtml(input) {
   const pages = [
@@ -364,5 +391,5 @@ export function buildCombinedInvoiceHtml(input) {
   if (input.invoice?.manualBillImage) {
     pages.push(manualBillPage(input));
   }
-  return wrap(`SS ${input.invoice.invoiceNo}`, pages);
+  return wrap(`SS ${formatInvoiceNo(input.invoice.invoiceNo)}`, pages);
 }

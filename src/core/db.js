@@ -35,7 +35,7 @@ import {
   returnsTotalsByInvoice,
   salesLedgerChanges,
 } from './ledger';
-import { toNum } from './format';
+import { invoiceNoLabel, toNum } from './format';
 import { foldBreakdown, foldPurchasePayment, normalizeMethod } from './paymentMethods';
 
 const isAmountValue = (v) => v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v));
@@ -601,8 +601,11 @@ export class Database {
     this._cache.purchaseShortcuts = null;
   }
   // ------------------------------------------------------------------ Opening stock
-  async saveOpeningStock(description, qty) {
-    await setDoc(this.ref('openingStocks', description), { description, qty, updatedAt: serverTimestamp() });
+  /** `rolls` = optional roll count of the opening stock; a call without it stores what it always did (no `rolls`). */
+  async saveOpeningStock(description, qty, rolls) {
+    const data = { description, qty, updatedAt: serverTimestamp() };
+    if (rolls !== undefined && rolls !== null) data.rolls = toNum(rolls);
+    await setDoc(this.ref('openingStocks', description), data);
     this._cache.openingStocks = null;
     return description;
   }
@@ -693,7 +696,7 @@ export class Database {
     if (!snap.exists()) throw new Error('Recycle bin item not found');
     const item = snap.data();
     if (item.type === 'invoice') {
-      await this._refuseRestoreOver('invoices', item.originalId, 'Invoice');
+      await this._refuseRestoreOver('invoices', item.originalId, 'Sales');
       await setDoc(this.ref('invoices', item.originalId), item.data);
       for (const payment of item.payments || []) await this.savePayment(payment);
       for (const returnItem of item.returns || []) await this.saveReturn(returnItem);
@@ -711,7 +714,7 @@ export class Database {
     const existing = await getDoc(this.ref(name, String(id)));
     if (existing?.exists?.()) {
       throw new Error(
-        `${label} #${id} already exists (the number was used again after this one was deleted). Delete or renumber the current #${id} before restoring this one.`,
+        `${label} ${invoiceNoLabel(id)} already exists (the number was used again after this one was deleted). Delete or renumber the current ${invoiceNoLabel(id)} before restoring this one.`,
       );
     }
   }
@@ -770,7 +773,7 @@ export class Database {
     if (!snap.exists()) throw new Error('Recycle bin item not found');
     const item = snap.data();
     if (item.type === 'purchase_invoice') {
-      await this._refuseRestoreOver('purchase_invoices', item.originalId, 'Purchase bill');
+      await this._refuseRestoreOver('purchase_invoices', item.originalId, 'Purchase');
       await setDoc(this.ref('purchase_invoices', item.originalId), item.data);
       for (const payment of item.payments || []) await this.savePurchasePayment(payment);
       for (const returnItem of item.returns || []) await this.savePurchaseReturn(returnItem);
@@ -1191,6 +1194,30 @@ export class Database {
     await deleteDoc(this.ref('combing_batches', id));
     await this._deleteWhere('combing_batches', 'batchId', id);
     this._cache.combing_batches = null;
+  }
+
+  // ------------------------------------------------------------------ Processing lots (Issue -> Dyeing -> Combing -> Received)
+  async saveProcessingLot(lot) {
+    const id = lot.id || uid('lot');
+    await setDoc(this.ref('processing_lots', id), {
+      ...lot,
+      id,
+      updatedAt: serverTimestamp(),
+      createdAt: lot.createdAt || new Date().toISOString(),
+    });
+    this._cache.processing_lots = null;
+    return id;
+  }
+  async getAllProcessingLots() {
+    return this._load('processing_lots', () => this._all('processing_lots'));
+  }
+  async getProcessingLot(id) {
+    const snap = await getDoc(this.ref('processing_lots', id));
+    return snap.exists() ? snap.data() : null;
+  }
+  async deleteProcessingLot(id) {
+    await deleteDoc(this.ref('processing_lots', id));
+    this._cache.processing_lots = null;
   }
 
   // ------------------------------------------------------------------ Processors Directory (Combing & Processing Units)

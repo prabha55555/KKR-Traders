@@ -9,7 +9,7 @@ import { Link } from 'react-router';
 
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
-import { formatCurrency, formatDateShort } from '@/core/format';
+import { formatCurrency, formatDateShort, formatInvoiceNo, invoiceNoLabel } from '@/core/format';
 import { DataTable, EmptyState, ErrorState, Page, StatCard, cn } from '@/ui';
 
 import FilterBar from '../components/FilterBar';
@@ -26,14 +26,15 @@ import { loadRevenueRows } from './revenueService';
 const rupees = (n) => `₹${formatCurrency(n)}`;
 const profitColor = (n) => (n >= 0 ? 'text-emerald-700' : 'text-red-600');
 
-function BillLink({ row }) {
+/** The invoice number, linking to the bill's edit screen; `withLabel` (cards, no column header): "Invoice No 001". */
+function BillLink({ row, withLabel = false }) {
   return (
     <Link
       to={`/sales/bill?edit=${encodeURIComponent(row.rawBillNo)}`}
-      aria-label={`Open bill ${row.billNo} for editing`}
+      aria-label={`Open ${invoiceNoLabel(row.billNo)} for editing`}
       className="inline-flex min-h-9 items-center rounded-lg bg-gold-50 px-2.5 font-display font-bold text-brand-800 ring-1 ring-gold-200 transition ring-inset hover:bg-gold-100 hover:text-gold-800 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none"
     >
-      #{row.billNo}
+      {withLabel ? invoiceNoLabel(row.billNo) : formatInvoiceNo(row.billNo)}
     </Link>
   );
 }
@@ -60,7 +61,7 @@ function RevenueCard({ row }) {
   return (
     <>
       <div className="flex items-center justify-between gap-3">
-        <BillLink row={row} />
+        <BillLink row={row} withLabel />
         <span className="text-sm text-slate-500">{formatDateShort(row.date)}</span>
       </div>
       <div className="mt-2 font-display font-bold text-brand-800">{row.name}</div>
@@ -114,7 +115,7 @@ function TotalLine({ total, ink = false }) {
 }
 
 const COLUMNS = [
-  { key: 'bill', header: 'Bill No', render: (r) => <BillLink row={r} /> },
+  { key: 'bill', header: 'Invoice No', render: (r) => <BillLink row={r} /> },
   { key: 'date', header: 'Date', className: 'whitespace-nowrap', value: (r) => formatDateShort(r.date) },
   { key: 'name', header: 'Customer Name', value: (r) => r.name },
   { key: 'details', header: 'Details', render: (r) => <DetailLines row={r} /> },

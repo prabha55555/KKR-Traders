@@ -3,7 +3,7 @@ import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { formatRupees } from '@/core/format';
 import { Button, IconButton, cn } from '@/ui';
 
-import { openingActions, stockTone } from './stocksLogic';
+import { hasRolls, openingActions, rollsText, stockTone } from './stocksLogic';
 
 export const TONE_CLASS = { positive: 'text-emerald-700', negative: 'text-red-600', zero: 'text-slate-500' };
 
@@ -34,6 +34,24 @@ export function AvailableValue({ row, className, showLabel = false }) {
       {row.available}
       {showLabel ? <span className="text-[11px] font-semibold opacity-80">{level.label}</span> : null}
     </span>
+  );
+}
+
+/**
+ * The roll count under a quantity ("12 rolls"), for products counted in rolls only (`row` = the stock row; products
+ * never counted in rolls show nothing, as before rolls existed). `strong` = the available rolls (darker).
+ */
+export function RollsLine({ row, rolls, strong = false }) {
+  if (!hasRolls(row)) return null;
+  return (
+    <div
+      className={cn(
+        'mt-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums',
+        rolls < 0 ? 'text-red-600' : strong ? 'text-brand-800' : 'text-slate-500',
+      )}
+    >
+      {rollsText(rolls)}
+    </div>
   );
 }
 
@@ -114,7 +132,7 @@ function Metric({ label, children }) {
   );
 }
 
-/** One product as a phone card: opening / purchased / sold / available, history and opening-stock actions. */
+/** One product as a phone card: opening / purchased / sold / available (+ rolls), history and opening-stock actions. */
 export function StockCard({ row, ...actions }) {
   return (
     <div className="space-y-3">
@@ -122,9 +140,11 @@ export function StockCard({ row, ...actions }) {
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
         <Metric label="Opening">
           <OpeningValue row={row} />
+          <RollsLine row={row} rolls={row.openingRolls} />
         </Metric>
         <Metric label="Purchased">
           <span className="font-semibold text-slate-800 tabular-nums">{row.purchased}</span>
+          <RollsLine row={row} rolls={row.purchasedRolls} />
         </Metric>
         <Metric label="Avg Rate">
           <span className="font-semibold text-brand-800 tabular-nums">
@@ -133,9 +153,11 @@ export function StockCard({ row, ...actions }) {
         </Metric>
         <Metric label="Sold">
           <span className="font-semibold text-slate-800 tabular-nums">{row.sold}</span>
+          <RollsLine row={row} rolls={row.soldRolls} />
         </Metric>
         <Metric label="Available">
           <AvailableValue row={row} className="px-2" />
+          <RollsLine row={row} rolls={row.availableRolls} strong />
         </Metric>
       </div>
       <StockActions row={row} {...actions} />

@@ -112,7 +112,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
       const result = await addCombingBatchPayment(batch.batchId, payload);
       toast(
         'Payment Recorded',
-        `₹${formatCurrency(amountNum)} paid to ${batch.processorName} for Batch #${batch.batchId}.`,
+        `₹${formatCurrency(amountNum)} paid to ${batch.processorName} for Batch ${batch.batchId}.`,
         'success',
       );
       if (onPaymentAdded) {
@@ -131,7 +131,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
     <Modal
       open={open}
       onClose={saving ? undefined : onClose}
-      title={`Pay Mill / Processor — Batch #${batch.batchId}`}
+      title={`Pay Mill / Processor — Batch ${batch.batchId}`}
       size="sm"
       footer={
         <div className="flex w-full items-center justify-end gap-2">

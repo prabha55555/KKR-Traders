@@ -211,7 +211,7 @@ export function buildInvoiceStatementHtml(input) {
 
     ${footer(now, true)}`;
   return wrap(
-    `SS ${invoice.invoiceNo}`,
+    `SS ${displayInvoiceNo(labels, invoice.invoiceNo)}`,
     `SS ${displayInvoiceNo(labels, invoice.invoiceNo)}`,
     logoSrc,
     partyInfoHtml,
@@ -229,7 +229,7 @@ export function buildCombinedStatementHtml({ statement, labels, logoSrc, now }) 
       const hasReturns = invoice.totalReturns > 0 && invoice.returns.length > 0;
       return `
       <div class="invoice-block">
-        <div class="section underlined">INVOICE #${esc(displayInvoiceNo(labels, invoice.invoiceNo))} - ${esc(formatDateIN(invoice.invoiceDate))}</div>
+        <div class="section underlined">INVOICE NO ${esc(displayInvoiceNo(labels, invoice.invoiceNo))} - ${esc(formatDateIN(invoice.invoiceDate))}</div>
         ${productsTable(invoice)}
         ${hasReturns ? `<div class="section">RETURN INFORMATION</div>${returnsTable(invoice.returns)}` : ''}
         ${
@@ -307,7 +307,7 @@ export function buildEasyStatementHtml({ partyName, invoices, labels, logoSrc, n
     <div style="height: 10px"></div>
     ${table(
       [
-        ['Invoice', 'l'],
+        ['Invoice No', 'l'],
         ['Date', 'l'],
         ['Particulars', 'l'],
         ['Amount', 'r'],

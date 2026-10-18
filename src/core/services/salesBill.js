@@ -22,7 +22,7 @@ export function emptySalesForm() {
     customerName: '',
     customerAddress: '',
     customerPhone: '',
-    rows: [{ description: '', qty: '0', rate: '0' }],
+    rows: [{ description: '', rolls: '', qty: '0', rate: '0' }],
     previousBalance: 0,
     manualPreviousBalance: '0',
     discountAmount: '0',
@@ -51,8 +51,7 @@ export function salesFormTotals(form) {
 }
 /** Utils.validateForm. `shortcuts` = the product catalogue; products must come from it (pass null to skip). */
 export function validateSalesBill(form, shortcuts) {
-  if (!form.invoiceNo.trim())
-    return { title: 'Missing Information', message: 'Please enter an invoice number' };
+  if (!form.invoiceNo.trim()) return { title: 'Missing Information', message: 'Please enter the Invoice No' };
   if (!form.invoiceDate) return { title: 'Missing Information', message: 'Please select an invoice date' };
   if (!form.customerName.trim())
     return { title: 'Missing Information', message: 'Please enter customer name' };
@@ -244,10 +243,12 @@ export async function loadSalesBillForEditing(invoiceNo) {
     rows: invoice.products?.length
       ? invoice.products.map((p) => ({
           description: p.description,
+          // older lines have no roll count: the box stays blank
+          rolls: toNum(p.rolls) ? String(p.rolls) : '',
           qty: String(p.qty),
           rate: String(p.rate),
         }))
-      : [{ description: '', qty: '0', rate: '0' }],
+      : [{ description: '', rolls: '', qty: '0', rate: '0' }],
     previousBalance: invoice.previousBalance ?? 0,
     manualPreviousBalance:
       invoice.manualPreviousBalance !== undefined ? String(invoice.manualPreviousBalance) : '',

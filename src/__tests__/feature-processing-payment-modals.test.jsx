@@ -41,7 +41,7 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
       );
 
       // Verify header and balance
-      expect(screen.getByText(/Pay Dyer — Batch #B-101/i)).toBeInTheDocument();
+      expect(screen.getByText(/Pay Dyer — Batch B-101/i)).toBeInTheDocument();
       expect(screen.getByText(/₹3,000/)).toBeInTheDocument();
 
       // Only two methods: Cash and Account (UPI is an Account payment)
@@ -87,7 +87,7 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
       );
 
       // Verify header
-      expect(screen.getByText(/Pay Mill \/ Processor — Batch #CB-202/i)).toBeInTheDocument();
+      expect(screen.getByText(/Pay Mill \/ Processor — Batch CB-202/i)).toBeInTheDocument();
 
       // Switch to Account
       const accountModeButton = screen.getByRole('button', { name: /^Account$/i });

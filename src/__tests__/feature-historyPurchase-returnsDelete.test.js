@@ -57,7 +57,7 @@ describe('savePurchaseReturnDraft', () => {
     const sales = jest.spyOn(db, 'updateSubsequentInvoices');
     const result = await savePurchaseReturnDraft(
       '001',
-      { returnDate: '2026-10-05', items: [item('2')] },
+      { returnDate: '2026-10-05', items: [{ ...item('2'), rolls: '1' }] },
       new Date('2026-10-05T10:00:00.000Z'),
     );
     expect(result).toEqual({ ok: true, total: 200 });
@@ -66,6 +66,7 @@ describe('savePurchaseReturnDraft', () => {
       supplierName: 'Sri Ganesh Yarns',
       description: 'Cotton Yarn',
       qty: 2,
+      rolls: 1,
       rate: 100,
       returnAmount: 200,
       reason: 'damaged',
@@ -216,7 +217,7 @@ describe('delete', () => {
     await deletePurchaseBill('P-005');
     expect(del).toHaveBeenCalledWith('P-005');
     expect(purchaseDeleteSuccessMessage('P-005')).toBe(
-      'Invoice #005 and all related data have been permanently deleted.',
+      'Invoice No 005 and all related data have been permanently deleted.',
     );
     expect(DELETE_BLOCKED_TITLE).toBe('Action Denied');
     expect(DELETE_BLOCKED_MESSAGE).toBe(

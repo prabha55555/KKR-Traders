@@ -152,7 +152,7 @@ const CSV_HEADERS = [
   'Amount Paid',
   'Discount',
   'Balance Due',
-  'Invoice Numbers',
+  'Invoice Nos',
 ];
 /** exportCSV */
 export function buildSuppliersCsv(suppliers) {

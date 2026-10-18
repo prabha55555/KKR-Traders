@@ -32,7 +32,7 @@ export function RecentInvoicesStrip({ invoices, loading, labels, onSelect, title
               <button
                 type="button"
                 onClick={() => onSelect(invoice.invoiceNo)}
-                aria-label={`Show invoice ${invoice.invoiceNo}`}
+                aria-label={`Show Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)}`}
                 title={labels.party ? `${labels.party}: ${invoice.partyName}` : undefined}
                 className="group relative min-h-[86px] w-52 overflow-hidden rounded-xl border border-line bg-linear-to-b from-white to-slate-50/80 p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-gold-300 hover:bg-gold-50/50 hover:shadow-lift focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none active:scale-[0.985]"
               >
@@ -41,7 +41,7 @@ export function RecentInvoicesStrip({ invoices, loading, labels, onSelect, title
                   aria-hidden
                 />
                 <div className="font-display text-base font-extrabold text-gold-700">
-                  #{displayInvoiceNo(labels, invoice.invoiceNo)}
+                  {displayInvoiceNo(labels, invoice.invoiceNo)}
                 </div>
                 <div className="truncate text-sm font-medium text-slate-700">{invoice.partyName}</div>
                 <div className="mt-0.5 flex items-baseline justify-between gap-2 text-xs text-slate-500">

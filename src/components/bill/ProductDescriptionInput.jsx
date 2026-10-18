@@ -6,6 +6,7 @@
  *  - onChange(value: string)            typed text OR the full description of a picked suggestion
  *  - shortcuts: Array<{shortcutKey, fullDescription}> | null   product catalogue (null while loading: no hints)
  *  - stockMap?: Map                     stock lookup (stocksService.getStockQuantityMap): stock hints + stock products
+ *                                       ("In Stock: 80 kg · 12 rolls" for a product counted in rolls)
  *  - readOnly?: boolean
  *  - label: string                      accessible label
  *  - placeholder?: string
@@ -14,7 +15,7 @@
  * is flagged ("Select a product from the suggestions") once the box loses focus, mirroring the save validation.
  */
 import { useId, useMemo, useState } from 'react';
-import { lookupStock } from '@/features/overview/stocks/stocksLogic';
+import { lookupStock, stockLabel } from '@/features/overview/stocks/stocksLogic';
 import { cn } from '@/ui/cn';
 import { isKnownProduct, matchShortcuts } from './productMatch';
 
@@ -235,7 +236,7 @@ export function ProductDescriptionInput({
                     : 'bg-red-50 text-red-700 ring-red-200',
               )}
             >
-              📦 In Stock: {matchedStock.available}
+              📦 In Stock: {stockLabel(matchedStock)}
             </span>
           )}
         </div>

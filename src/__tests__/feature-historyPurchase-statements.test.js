@@ -131,11 +131,11 @@ describe('loadSupplierStatement (searchSupplierInvoices + displaySupplierStateme
     const statement = await loadSupplierStatement('ganesh');
     const message = buildCombinedStatementMessage(statement, PURCHASE_LABELS);
     expect(message).toContain('*SUPPLIER DETAILS*');
-    expect(message).toContain('*INVOICE #007*');
+    expect(message).toContain('*INVOICE NO 007*');
     expect(message).not.toContain('P-007');
     const detailed = buildCombinedStatementHtml({ statement, labels: PURCHASE_LABELS, now: NOW });
     expect(detailed).toContain('SUPPLIER INFORMATION');
-    expect(detailed).toContain('INVOICE #007 - 1/10/2026');
+    expect(detailed).toContain('INVOICE NO 007 - 1/10/2026');
     expect(detailed).not.toContain('P-007');
     const easy = buildEasyStatementHtml({
       partyName: 'ganesh',
@@ -175,6 +175,7 @@ describe('single bill statement', () => {
     });
     expect(html).toContain('SUPPLIER INFORMATION');
     expect(html).toContain('Invoice No: 003');
+    expect(html).not.toContain('P-003');
     expect(html).toContain('Purchase Bill');
     expect(html).not.toContain('Invoice - Goods/Services');
     // synthetic initial (400, dated the bill date) + the additional 50

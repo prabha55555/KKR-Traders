@@ -4,7 +4,9 @@ import {
   formatCurrency,
   formatDateIN,
   formatDateShort,
+  formatInvoiceNo,
   getFinancialYear,
+  invoiceNoLabel,
   numberToWords,
   toISODate,
   toNum,
@@ -107,4 +109,26 @@ describe('helpers', () => {
     expect(toNum('3abc')).toBe(3);
   });
   test('digitsOnly', () => expect(digitsOnly('+91 98765-43210')).toBe('919876543210'));
+});
+describe('invoice numbers (display only)', () => {
+  test('formatInvoiceNo strips a leading # and the P- prefix of old purchase bills, and trims', () => {
+    expect(formatInvoiceNo('#001')).toBe('001');
+    expect(formatInvoiceNo('P-005')).toBe('005');
+    expect(formatInvoiceNo('#P-007')).toBe('007');
+    expect(formatInvoiceNo('  012 ')).toBe('012');
+    expect(formatInvoiceNo('# 3')).toBe('3');
+  });
+  test('formatInvoiceNo keeps the digits as stored (no padding) and other text untouched', () => {
+    expect(formatInvoiceNo('5')).toBe('5');
+    expect(formatInvoiceNo(5)).toBe('5');
+    expect(formatInvoiceNo('001')).toBe('001');
+    expect(formatInvoiceNo('A012B')).toBe('A012B');
+    expect(formatInvoiceNo('')).toBe('');
+    expect(formatInvoiceNo(undefined)).toBe('');
+    expect(formatInvoiceNo(null)).toBe('');
+  });
+  test('invoiceNoLabel', () => {
+    expect(invoiceNoLabel('P-005')).toBe('Invoice No 005');
+    expect(invoiceNoLabel('#001')).toBe('Invoice No 001');
+  });
 });

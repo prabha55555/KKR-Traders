@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { isBalanceReturn } from '@/core/ledger';
-import { formatCurrency, formatDateIN } from '@/core/format';
+import { formatCurrency, formatDateIN, invoiceNoLabel, toNum } from '@/core/format';
 import { Button, EmptyState } from '@/ui';
 import { dateMillis } from '../lib/dates';
 import { sumReturnAmounts } from '../lib/lookups';
@@ -82,7 +82,7 @@ export function ReturnStatusSheet({
     <HistorySheet
       open={open}
       onClose={onClose}
-      title={`Return Status - Invoice #${invoiceNo}`}
+      title={`Return Status - ${invoiceNoLabel(invoiceNo)}`}
       actions={
         <>
           {onAddReturn ? (
@@ -127,6 +127,12 @@ export function ReturnStatusSheet({
                   <span className="font-semibold text-slate-500">Quantity: </span>
                   {item.qty}
                 </p>
+                {toNum(item.rolls) > 0 ? (
+                  <p>
+                    <span className="font-semibold text-slate-500">Rolls: </span>
+                    {toNum(item.rolls)}
+                  </p>
+                ) : null}
                 <p>
                   <span className="font-semibold text-slate-500">Rate: </span>₹{formatCurrency(item.rate)}
                 </p>

@@ -29,7 +29,7 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
       <HistorySheet
         open={!!invoice}
         onClose={onClose}
-        title={invoice ? `Invoice #${displayInvoiceNo(labels, invoice.invoiceNo)}` : ''}
+        title={invoice ? `Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)}` : ''}
         size="lg"
       >
         {invoice ? (
@@ -83,7 +83,7 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
                 >
                   <img
                     src={invoice.manualBillImage}
-                    alt={`Attached manual bill slip for #${invoice.invoiceNo}`}
+                    alt={`Attached manual bill slip for Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)}`}
                     className="mx-auto max-h-48 rounded-lg object-contain shadow-2xs transition duration-200 group-hover:scale-[1.01]"
                   />
                   <div className="absolute inset-0 flex items-center justify-center rounded-b-xl bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
@@ -123,7 +123,7 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  Manual Bill Slip - #{displayInvoiceNo(labels, invoice.invoiceNo)}
+                  Manual Bill Slip - Invoice No {displayInvoiceNo(labels, invoice.invoiceNo)}
                 </h3>
                 <p className="text-xs text-slate-500">{invoice.partyName}</p>
               </div>
@@ -138,7 +138,7 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
             <div className="max-h-[75vh] overflow-auto bg-slate-100 p-4">
               <img
                 src={invoice.manualBillImage}
-                alt={`Full size manual bill slip for #${invoice.invoiceNo}`}
+                alt={`Full size manual bill slip for Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)}`}
                 className="mx-auto max-h-full rounded-lg object-contain shadow-md"
               />
             </div>

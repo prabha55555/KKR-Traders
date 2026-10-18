@@ -3,8 +3,8 @@
  * A "shortcut" is `{ shortcutKey, fullDescription }`; products must be picked from that catalogue.
  */
 
-/** A blank product line (qty/rate are strings so a half-typed number is never mangled). */
-export const EMPTY_ROW = { description: '', qty: '0', rate: '0' };
+/** A blank product line (rolls/qty/rate are strings so a half-typed number is never mangled; rolls are optional). */
+export const EMPTY_ROW = { description: '', rolls: '', qty: '0', rate: '0' };
 
 export const MAX_PRODUCT_SUGGESTIONS = 8;
 

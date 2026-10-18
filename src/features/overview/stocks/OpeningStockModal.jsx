@@ -3,36 +3,42 @@ import { useEffect, useState } from 'react';
 
 import { Button, Modal, NumberField } from '@/ui';
 
-import { parseOpeningStockQty } from './stocksLogic';
+import { parseOpeningStockQty, parseOpeningStockRolls } from './stocksLogic';
 
 const FORM_ID = 'opening-stock-form';
 
 /**
- * The original "Set Opening / Old Stock" prompt. `row` = product being edited (null = closed).
- * `onSave(description, qty)` persists and shows the result toast; this sheet closes itself via `onClose`.
+ * The original "Set Opening / Old Stock" prompt, plus an optional roll count. `row` = product being edited (null =
+ * closed). `onSave(description, qty, rolls)` persists and shows the result toast; this sheet closes itself via `onClose`.
  */
 export default function OpeningStockModal({ row, onClose, onSave }) {
   const [value, setValue] = useState('0');
+  const [rolls, setRolls] = useState('');
   const [error, setError] = useState();
+  const [rollsError, setRollsError] = useState();
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (row) {
       setValue(String(row.opening));
+      setRolls(row.openingRolls ? String(row.openingRolls) : '');
       setError(undefined);
+      setRollsError(undefined);
     }
   }, [row]);
 
   const submit = async () => {
     if (!row) return;
     const parsed = parseOpeningStockQty(value);
-    if ('error' in parsed) {
+    const parsedRolls = parseOpeningStockRolls(rolls);
+    if ('error' in parsed || 'error' in parsedRolls) {
       setError(parsed.error);
+      setRollsError(parsedRolls.error);
       return;
     }
     setSaving(true);
     try {
-      await onSave(row.description, parsed.qty);
+      await onSave(row.description, parsed.qty, parsedRolls.rolls);
     } finally {
       setSaving(false);
     }
@@ -73,16 +79,28 @@ export default function OpeningStockModal({ row, onClose, onSave }) {
           Enter opening stock quantity for &quot;
           <span className="font-semibold text-brand-800">{row?.description ?? ''}</span>&quot;
         </p>
-        <NumberField
-          label="Quantity"
-          value={value}
-          allowNegative
-          error={error}
-          onChange={(v) => {
-            setValue(v);
-            setError(undefined);
-          }}
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField
+            label="Quantity"
+            value={value}
+            allowNegative
+            error={error}
+            onChange={(v) => {
+              setValue(v);
+              setError(undefined);
+            }}
+          />
+          <NumberField
+            label="Rolls (optional)"
+            value={rolls}
+            wholeNumber
+            error={rollsError}
+            onChange={(v) => {
+              setRolls(v);
+              setRollsError(undefined);
+            }}
+          />
+        </div>
       </form>
     </Modal>
   );

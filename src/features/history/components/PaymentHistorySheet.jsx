@@ -4,7 +4,7 @@
  *
  * Props:
  *   open (bool) · invoiceNo · partyName · balanceDue (number) · payments (HistoryPayment[]) · onClose()
- *   title?              default `Payment History - Invoice #<no>`
+ *   title?              default `Payment History - Invoice No <no>`
  *   onUndo(paymentId)   undo one payment (the caller confirms)
  *   onUndoAll()         undo all payments (the caller confirms)
  *   onAddPayment?()     "Add Payment" footer button – only pass it when the invoice may take another payment
@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CASH_LABEL, accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { normalizeMethod } from '@/core/paymentMethods';
-import { formatCurrency, formatDateIN } from '@/core/format';
+import { formatCurrency, formatDateIN, invoiceNoLabel } from '@/core/format';
 import { Button, EmptyState } from '@/ui';
 import { sumPaymentAmounts } from '../lib/lookups';
 import { sortPaymentsByDate } from '../lib/payments';
@@ -72,7 +72,7 @@ export function PaymentHistorySheet({
     <HistorySheet
       open={open}
       onClose={onClose}
-      title={title ?? `Payment History - Invoice #${invoiceNo}`}
+      title={title ?? `Payment History - ${invoiceNoLabel(invoiceNo)}`}
       actions={
         <>
           {onAddPayment ? (

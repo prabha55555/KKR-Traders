@@ -9,7 +9,7 @@ export const EXPORT_COLUMN_OPTIONS = [
 ];
 /**
  * Header: Customer Name, [Phone], [Address], Total Invoices, Total Amount, Amount Paid, [Returns], Balance Due,
- * Last Invoice, Last Invoice Date.
+ * Last Invoice No, Last Invoice Date.
  * PARITY NOTE: there is no Discount column and the "Invoice Details" checkbox has no effect on CSV (JSON only);
  * numbers are written raw (no rounding), exactly as the web page did.
  */
@@ -19,7 +19,7 @@ export function buildCsv(customers, columns) {
   if (columns.includes('address')) csv += ',Address';
   csv += ',Total Invoices,Total Amount,Amount Paid';
   if (columns.includes('returns')) csv += ',Returns';
-  csv += ',Balance Due,Last Invoice,Last Invoice Date\n';
+  csv += ',Balance Due,Last Invoice No,Last Invoice Date\n';
   for (const customer of customers) {
     const row = [`"${customer.name.replace(/"/g, '""')}"`];
     // PARITY NOTE: the phone is quoted without escaping (phones hold no quotes in practice)

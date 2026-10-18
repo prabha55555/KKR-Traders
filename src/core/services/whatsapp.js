@@ -5,7 +5,7 @@
 import { copyText, openExternal } from '@/platform';
 import { COMPANY, COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
 import { db } from '@/core/db';
-import { digitsOnly, formatCurrency, formatDateIN, toNum } from '@/core/format';
+import { digitsOnly, formatCurrency, formatDateIN, formatInvoiceNo, toNum } from '@/core/format';
 import { foldBreakdown } from '@/core/paymentMethods';
 import { loadInvoiceContext } from './invoiceContext';
 /**
@@ -29,6 +29,8 @@ export async function openWhatsApp(phone, text) {
 const LINE = '----------------------';
 const fmt = (amt) => (Math.round(amt) === amt ? String(amt) : formatCurrency(amt));
 const clip = (s, n = 20) => (s.length > n ? `${s.substring(0, n)}..` : s);
+/** "│ 🧻 Rolls: 12" line under a product / return that has a roll count (nothing for lines without one). */
+const rollsLine = (rolls) => (toNum(rolls) > 0 ? `│ 🧻 Rolls: ${toNum(rolls)}\n` : '');
 /**
  * `balanceReturns` = returns settled against the balance (they lower the due); the rest were refunded in cash / bank
  * and are only listed. Without it every return counts against the balance (callers that pass only `totalReturns`).
@@ -44,18 +46,18 @@ export function buildStatementMessage(args) {
   const discount = toNum(invoice.discountAmount ?? invoice.discount);
   const dateStr = formatDateIN(invoice.invoiceDate);
   let m = `*INVOICE STATEMENT*\n*${COMPANY.name}*\n\n\n`;
-  m += `+${LINE}\n│ 📋 *INVOICE DETAILS*\n+${LINE}\n│ 🔢 No: ${invoice.invoiceNo}\n│ 📅 Date: ${dateStr}\n+${LINE}\n\n`;
+  m += `+${LINE}\n│ 📋 *INVOICE DETAILS*\n+${LINE}\n│ 🔢 Invoice No: ${formatInvoiceNo(invoice.invoiceNo)}\n│ 📅 Date: ${dateStr}\n+${LINE}\n\n`;
   const custName = clip(invoice.customerName || '');
   const custAddr = invoice.customerAddress ? clip(invoice.customerAddress) : 'Not specified';
   m += `+${LINE}\n│ 👤 *BILL TO*\n+${LINE}\n│ 🧑 ${custName}\n│ 📞 ${invoice.customerPhone || 'No Phone'}\n│ 📍 ${custAddr}\n+${LINE}\n\n`;
   m += `+${LINE}\n│ 📦 *PRODUCT DETAILS*\n+${LINE}\n`;
   invoice.products.forEach((p) => {
-    m += `│ 🧵 ${p.description}\n│ ${p.qty} x Rs. ${fmt(p.rate)} = Rs. ${fmt(p.amount)}\n+${LINE}\n`;
+    m += `│ 🧵 ${p.description}\n${rollsLine(p.rolls)}│ ${p.qty} x Rs. ${fmt(p.rate)} = Rs. ${fmt(p.amount)}\n+${LINE}\n`;
   });
   if (totalReturns > 0) {
     m += `│ ↩️ *RETURNED ITEMS*\n+${LINE}\n`;
     returns.forEach((r) => {
-      m += `│ 🧵 ${r.description}\n│ ${r.qty} x Rs. ${fmt(r.rate)} = -Rs. ${fmt(r.returnAmount)}`;
+      m += `│ 🧵 ${r.description}\n${rollsLine(r.rolls)}│ ${r.qty} x Rs. ${fmt(r.rate)} = -Rs. ${fmt(r.returnAmount)}`;
       if (r.reason) m += `\n│ 📝 Rsn: ${r.reason}`;
       m += `\n+${LINE}\n`;
     });

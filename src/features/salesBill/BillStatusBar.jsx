@@ -6,6 +6,7 @@
  * EditBanner props: saved: boolean · editingNo: string | null (renders nothing for a new bill) · onNewBill()
  */
 import { FilePenLine, PlusCircle } from 'lucide-react';
+import { formatInvoiceNo } from '@/core/format';
 import { Badge, Button } from '@/ui';
 
 export function SaveBadge({ saved }) {
@@ -34,7 +35,7 @@ export function EditBanner({ saved, editingNo, onNewBill }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate font-display font-bold text-brand-800">
-              Editing invoice #{editingNo}
+              Editing Invoice No {formatInvoiceNo(editingNo)}
             </span>
             <SaveBadge saved={saved} />
           </div>

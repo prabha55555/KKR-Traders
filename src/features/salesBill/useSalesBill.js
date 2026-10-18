@@ -4,7 +4,7 @@ import { useFeedback } from '@/ui';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { db } from '@/core/db';
-import { formatDateIN, todayISO } from '@/core/format';
+import { formatDateIN, formatInvoiceNo, invoiceNoLabel, todayISO } from '@/core/format';
 import { printInvoice, shareInvoicePdf } from '@/core/services/invoiceShare';
 import { buildSalesInvoice, saveSalesBill, salesFormTotals } from '@/core/services/salesBill';
 import { openInvoiceForEditing } from './billLoader';
@@ -85,7 +85,7 @@ export function useSalesBill() {
           : loading.run(
               'Loading Invoice',
               () => openInvoiceForEditing(invoiceNo),
-              `Loading invoice #${invoiceNo} for editing...`,
+              `Loading ${invoiceNoLabel(invoiceNo)} for editing...`,
             ));
         if (request !== openRequest.current) return;
         if (silent) {
@@ -191,7 +191,7 @@ export function useSalesBill() {
     const next = suggestion?.nextInvoiceNo;
     if (!next || next === '-') return;
     patch({ invoiceNo: next });
-    toast('Applied!', `Invoice number set to ${next}`, 'success');
+    toast('Applied!', `Invoice No set to ${formatInvoiceNo(next)}`, 'success');
   }, [patch, suggestion, toast]);
   // ------------------------------------------------------------ actions
   const performSave = useCallback(async () => {
@@ -209,7 +209,7 @@ export function useSalesBill() {
         : '';
       const proceed = await confirm({
         title: 'Invoice Already Exists',
-        message: `Invoice #${plan.invoiceNo}${who} already exists. Saving will move it to the Recycle Bin with its payments and returns, and its amount will no longer count in that customer's balance. Continue?`,
+        message: `${invoiceNoLabel(plan.invoiceNo)}${who} already exists. Saving will move it to the Recycle Bin with its payments and returns, and its amount will no longer count in that customer's balance. Continue?`,
         tone: 'warning',
         confirmText: 'Overwrite',
       });

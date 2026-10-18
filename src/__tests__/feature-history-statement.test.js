@@ -338,8 +338,8 @@ describe('statement HTML', () => {
     expect(html).toContain('CUSTOMER INFORMATION');
     expect(html).toContain('Name: sln');
     expect(html).toContain('Phone: 98765 43210');
-    expect(html).toContain('INVOICE #002 - 3/10/2026');
-    expect(html.indexOf('INVOICE #002')).toBeLessThan(html.indexOf('INVOICE #001'));
+    expect(html).toContain('INVOICE NO 002 - 3/10/2026');
+    expect(html.indexOf('INVOICE NO 002')).toBeLessThan(html.indexOf('INVOICE NO 001'));
     for (const header of ['S.No.', 'Description', 'Qty', 'Rate', 'Amount', 'Date', 'Product', 'Balance'])
       expect(html).toContain(`>${header}</th>`);
     expect(html).toContain('RETURN INFORMATION');
@@ -385,7 +385,7 @@ describe('statement HTML', () => {
       labels: SALES_LABELS,
       now: NOW,
     });
-    for (const header of ['Invoice', 'Date', 'Particulars', 'Amount', 'Received'])
+    for (const header of ['Invoice No', 'Date', 'Particulars', 'Amount', 'Received'])
       expect(html).toContain(`>${header}</th>`);
     expect(html).toContain('(Returns deducted: -Rs. 100.00)');
     expect(html).toContain('(Discount: -Rs. 50.00)');
@@ -495,7 +495,7 @@ describe('WhatsApp text of the combined statement', () => {
     expect(message).toContain('👤 Customer: sln');
     expect(message).toContain('📍 Address: Tirupur');
     expect(message).toContain('📊 Total Invoices: 2');
-    expect(message.indexOf('*INVOICE #002*')).toBeLessThan(message.indexOf('*INVOICE #001*'));
+    expect(message.indexOf('*INVOICE NO 002*')).toBeLessThan(message.indexOf('*INVOICE NO 001*'));
     expect(message).toContain('📅 Date: 3/10/2026');
     expect(message).toContain('   Current Bill: ₹600.00');
     expect(message).toContain('   Previous Balance: ₹600.00');
@@ -519,8 +519,9 @@ describe('WhatsApp text of the combined statement', () => {
     expect(message).toContain('✅ *ADJUSTED OUTSTANDING BALANCE: ₹850.00*');
     expect(message).toContain('*RETURN SUMMARY*');
     expect(message).toContain('📦 Total Return Amount: ₹100.00');
-    expect(message).toContain('• #002 - 3/10/2026 - Due: ₹850.00');
-    expect(message).toContain('• #001 - 1/9/2026 - Due: ₹600.00');
+    expect(message).toContain('*INVOICE NOS*');
+    expect(message).toContain('• 002 - 3/10/2026 - Due: ₹850.00');
+    expect(message).toContain('• 001 - 1/9/2026 - Due: ₹600.00');
     expect(message).toContain('📍 Tirupur');
     expect(message).toContain('📞 *Phone: 90872 93268, 9092779599*');
     expect(

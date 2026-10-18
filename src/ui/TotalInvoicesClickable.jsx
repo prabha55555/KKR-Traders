@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatInvoiceNo } from '@/core/format';
 import { useAppNavigate } from '@/hooks/useRouteParams';
 import { Button } from './Button';
 import { Modal } from './Modal';
@@ -31,7 +32,7 @@ export function TotalInvoicesClickable({ count, invoiceNumbers, entityName, modu
                 nav.push(`/${module}/history?search=${inv}`);
               }}
             >
-              #{inv}
+              {formatInvoiceNo(inv)}
             </Button>
           ))}
         </div>

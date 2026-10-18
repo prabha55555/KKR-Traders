@@ -1,6 +1,6 @@
 /** Adapts Firestore purchase documents to the generic history view-model (`../lib/types`). */
 import { purchaseAmountPaid, purchaseBalanceDue } from '@/core/billing';
-import { toNum } from '@/core/format';
+import { formatInvoiceNo, toNum } from '@/core/format';
 import { PURCHASE_LEDGER, balanceReturnsTotal, billAmount } from '@/core/ledger';
 import { foldBreakdown, normalizeMethod } from '@/core/paymentMethods';
 import { compareNewestFirst } from '../lib/filters';
@@ -9,7 +9,7 @@ import { toHistoryPayment, toHistoryReturn } from '../sales/salesModel';
 /** Wording of the Purchase History screen: "Supplier", and the "P-" prefix of old bill numbers is never shown. */
 export const PURCHASE_LABELS = {
   party: 'Supplier',
-  formatInvoiceNo: (invoiceNo) => String(invoiceNo).replace('P-', ''),
+  formatInvoiceNo,
   statementBillLabel: 'Purchase Bill',
 };
 /**

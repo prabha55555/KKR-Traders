@@ -34,18 +34,11 @@ const MODULE_CARDS = [
     points: ['Purchase bills', 'Supplier ledger', 'Payments & returns'],
   },
   {
-    to: '/dyeing/batches',
-    title: 'Dyeing & Processing',
-    text: 'Convert raw grey fabric into finished dyed rolls with cost & loss tracking.',
+    to: '/processing/lots',
+    title: 'Dyeing & Combing',
+    text: 'Send grey fabric for dyeing and combing on your DC, track every unit DC, weight loss and the finished stock.',
     icon: Layers,
-    points: ['Processing batches', 'Dyeing details directory', 'Delivery challans'],
-  },
-  {
-    to: '/combing/batches',
-    title: 'Combing & Processing',
-    text: 'Send dyed fabric for combing, record actual shrinkage & yield, and update combed stock.',
-    icon: Sparkles,
-    points: ['Processing batches', 'Combing details directory', 'Finished combed yield'],
+    points: ['Processing lots & DCs', 'Weight loss & cost per kg', 'Unit payments'],
   },
   {
     to: '/sales/bill',

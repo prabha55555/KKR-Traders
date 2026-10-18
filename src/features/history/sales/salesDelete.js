@@ -1,5 +1,6 @@
 /** Deleting a sales invoice from history (invoice-history.js deleteInvoice / proceedWithDelete). */
 import { db } from '@/core/db';
+import { invoiceNoLabel } from '@/core/format';
 export const DELETE_BLOCKED_TITLE = 'Action Denied';
 export const DELETE_BLOCKED_MESSAGE =
   'Please undo all the payment and return history first before deleting this bill.';
@@ -26,4 +27,4 @@ export async function deleteSalesInvoice(invoiceNo) {
   await db.deleteInvoice(invoiceNo);
 }
 export const deleteSuccessMessage = (invoiceNo) =>
-  `Invoice #${invoiceNo} moved to the Recycle Bin — you can restore it from there.`;
+  `${invoiceNoLabel(invoiceNo)} moved to the Recycle Bin — you can restore it from there.`;

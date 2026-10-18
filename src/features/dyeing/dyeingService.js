@@ -107,7 +107,7 @@ export async function saveDyeingBatchRecord(form) {
             category: 'Dyeing & Processing',
             amount: exp.amount,
             bankAccountId: exp.paidVia === 'bank' ? exp.bankAccountId : null,
-            notes: `Batch #${batchDoc.batchId}: ${exp.category} (${batchDoc.processorName})`,
+            notes: `Batch ${batchDoc.batchId}: ${exp.category} (${batchDoc.processorName})`,
           });
         } catch (err) {
           console.warn('Failed to post account transaction for dyeing expense:', err);
@@ -196,7 +196,7 @@ export async function addDyeingBatchPayment(batchId, paymentData) {
 
   const batch = await db.getDyeingBatch(batchId);
   if (!batch) {
-    throw new Error(`Dyeing batch #${batchId} was not found.`);
+    throw new Error(`Dyeing batch ${batchId} was not found.`);
   }
 
   const paymentId = `dye_pay_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -233,7 +233,7 @@ export async function addDyeingBatchPayment(batchId, paymentData) {
         amount: paymentRecord.amount,
         fromAccount: source,
         bankAccountId: paymentRecord.mode !== 'Cash' ? paymentRecord.bankAccountId : null,
-        notes: `Dyeing Batch #${batch.batchId} (${batch.processorName || 'Dyer'})${
+        notes: `Dyeing Batch ${batch.batchId} (${batch.processorName || 'Dyer'})${
           paymentRecord.reference ? ` - Ref: ${paymentRecord.reference}` : ''
         }`,
       });
@@ -259,7 +259,7 @@ export async function deleteDyeingBatchPayment(batchId, paymentId) {
     batch = all.find((b) => b.batchId === batchId || b.id === batchId);
   }
   if (!batch) {
-    throw new Error(`Dyeing batch #${batchId} was not found.`);
+    throw new Error(`Dyeing batch ${batchId} was not found.`);
   }
 
   const updatedPayments = (batch.payments || []).filter((p) => p.id !== paymentId);

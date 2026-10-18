@@ -7,6 +7,7 @@ import {
   dateRanges,
 } from '@/features/overview/revenue/dashboardAnalytics';
 import { buildAvgCostLookup } from '@/features/overview/revenue/revenueLogic';
+import { toISODate } from '@/core/format';
 
 describe('Statistics & Dashboard Analytics', () => {
   const purchaseBills = [
@@ -61,7 +62,7 @@ describe('Statistics & Dashboard Analytics', () => {
   });
 
   it('correctly aggregates gross profit, sales, purchases and expenses in computeAnalytics', () => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = toISODate(new Date()); // LOCAL date: 'today' is a local-day range
     const mockData = {
       salesBills: [
         {
@@ -105,7 +106,7 @@ describe('Statistics & Dashboard Analytics', () => {
 
   it('filters dates correctly with isWithinRange', () => {
     const range = dateRanges.thisMonth();
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = toISODate(new Date()); // LOCAL date: 'today' is a local-day range
     expect(isWithinRange(todayStr, range)).toBe(true);
 
     // Old date from 2 years ago

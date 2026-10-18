@@ -5,6 +5,7 @@
  */
 import { Box, Building2, FileX, Receipt } from 'lucide-react';
 import { InvoiceHeaderFields, ProductRowsEditor } from '@/components/bill';
+import { formatInvoiceNo, invoiceNoLabel } from '@/core/format';
 import { useAppNavigate, useRouteParams } from '@/hooks/useRouteParams';
 import { Button, Card, EmptyState, ErrorState, LoadingState, Page, SectionHeader } from '@/ui';
 import { PurchaseBillLayout } from '../components/PurchaseBillLayout';
@@ -43,7 +44,7 @@ export default function PurchaseEditPage() {
         <EmptyState
           icon={FileX}
           title="Purchase bill not found"
-          message={invoiceNo ? `There is no purchase bill numbered ${invoiceNo}.` : undefined}
+          message={invoiceNo ? `There is no purchase bill with ${invoiceNoLabel(invoiceNo)}.` : undefined}
           action={
             <Button variant="outline" onClick={goBack}>
               Go Back
@@ -63,7 +64,7 @@ export default function PurchaseEditPage() {
           last=""
           suggested=""
           onApplySuggestion={noop}
-          invoiceNo={form.invoiceNo}
+          invoiceNo={formatInvoiceNo(form.invoiceNo)}
           onInvoiceNoChange={noop}
           invoiceNoReadOnly
           date={form.invoiceDate}
@@ -94,7 +95,7 @@ export default function PurchaseEditPage() {
 
   return (
     <PurchaseBillLayout
-      title={form.invoiceNo ? `${title} #${form.invoiceNo}` : title}
+      title={form.invoiceNo ? `${title} - ${invoiceNoLabel(form.invoiceNo)}` : title}
       saveLabel="Update Purchase Bill"
       saving={edit.saving}
       onSave={edit.save}

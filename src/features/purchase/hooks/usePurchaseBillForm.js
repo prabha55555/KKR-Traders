@@ -13,7 +13,7 @@ import {
   savePurchaseBillWithPayments,
 } from '@/core/services/purchaseBill';
 import { accountLabel } from '@/core/accountLabel';
-import { formatCurrency } from '@/core/format';
+import { formatCurrency, invoiceNoLabel } from '@/core/format';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 import { shareAcknowledgement, validateAcknowledgement } from '../acknowledgement';
 import { checkPurchaseBeforeSave, lookupSupplier, previousBalanceFor } from '../purchaseCreate';
@@ -31,10 +31,11 @@ export function usePurchaseBillForm() {
       initialForm.rows = [
         {
           description: paramProduct,
+          rolls: '',
           qty: searchParams.get('qty') || '',
           rate: '',
         },
-        { description: '', qty: '', rate: '' },
+        { description: '', rolls: '', qty: '', rate: '' },
       ];
     }
     return initialForm;
@@ -127,8 +128,8 @@ export function usePurchaseBillForm() {
     }
     if (check.overwrites) {
       const ok = await confirm({
-        title: 'Bill number already exists',
-        message: `Purchase bill ${form.invoiceNo.trim()} already exists. Saving will move it to the Recycle Bin with its payments and returns, and its amount will no longer count in that supplier's balance. Continue?`,
+        title: 'Invoice No Already Exists',
+        message: `Purchase ${invoiceNoLabel(form.invoiceNo)} already exists. Saving will move it to the Recycle Bin with its payments and returns, and its amount will no longer count in that supplier's balance. Continue?`,
         tone: 'danger',
         confirmText: 'Overwrite',
       });

@@ -18,7 +18,10 @@ export const rowAmount = (qty, rate) => toNum(qty) * toNum(rate);
 export function calcSubtotal(rows) {
   return (rows || []).reduce((sum, r) => sum + rowAmount(r.qty, r.rate), 0);
 }
-/** Rows with a description become product lines; `sno` is sequential. */
+/**
+ * Rows with a description become product lines; `sno` is sequential. `rolls` (the roll count, optional — 0 when not
+ * typed) is kept on every line but never decides whether a line is kept and never enters the money: amount = qty × rate.
+ */
 export function buildProductLines(rows, opts = {}) {
   const lines = [];
   rows.forEach((row) => {
@@ -27,9 +30,20 @@ export function buildProductLines(rows, opts = {}) {
     const rate = toNum(row.rate);
     if (!description) return;
     if (opts.requirePositiveQty && !(qty > 0)) return;
-    lines.push({ sno: lines.length + 1, description, qty, rate, amount: qty * rate });
+    lines.push({
+      sno: lines.length + 1,
+      description,
+      qty,
+      rolls: toNum(row.rolls),
+      rate,
+      amount: qty * rate,
+    });
   });
   return lines;
+}
+/** Total roll count of bill lines / form rows (lines without rolls count 0). */
+export function totalRolls(lines) {
+  return (lines || []).reduce((sum, l) => sum + toNum(l?.rolls), 0);
 }
 /** Sales: grand total = subtotal + previous balance + opening balance - discount (may be negative). */
 export function calcSalesTotals(i) {

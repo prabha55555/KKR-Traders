@@ -147,3 +147,21 @@ export function digitsOnly(value) {
 export function formatRupees(amount) {
   return `₹${formatCurrency(amount)}`;
 }
+// ------------------------------------------------------------------ invoice numbers
+/**
+ * An invoice number the way every screen, print, share text and message shows it: just the number — trimmed, without
+ * a leading "#" or the "P-" prefix of old purchase bills ('P-005' -> '005', '#001' -> '001'). The digits are never
+ * padded or otherwise changed ('5' stays '5', '001' stays '001').
+ * DISPLAY ONLY: stored numbers, document ids and lookups keep using the stored value as it is.
+ */
+export function formatInvoiceNo(invoiceNo) {
+  return String(invoiceNo ?? '')
+    .trim()
+    .replace(/^#+\s*/, '')
+    .replace(/^P-\s*/, '')
+    .replace(/^#+\s*/, '');
+}
+/** "Invoice No 001" — the one label used for an invoice number everywhere. */
+export function invoiceNoLabel(invoiceNo) {
+  return `Invoice No ${formatInvoiceNo(invoiceNo)}`;
+}

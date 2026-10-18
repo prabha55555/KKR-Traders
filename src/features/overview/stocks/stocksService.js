@@ -11,6 +11,7 @@ export async function loadStocks() {
     purchaseReturns,
     dyeingBatches,
     combingBatches,
+    processingLots,
   ] = await Promise.all([
     db.getAllPurchaseBills().catch(() => []),
     db.getAllInvoices().catch(() => []),
@@ -20,6 +21,7 @@ export async function loadStocks() {
     db.getAllPurchaseReturns().catch(() => []),
     db.getAllDyeingBatches ? db.getAllDyeingBatches().catch(() => []) : Promise.resolve([]),
     db.getAllCombingBatches ? db.getAllCombingBatches().catch(() => []) : Promise.resolve([]),
+    db.getAllProcessingLots ? db.getAllProcessingLots().catch(() => []) : Promise.resolve([]),
   ]);
   return computeStocks(
     purchaseBills || [],
@@ -30,6 +32,7 @@ export async function loadStocks() {
     purchaseReturns || [],
     dyeingBatches || [],
     combingBatches || [],
+    processingLots || [],
   );
 }
 
@@ -48,8 +51,9 @@ if (db && typeof db.onInvalidate === 'function') {
 }
 
 /**
- * Returns a fast lookup Map of { [description]: { available, minStockLevel, avgPurchaseRate, purchased,
- * purchaseHistory } } keyed by the exact description plus a lower-case fallback (see buildStockMap / lookupStock).
+ * Returns a fast lookup Map of { [description]: { available, availableRolls, hasRolls, minStockLevel, avgPurchaseRate,
+ * purchased, purchaseHistory } } keyed by the exact description plus a lower-case fallback (see buildStockMap /
+ * lookupStock).
  */
 export async function getStockQuantityMap(forceRefresh = false) {
   if (forceRefresh) {

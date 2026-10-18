@@ -5,8 +5,16 @@ import { formatRupees } from '@/core/format';
 import { Button, DataTable, Modal, cn } from '@/ui';
 
 import { useAppNavigate } from '@/hooks/useRouteParams';
-import { AvailableValue, OpeningValue } from './StockRowParts';
-import { historyDate, historyInvoiceNo, historyQty, historyTotal } from './stocksLogic';
+import { AvailableValue, OpeningValue, RollsLine } from './StockRowParts';
+import {
+  hasRolls,
+  historyDate,
+  historyInvoiceNo,
+  historyQty,
+  historyRolls,
+  historyTotal,
+  rollsText,
+} from './stocksLogic';
 
 const PURCHASE = {
   key: 'purchase',
@@ -36,26 +44,32 @@ function SummaryItem({ label, children }) {
   );
 }
 
-function HistorySection({ kind, entries, onSelectBill }) {
+/** `showRolls`: the product is counted in rolls (a Rolls column + total; entries without rolls show '-'). */
+function HistorySection({ kind, entries, onSelectBill, showRolls }) {
   const columns = [
     { key: 'date', header: 'Date', className: 'whitespace-nowrap', value: (e) => historyDate(e.date) },
     {
       key: 'invoice',
       header: 'Invoice No',
-      render: (e) => {
-        const raw = String(e.invoiceNo || '');
-        const display =
-          raw.startsWith('Batch') || raw.startsWith('Return') || raw.startsWith('#')
-            ? raw
-            : `#${historyInvoiceNo(raw)}`;
-        return (
-          <span className="font-semibold text-brand-700 underline decoration-brand-300 underline-offset-2 hover:text-brand-900">
-            {display}
-          </span>
-        );
-      },
+      // the plain invoice number, or the return / batch / DC reference text
+      render: (e) => (
+        <span className="font-semibold text-brand-700 underline decoration-brand-300 underline-offset-2 hover:text-brand-900">
+          {historyInvoiceNo(e.invoiceNo)}
+        </span>
+      ),
     },
     { key: 'party', header: kind.party, value: (e) => e.party },
+    ...(showRolls
+      ? [
+          {
+            key: 'rolls',
+            header: 'Rolls',
+            align: 'right',
+            className: 'tabular-nums',
+            value: (e) => (e.rolls ? e.rolls : '-'),
+          },
+        ]
+      : []),
     { key: 'qty', header: 'Qty', align: 'right', className: 'tabular-nums', value: (e) => e.qty },
     {
       key: 'rate',
@@ -100,11 +114,7 @@ function HistorySection({ kind, entries, onSelectBill }) {
         dense
         empty={<p className="py-6 text-center text-sm text-slate-500">{kind.empty}</p>}
         renderCard={(e) => {
-          const raw = String(e.invoiceNo || '');
-          const display =
-            raw.startsWith('Batch') || raw.startsWith('Return') || raw.startsWith('#')
-              ? raw
-              : `#${historyInvoiceNo(raw)}`;
+          const display = historyInvoiceNo(e.invoiceNo);
           return (
             <div className="space-y-1 text-sm">
               <div className="flex items-center justify-between">
@@ -119,6 +129,7 @@ function HistorySection({ kind, entries, onSelectBill }) {
               <div className="flex justify-between">
                 <span className="text-slate-500 tabular-nums">
                   {e.qty} × {formatRupees(e.rate)}
+                  {showRolls && e.rolls ? ` · ${rollsText(e.rolls)}` : ''}
                 </span>
                 <span className="font-display font-bold text-brand-800 tabular-nums">
                   {formatRupees(e.amount)}
@@ -134,6 +145,11 @@ function HistorySection({ kind, entries, onSelectBill }) {
               <span className="font-semibold text-slate-600">
                 Total Qty: <strong className="text-brand-800">{historyQty(entries)}</strong>
               </span>
+              {showRolls ? (
+                <span className="font-semibold text-slate-600">
+                  Total Rolls: <strong className="text-brand-800">{historyRolls(entries)}</strong>
+                </span>
+              ) : null}
               {kind === PURCHASE && entries.length > 0 ? (
                 <span className="font-semibold text-slate-600">
                   Avg Rate:{' '}
@@ -165,12 +181,13 @@ export default function StockDetailModal({ row, onClose }) {
     const rawNo = entry.rawInvoiceNo || entry.invoiceNo || '';
     if (!rawNo) return;
     onClose();
-    if (
-      entry.isCombingReceipt ||
-      entry.isCombingIssue ||
-      String(rawNo).startsWith('CB-')
-    ) {
-      nav.push('/combing/batches');
+    if (entry.isProcessingIssue || entry.isProcessingReceipt || entry.isProcessingReturn) {
+      const where = entry.isProcessingReceipt ? '/processing/completed' : '/processing/lots';
+      nav.push(`${where}?search=${encodeURIComponent(rawNo)}`);
+      return;
+    }
+    if (entry.isCombingReceipt || entry.isCombingIssue || String(rawNo).startsWith('CB-')) {
+      nav.push('/processing/old');
       return;
     }
     if (
@@ -179,11 +196,11 @@ export default function StockDetailModal({ row, onClose }) {
       String(rawNo).startsWith('B-') ||
       String(rawNo).startsWith('Batch')
     ) {
-      nav.push('/dyeing/batches');
+      nav.push('/processing/old');
       return;
     }
     const cleanNo = String(rawNo)
-      .replace(/^Return\s*#?/i, '')
+      .replace(/^Return\s*(?:-\s*Invoice No\s*|#)?/i, '')
       .trim();
     if (!cleanNo) return;
     if (kind === PURCHASE) {
@@ -210,9 +227,11 @@ export default function StockDetailModal({ row, onClose }) {
           <dl className="mb-6 grid grid-cols-2 gap-2 rounded-2xl bg-gold-50/60 p-3 ring-1 ring-gold-100 sm:grid-cols-5">
             <SummaryItem label="Opening">
               <OpeningValue row={shown} />
+              <RollsLine row={shown} rolls={shown.openingRolls} />
             </SummaryItem>
             <SummaryItem label="Purchased">
               <span className="font-semibold text-slate-800 tabular-nums">{shown.purchased}</span>
+              <RollsLine row={shown} rolls={shown.purchasedRolls} />
             </SummaryItem>
             <SummaryItem label="Avg Purchase Rate">
               <span className="font-semibold text-brand-800 tabular-nums">
@@ -221,13 +240,25 @@ export default function StockDetailModal({ row, onClose }) {
             </SummaryItem>
             <SummaryItem label="Sold">
               <span className="font-semibold text-slate-800 tabular-nums">{shown.sold}</span>
+              <RollsLine row={shown} rolls={shown.soldRolls} />
             </SummaryItem>
             <SummaryItem label="Available">
               <AvailableValue row={shown} showLabel />
+              <RollsLine row={shown} rolls={shown.availableRolls} strong />
             </SummaryItem>
           </dl>
-          <HistorySection kind={PURCHASE} entries={shown.purchaseHistory} onSelectBill={handleSelectBill} />
-          <HistorySection kind={SALES} entries={shown.salesHistory} onSelectBill={handleSelectBill} />
+          <HistorySection
+            kind={PURCHASE}
+            entries={shown.purchaseHistory}
+            onSelectBill={handleSelectBill}
+            showRolls={hasRolls(shown)}
+          />
+          <HistorySection
+            kind={SALES}
+            entries={shown.salesHistory}
+            onSelectBill={handleSelectBill}
+            showRolls={hasRolls(shown)}
+          />
         </>
       ) : null}
     </Modal>

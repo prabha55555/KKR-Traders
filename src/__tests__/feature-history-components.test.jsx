@@ -57,7 +57,7 @@ describe('HistoryInvoiceCard', () => {
   it('shows the invoice figures and fires the actions with the invoice number', () => {
     const actions = makeActions();
     render(<HistoryInvoiceCard invoice={invoice()} labels={SALES_LABELS} actions={actions} />);
-    expect(screen.getByText('Invoice #101')).toBeInTheDocument();
+    expect(screen.getByText('Invoice No 101')).toBeInTheDocument();
     expect(screen.getByText('Ravi Stores')).toBeInTheDocument();
     expect(screen.getByText('Balance Due:')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
@@ -84,7 +84,7 @@ describe('HistoryInvoiceTable', () => {
   it('opens the detail on row click but not when an icon action is used', () => {
     const actions = makeActions();
     render(<HistoryInvoiceTable invoices={[invoice()]} labels={SALES_LABELS} actions={actions} />);
-    fireEvent.click(screen.getByLabelText('Delete invoice 101'));
+    fireEvent.click(screen.getByLabelText('Delete Invoice No 101'));
     expect(actions.remove).toHaveBeenCalledWith('101');
     expect(actions.open).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Ravi Stores'));
@@ -98,10 +98,10 @@ describe('DeleteInvoiceSheet', () => {
     render(<DeleteInvoiceSheet open invoiceNo="101" onClose={() => {}} onConfirm={onConfirm} />);
     const button = screen.getByRole('button', { name: /Move to Recycle Bin/ });
     expect(button).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/Type the invoice number/), { target: { value: '102' } });
+    fireEvent.change(screen.getByLabelText(/Type the Invoice No/), { target: { value: '102' } });
     expect(button).toBeDisabled();
-    expect(screen.getByText('Invoice number does not match')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Type the invoice number/), { target: { value: '101' } });
+    expect(screen.getByText('Invoice No does not match')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Type the Invoice No/), { target: { value: '101' } });
     expect(button).toBeEnabled();
     fireEvent.click(button);
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -255,7 +255,7 @@ describe('HistoryFilterBar', () => {
     );
     fireEvent.change(screen.getByLabelText('Search invoices'), { target: { value: 'ravi' } });
     expect(onChange).toHaveBeenCalledWith({ ...EMPTY_FILTERS, search: 'ravi' });
-    fireEvent.change(screen.getByLabelText('From invoice number'), { target: { value: '1a2' } });
+    fireEvent.change(screen.getByLabelText('From Invoice No'), { target: { value: '1a2' } });
     expect(onChange).toHaveBeenLastCalledWith({ ...EMPTY_FILTERS, fromInvoiceNo: '12' });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(onSearch).toHaveBeenCalled();

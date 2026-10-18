@@ -19,7 +19,7 @@ import FinancialSummary from './FinancialSummary';
 import OpeningStockModal from './OpeningStockModal';
 import StockDetailModal from './StockDetailModal';
 import RestockDashboard from './RestockDashboard';
-import { AvailableValue, OpeningValue, StockActions, StockCard } from './StockRowParts';
+import { AvailableValue, OpeningValue, RollsLine, StockActions, StockCard } from './StockRowParts';
 import { filterStocks } from './stocksLogic';
 import { loadStocks } from './stocksService';
 
@@ -101,9 +101,9 @@ export default function StocksPage() {
 
   const paged = usePagedRows(rows, `${search}|${statusFilter}|${typeFilter}`);
 
-  const saveOpening = async (description, qty) => {
+  const saveOpening = async (description, qty, rolls) => {
     try {
-      await db.saveOpeningStock(description, qty);
+      await db.saveOpeningStock(description, qty, rolls);
       toast('Saved!', 'Opening stock updated successfully.', 'success');
       setOpeningRow(null);
       await reload();
@@ -146,13 +146,28 @@ export default function StocksPage() {
       className: 'min-w-44 font-semibold text-brand-800',
       value: (r) => r.description,
     },
-    { key: 'opening', header: 'Opening Stock', align: 'right', render: (r) => <OpeningValue row={r} /> },
+    {
+      key: 'opening',
+      header: 'Opening Stock',
+      align: 'right',
+      render: (r) => (
+        <>
+          <OpeningValue row={r} />
+          <RollsLine row={r} rolls={r.openingRolls} />
+        </>
+      ),
+    },
     {
       key: 'purchased',
       header: 'Total Purchased Qty',
       align: 'right',
       className: 'tabular-nums text-slate-700',
-      value: (r) => r.purchased,
+      render: (r) => (
+        <>
+          {r.purchased}
+          <RollsLine row={r} rolls={r.purchasedRolls} />
+        </>
+      ),
     },
     {
       key: 'avgPurchaseRate',
@@ -166,13 +181,23 @@ export default function StocksPage() {
       header: 'Total Sold Qty',
       align: 'right',
       className: 'tabular-nums text-slate-700',
-      value: (r) => r.sold,
+      render: (r) => (
+        <>
+          {r.sold}
+          <RollsLine row={r} rolls={r.soldRolls} />
+        </>
+      ),
     },
     {
       key: 'available',
       header: 'Available Stock',
       align: 'right',
-      render: (r) => <AvailableValue row={r} showLabel />,
+      render: (r) => (
+        <>
+          <AvailableValue row={r} showLabel />
+          <RollsLine row={r} rolls={r.availableRolls} strong />
+        </>
+      ),
     },
     {
       key: 'minStock',

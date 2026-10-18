@@ -91,7 +91,7 @@ export function HistoryDateGroupList({
       <EmptyState
         icon={FileSearch}
         title={emptyTitle}
-        message="Try a different name, invoice number or date range, or clear the filters."
+        message="Try a different name, invoice no or date range, or clear the filters."
         className="rounded-2xl border border-line bg-white shadow-card"
       />
     );

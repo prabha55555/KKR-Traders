@@ -6,19 +6,33 @@
  * case-sensitively — "Cotton" and "COTTON" are two stock rows, unlike the revenue page which upper-cases.
  * avgPurchaseRate = weighted average rate of the positive purchase entries (purchase-bill lines + dyeing / combing
  * receipts at their unit cost); purchase returns and opening stock (no price) are left out.
+ *
+ * ROLLS are counted the same way, next to the quantity: availableRolls = openingRolls + purchasedRolls - soldRolls, from
+ * the optional `rolls` of opening stock, bill lines, returns and processing-lot movements. A line without a roll count
+ * adds 0, and rolls never touch the quantities or the money.
  */
-import { formatDateIN, toNum } from '@/core/format';
+import { formatDateIN, formatInvoiceNo, invoiceNoLabel, toNum } from '@/core/format';
 import { PURCHASE_LEDGER, SALES_LEDGER, billAmount } from '@/core/ledger';
+import { lotStockMovements } from '@/features/processing/lotLogic';
 const round3 = (n) => Math.round(n * 1000) / 1000;
 const round2 = (n) => Number(n.toFixed(2));
 const newAccumulator = (opening = 0) => ({
   opening,
   purchased: 0,
   sold: 0,
+  openingRolls: 0,
+  purchasedRolls: 0,
+  soldRolls: 0,
   minStockLevel: 0,
   purchaseHistory: [],
   salesHistory: [],
 });
+/**
+ * Roll count of an old dyeing / combing batch input or output: only an explicit `rolls`. Their `unit` is NOT used — the
+ * old batch forms stored a fixed 'Rolls' unit while the quantity was weighed and counted with the kg of the bills (weight
+ * loss %), so reading that quantity as rolls would invent roll counts.
+ */
+const batchRolls = (part) => toNum(part?.rolls);
 /** Newest first; unparseable dates compare as equal (JS sort of NaN) and keep their order. */
 function sortHistory(entries) {
   return entries
@@ -38,6 +52,7 @@ export function computeStocks(
   purchaseReturns = [],
   dyeingBatches = [],
   combingBatches = [],
+  processingLots = [],
 ) {
   const stockMap = new Map();
   const entry = (description) => {
@@ -52,7 +67,9 @@ export function computeStocks(
   openingStocks.forEach((stock) => {
     const description = String(stock.description ?? '').trim();
     if (!description) return;
-    entry(description).opening = toNum(stock.qty);
+    const acc = entry(description);
+    acc.opening = toNum(stock.qty);
+    acc.openingRolls = toNum(stock.rolls);
   });
 
   // Seed with metadata
@@ -73,13 +90,16 @@ export function computeStocks(
     bill.products.forEach((product) => {
       if (!product.description) return;
       const qty = toNum(product.qty);
+      const rolls = toNum(product.rolls);
       const rate = toNum(product.rate);
       const acc = entry(String(product.description).trim());
       acc.purchased += qty;
+      acc.purchasedRolls += rolls;
       acc.purchaseHistory.push({
         date: bill.invoiceDate || bill.date || '',
         party: bill.supplierName || 'Unknown',
         qty,
+        rolls,
         rate,
         invoiceNo: String(bill.invoiceNo || ''),
         rawInvoiceNo: String(bill.invoiceNo || ''),
@@ -93,15 +113,18 @@ export function computeStocks(
     purchaseReturns.forEach((pr) => {
       if (!pr.description) return;
       const qty = toNum(pr.qty);
+      const rolls = toNum(pr.rolls);
       const rate = toNum(pr.rate);
       const acc = entry(String(pr.description).trim());
       acc.purchased -= qty;
+      acc.purchasedRolls -= rolls;
       acc.purchaseHistory.push({
         date: pr.returnDate || pr.date || '',
         party: `${pr.supplierName || 'Supplier'} (Return)`,
         qty: -qty,
+        rolls: -rolls,
         rate,
-        invoiceNo: pr.invoiceNo ? `Return #${pr.invoiceNo}` : 'Return',
+        invoiceNo: pr.invoiceNo ? `Return - ${invoiceNoLabel(pr.invoiceNo)}` : 'Return',
         rawInvoiceNo: String(pr.invoiceNo || ''),
         amount: -round2(qty * rate),
       });
@@ -116,13 +139,16 @@ export function computeStocks(
     invoice.products.forEach((product) => {
       if (!product.description) return;
       const qty = toNum(product.qty);
+      const rolls = toNum(product.rolls);
       const rate = toNum(product.rate);
       const acc = entry(String(product.description).trim());
       acc.sold += qty;
+      acc.soldRolls += rolls;
       acc.salesHistory.push({
         date: invoice.invoiceDate || invoice.date || '',
         party: invoice.customerName || 'Unknown',
         qty,
+        rolls,
         rate,
         invoiceNo: String(invoice.invoiceNo || ''),
         rawInvoiceNo: String(invoice.invoiceNo || ''),
@@ -136,15 +162,18 @@ export function computeStocks(
     salesReturns.forEach((sr) => {
       if (!sr.description) return;
       const qty = toNum(sr.qty);
+      const rolls = toNum(sr.rolls);
       const rate = toNum(sr.rate);
       const acc = entry(String(sr.description).trim());
       acc.sold -= qty;
+      acc.soldRolls -= rolls;
       acc.salesHistory.push({
         date: sr.returnDate || sr.date || '',
         party: `${sr.customerName || 'Customer'} (Return)`,
         qty: -qty,
+        rolls: -rolls,
         rate,
-        invoiceNo: sr.invoiceNo ? `Return #${sr.invoiceNo}` : 'Return',
+        invoiceNo: sr.invoiceNo ? `Return - ${invoiceNoLabel(sr.invoiceNo)}` : 'Return',
         rawInvoiceNo: String(sr.invoiceNo || ''),
         amount: -round2(qty * rate),
       });
@@ -160,15 +189,18 @@ export function computeStocks(
       if (batch.input?.description) {
         const desc = String(batch.input.description).trim();
         const qty = toNum(batch.input.qty);
+        const rolls = batchRolls(batch.input);
         const rate = toNum(batch.input.avgGreyRate || batch.input.rate);
         const acc = entry(desc);
         acc.sold += qty;
+        acc.soldRolls += rolls;
         acc.salesHistory.push({
           date: batch.batchDate || batch.date || '',
           party: `${batch.processorName || 'Dye House'} (Dyeing Issue)`,
           qty,
+          rolls,
           rate,
-          invoiceNo: batch.batchId ? `Batch #${batch.batchId}` : 'Batch',
+          invoiceNo: batch.batchId ? `Batch ${batch.batchId}` : 'Batch',
           rawInvoiceNo: String(batch.batchId || ''),
           amount: round2(qty * rate),
           isDyeingIssue: true,
@@ -181,15 +213,18 @@ export function computeStocks(
           if (!out.description) return;
           const desc = String(out.description).trim();
           const qty = toNum(out.qty);
+          const rolls = batchRolls(out);
           const unitCost = toNum(out.unitCost);
           const acc = entry(desc);
           acc.purchased += qty;
+          acc.purchasedRolls += rolls;
           acc.purchaseHistory.push({
             date: batch.completedAt || batch.batchDate || '',
             party: `${batch.processorName || 'Dye House'} (Finished Receipt)`,
             qty,
+            rolls,
             rate: unitCost,
-            invoiceNo: batch.batchId ? `Batch #${batch.batchId}` : 'Batch',
+            invoiceNo: batch.batchId ? `Batch ${batch.batchId}` : 'Batch',
             rawInvoiceNo: String(batch.batchId || ''),
             amount: round2(qty * unitCost),
             isDyeingReceipt: true,
@@ -208,15 +243,18 @@ export function computeStocks(
       if (batch.input?.description) {
         const desc = String(batch.input.description).trim();
         const qty = toNum(batch.input.qty);
+        const rolls = batchRolls(batch.input);
         const rate = toNum(batch.input.avgRate || batch.input.rate);
         const acc = entry(desc);
         acc.sold += qty;
+        acc.soldRolls += rolls;
         acc.salesHistory.push({
           date: batch.batchDate || batch.date || '',
           party: `${batch.processorName || 'Combing Mill'} (Combing Issue)`,
           qty,
+          rolls,
           rate,
-          invoiceNo: batch.batchId ? `Batch #${batch.batchId}` : 'Batch',
+          invoiceNo: batch.batchId ? `Batch ${batch.batchId}` : 'Batch',
           rawInvoiceNo: String(batch.batchId || ''),
           amount: round2(qty * rate),
           isCombingIssue: true,
@@ -229,15 +267,18 @@ export function computeStocks(
           if (!out.description) return;
           const desc = String(out.description).trim();
           const qty = toNum(out.qty);
+          const rolls = batchRolls(out);
           const unitCost = toNum(out.unitCost);
           const acc = entry(desc);
           acc.purchased += qty;
+          acc.purchasedRolls += rolls;
           acc.purchaseHistory.push({
             date: batch.completedAt || batch.batchDate || '',
             party: `${batch.processorName || 'Combing Mill'} (Combed Receipt)`,
             qty,
+            rolls,
             rate: unitCost,
-            invoiceNo: batch.batchId ? `Batch #${batch.batchId}` : 'Batch',
+            invoiceNo: batch.batchId ? `Batch ${batch.batchId}` : 'Batch',
             rawInvoiceNo: String(batch.batchId || ''),
             amount: round2(qty * unitCost),
             isCombingReceipt: true,
@@ -247,10 +288,46 @@ export function computeStocks(
     });
   }
 
+  // Processing lots (Issue -> Dyeing -> Combing -> Received): grey leaves stock on my DC, the finished fabric enters
+  // stock only when it is received back, at the lot's cost per kg. Rolls move with every DC (m.rolls, 0 when not typed).
+  (processingLots || []).forEach((lot) => {
+    lotStockMovements(lot).forEach((m) => {
+      const acc = entry(m.description);
+      const rolls = toNum(m.rolls);
+      const line = {
+        date: m.date,
+        party: m.party,
+        qty: m.qty,
+        rolls,
+        rate: m.rate,
+        invoiceNo: m.ref,
+        rawInvoiceNo: m.rawRef,
+        amount: round2(m.qty * m.rate),
+      };
+      if (m.kind === 'issue') {
+        acc.sold += m.qty;
+        acc.soldRolls += rolls;
+        acc.salesHistory.push({ ...line, isProcessingIssue: true });
+      } else {
+        // the finished receipt, or fabric a unit sent back unprocessed
+        acc.purchased += m.qty;
+        acc.purchasedRolls += rolls;
+        acc.purchaseHistory.push(
+          m.kind === 'return'
+            ? { ...line, isProcessingReturn: true }
+            : { ...line, isProcessingReceipt: true },
+        );
+      }
+    });
+  });
+
   const rows = Array.from(stockMap, ([description, acc]) => {
     const opening = round3(acc.opening);
     const purchased = round3(acc.purchased);
     const sold = round3(acc.sold);
+    const openingRolls = round3(acc.openingRolls);
+    const purchasedRolls = round3(acc.purchasedRolls);
+    const soldRolls = round3(acc.soldRolls);
     const totalPurchaseCost = acc.purchaseHistory.reduce((sum, e) => sum + (e.qty > 0 ? e.amount : 0), 0);
     const totalPositivePurchasedQty = acc.purchaseHistory.reduce(
       (sum, e) => sum + (e.qty > 0 ? e.qty : 0),
@@ -270,6 +347,10 @@ export function computeStocks(
       avgPurchaseRate,
       sold,
       available: round3(opening + purchased - sold),
+      openingRolls,
+      purchasedRolls,
+      soldRolls,
+      availableRolls: round3(openingRolls + purchasedRolls - soldRolls),
       minStockLevel: acc.minStockLevel || 0,
       purchaseHistory: sortHistory(acc.purchaseHistory),
       salesHistory: sortHistory(acc.salesHistory),
@@ -292,6 +373,9 @@ export function buildStockMap(rows) {
     if (!key) return;
     map.set(key, {
       available: r.available,
+      availableRolls: r.availableRolls || 0,
+      // the product has ever been counted in rolls (the bill hints show its rolls only then)
+      hasRolls: hasRolls(r),
       minStockLevel: r.minStockLevel || 0,
       avgPurchaseRate: r.avgPurchaseRate || 0,
       purchased: r.purchased || 0,
@@ -327,9 +411,32 @@ export function historyTotal(entries) {
 export function historyQty(entries) {
   return round3(entries.reduce((sum, e) => sum + e.qty, 0));
 }
-/** Invoice number as the web history tables printed it ("P-" prefix dropped, for sales rows too). */
+/** Total rolls across history entries (entries without a roll count add 0). */
+export function historyRolls(entries) {
+  return round3(entries.reduce((sum, e) => sum + toNum(e.rolls), 0));
+}
+/** A stock row that has ever been counted in rolls (opening, purchased or sold rolls). */
+export function hasRolls(row) {
+  return Boolean(toNum(row?.openingRolls) || toNum(row?.purchasedRolls) || toNum(row?.soldRolls));
+}
+/** "12 rolls" / "1 roll". */
+export const rollsText = (rolls) => `${rolls} ${Math.abs(toNum(rolls)) === 1 ? 'roll' : 'rolls'}`;
+/**
+ * Stock as the bill screens show it: "80 kg · 12 rolls" for a product counted in rolls, otherwise just the quantity
+ * (as before rolls existed). `stock` = a stock-map entry (lookupStock).
+ */
+export function stockLabel(stock) {
+  if (!stock) return '';
+  return stock.hasRolls
+    ? `${stock.available} kg · ${rollsText(stock.availableRolls)}`
+    : String(stock.available);
+}
+/**
+ * The "Invoice No" column of the stock history: the plain invoice number ("P-" prefix / "#" dropped, see core/format).
+ * Return / batch / DC references ("Return - Invoice No 001", "Batch B-001", "DC-001") come out unchanged.
+ */
 export function historyInvoiceNo(invoiceNo) {
-  return invoiceNo.replace('P-', '');
+  return formatInvoiceNo(invoiceNo);
 }
 /** Date column of the history tables (3/10/2026); unparseable values are shown as stored. */
 export function historyDate(date) {
@@ -343,7 +450,15 @@ export function parseOpeningStockQty(input) {
   if (!value || Number.isNaN(parseFloat(value))) return { error: OPENING_STOCK_INVALID };
   return { qty: parseFloat(value) };
 }
-/** Which opening-stock actions a row offers: "Add Old Stock" when there is none, else Edit + Delete. */
+export const OPENING_ROLLS_INVALID = 'Rolls must be a whole number (or leave it blank).';
+/** The optional roll count of the opening stock: blank = 0, otherwise a whole number of 0 or more. */
+export function parseOpeningStockRolls(input) {
+  const value = String(input ?? '').trim();
+  if (!value) return { rolls: 0 };
+  if (!/^\d+$/.test(value)) return { error: OPENING_ROLLS_INVALID };
+  return { rolls: parseInt(value, 10) };
+}
+/** Which opening-stock actions a row offers: "Add Old Stock" when there is none (no quantity, no rolls), else Edit + Delete. */
 export function openingActions(row) {
-  return row.opening > 0 ? 'edit' : 'add';
+  return row.opening > 0 || toNum(row.openingRolls) > 0 ? 'edit' : 'add';
 }

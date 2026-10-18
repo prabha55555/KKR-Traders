@@ -12,6 +12,7 @@ export {
   TextArea,
   TextField,
   sanitizeDecimal,
+  sanitizeWholeNumber,
 } from './fields';
 export { ChoiceChips, Grid, Page, TwoPane } from './Layout';
 export { Modal, Sheet } from './Modal';

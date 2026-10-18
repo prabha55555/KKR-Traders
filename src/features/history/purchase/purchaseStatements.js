@@ -142,7 +142,7 @@ export async function downloadPurchaseStatement(invoiceNo, now = new Date()) {
  */
 export async function sharePurchaseStatement(invoiceNo, now = new Date()) {
   const { html, fileName, shownNo } = await buildBillStatement(invoiceNo, now);
-  if ((await shareStatementPdf(html, fileName, `Statement for Invoice #${shownNo}`)) === 'shared')
+  if ((await shareStatementPdf(html, fileName, `Statement for Invoice No ${shownNo}`)) === 'shared')
     return 'shared';
   await printStatementHtml(html);
   return 'fallback';

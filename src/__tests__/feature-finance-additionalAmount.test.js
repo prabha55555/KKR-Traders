@@ -502,3 +502,24 @@ describe('legacy data keeps working after Transfer Funds and UPI left the UI', (
     expect(activity.items.find((i) => i.id === 'fin-pay-f1-0').subtitle).toBe('Mode: Account');
   });
 });
+
+describe('getAccountActivity titles name the plain Invoice No', () => {
+  test('sales / purchase / refund titles: "Invoice No <no>", no "#" and no "P-"', () => {
+    const titles = getAccountActivity({
+      account: { id: 'cash', openingBalance: 0 },
+      salesInvoices: [{ invoiceNo: '001', invoiceDate: '2026-10-01', paymentBreakdown: { cash: 100 } }],
+      purchaseBills: [{ invoiceNo: 'P-005', invoiceDate: '2026-10-02', payment: { cash: 50 } }],
+      salesReturns: [{ id: 'r1', invoiceNo: '001', refundMethod: 'cash', returnAmount: 10 }],
+      purchaseReturns: [{ id: 'r2', invoiceNo: 'P-005', refundMethod: 'cash', returnAmount: 5 }],
+    }).items.map((i) => i.title);
+    expect(titles).toEqual(
+      expect.arrayContaining([
+        'Sales Invoice No 001',
+        'Purchase Invoice No 005',
+        'Sales Return Refund - Invoice No 001',
+        'Purchase Return Refund - Invoice No 005',
+      ]),
+    );
+    expect(titles.join(' ')).not.toMatch(/#|P-/);
+  });
+});

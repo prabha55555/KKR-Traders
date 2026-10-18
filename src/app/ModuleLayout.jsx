@@ -1,4 +1,5 @@
 import {
+  Archive,
   Boxes,
   CalendarDays,
   CheckCircle2,
@@ -38,11 +39,10 @@ import { OfflineBanner } from './pwa';
  * Navigation categories configured in the natural supply-chain order:
  * 1. Dashboard
  * 2. Purchase (Inward Grey Rolls / Traded Colored Rolls)
- * 3. Dyeing & Processing (Convert Grey to Finished Dyed Rolls)
- * 4. Combing & Processing (Combing & Finishing)
- * 5. Sales (Sell Finished Rolls)
- * 6. Finance (Bank, Cash, and Ledger Tracking)
- * 7. Overview (Stocks, Profit/Revenue, Analytics, Expenses)
+ * 3. Dyeing & Combing (processing lots: my DC -> dyeing unit -> combing unit -> received into stock)
+ * 4. Sales (Sell Finished Rolls)
+ * 5. Finance (Bank, Cash, and Ledger Tracking)
+ * 6. Overview (Stocks, Profit/Revenue, Analytics, Expenses)
  *
  * Items flagged `tab: false` stay in the sidebar / drawer but are left out of the phone bottom tabs.
  */
@@ -69,27 +69,17 @@ export const NAV_CATEGORIES = [
     ],
   },
   {
-    id: 'dyeing',
-    title: 'Dyeing & Processing',
+    id: 'processing',
+    title: 'Dyeing & Combing',
     icon: Layers,
-    basePath: '/dyeing',
-    home: '/dyeing/batches',
+    basePath: '/processing',
+    home: '/processing/lots',
     items: [
-      { to: '/dyeing/batches', label: 'Ongoing Batches', short: 'Ongoing', icon: Layers },
-      { to: '/dyeing/settled', label: 'Settled Batches', short: 'Settled', icon: CheckCircle2 },
-      { to: '/dyeing/details', label: 'Dyeing Details', short: 'Dyers', icon: Users },
-    ],
-  },
-  {
-    id: 'combing',
-    title: 'Combing & Processing',
-    icon: Sparkles,
-    basePath: '/combing',
-    home: '/combing/batches',
-    items: [
-      { to: '/combing/batches', label: 'Ongoing Batches', short: 'Ongoing', icon: Layers },
-      { to: '/combing/settled', label: 'Settled Batches', short: 'Settled', icon: CheckCircle2 },
-      { to: '/combing/details', label: 'Combing Units', short: 'Units', icon: Users },
+      { to: '/processing/lots', label: 'Processing Lots', short: 'Lots', icon: Layers },
+      { to: '/processing/completed', label: 'Completed Lots', short: 'Completed', icon: CheckCircle2 },
+      { to: '/processing/dyeing-units', label: 'Dyeing Units', short: 'Dyers', icon: Users },
+      { to: '/processing/combing-units', label: 'Combing Units', short: 'Combing', icon: Sparkles },
+      { to: '/processing/old', label: 'Old Batches', short: 'Old', icon: Archive, tab: false },
     ],
   },
   {

@@ -117,7 +117,7 @@ export default function PurchaseHistoryPage() {
         <AddPaymentSheet
           open
           invoiceNo={sheet.invoiceNo}
-          title={`Add Payment - Purchase Invoice #${shownNo(sheet.invoiceNo)}`}
+          title={`Add Payment - Invoice No ${shownNo(sheet.invoiceNo)}`}
           invalidAmountMessage="Please enter a valid payment amount."
           balanceDue={sheet.balanceDue}
           mode="purchase"
@@ -130,7 +130,7 @@ export default function PurchaseHistoryPage() {
         <PaymentHistorySheet
           open
           invoiceNo={sheet.invoiceNo}
-          title={`Payment History - Purchase Bill #${shownNo(sheet.invoiceNo)}`}
+          title={`Payment History - Invoice No ${shownNo(sheet.invoiceNo)}`}
           partyName={sheet.partyName}
           balanceDue={sheet.balanceDue}
           payments={sheet.payments}

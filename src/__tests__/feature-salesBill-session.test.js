@@ -131,7 +131,7 @@ describe('planSave', () => {
     const plan = await planSave(session({ form: form({ invoiceNo: ' ' }) }), shortcuts, check);
     expect(plan).toEqual({
       kind: 'invalid',
-      error: { title: 'Missing Information', message: 'Please enter an invoice number' },
+      error: { title: 'Missing Information', message: 'Please enter the Invoice No' },
     });
     expect(check).not.toHaveBeenCalled();
   });
@@ -167,7 +167,7 @@ describe('planSave', () => {
 describe('savedBillMessage', () => {
   test('matches the web toast body', () => {
     expect(savedBillMessage({ invoiceNo: '012', customerName: 'SLN TEX', grandTotal: 1234567.5 })).toBe(
-      'Invoice #: 012\nCustomer: SLN TEX\nAmount: ₹12,34,567.50',
+      'Invoice No: 012\nCustomer: SLN TEX\nAmount: ₹12,34,567.50',
     );
   });
 });

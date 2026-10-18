@@ -1,6 +1,6 @@
 import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
-import { toNum } from '@/core/format';
+import { invoiceNoLabel, toNum } from '@/core/format';
 
 /** `type` of the account_transactions doc written by the cash "Edit Balance" action. */
 export const BALANCE_ADJUSTMENT = 'Balance Adjustment';
@@ -492,7 +492,7 @@ export function getAccountActivity({
               direction: 'in',
               category: 'Sales',
               amount: amt,
-              title: `Sales Invoice #${invNo}`,
+              title: `Sales ${invoiceNoLabel(invNo)}`,
               subtitle: `Customer: ${customer} • ${p.paymentType === 'additional' ? 'Additional Payment' : 'Initial Payment'}`,
               sourceRef: p,
             });
@@ -509,7 +509,7 @@ export function getAccountActivity({
                 direction: 'in',
                 category: 'Sales',
                 amount: amt,
-                title: `Sales Invoice #${invNo}`,
+                title: `Sales ${invoiceNoLabel(invNo)}`,
                 subtitle: `Customer: ${customer} • Account`,
                 sourceRef: p,
               });
@@ -532,7 +532,7 @@ export function getAccountActivity({
             direction: 'in',
             category: 'Sales',
             amount: cashAmt,
-            title: `Sales Invoice #${invNo}`,
+            title: `Sales ${invoiceNoLabel(invNo)}`,
             subtitle: `Customer: ${customer}`,
             sourceRef: inv,
           });
@@ -557,7 +557,7 @@ export function getAccountActivity({
               direction: 'in',
               category: 'Sales',
               amount: totalBank,
-              title: `Sales Invoice #${invNo}`,
+              title: `Sales ${invoiceNoLabel(invNo)}`,
               subtitle: `Customer: ${customer}`,
               sourceRef: inv,
             });
@@ -598,7 +598,7 @@ export function getAccountActivity({
               direction: 'out',
               category: 'Purchase',
               amount: amt,
-              title: `Purchase Bill #${billNo}`,
+              title: `Purchase ${invoiceNoLabel(billNo)}`,
               subtitle: `Supplier: ${supplier} • ${p.paymentType === 'additional' ? 'Additional Payment' : 'Initial Payment'}`,
               sourceRef: p,
             });
@@ -615,7 +615,7 @@ export function getAccountActivity({
                 direction: 'out',
                 category: 'Purchase',
                 amount: amt,
-                title: `Purchase Bill #${billNo}`,
+                title: `Purchase ${invoiceNoLabel(billNo)}`,
                 subtitle: `Supplier: ${supplier} • Account`,
                 sourceRef: p,
               });
@@ -636,7 +636,7 @@ export function getAccountActivity({
             direction: 'out',
             category: 'Purchase',
             amount: cashAmt,
-            title: `Purchase Bill #${billNo}`,
+            title: `Purchase ${invoiceNoLabel(billNo)}`,
             subtitle: `Supplier: ${supplier}`,
             sourceRef: bill,
           });
@@ -657,7 +657,7 @@ export function getAccountActivity({
               direction: 'out',
               category: 'Purchase',
               amount: totalBank,
-              title: `Purchase Bill #${billNo}`,
+              title: `Purchase ${invoiceNoLabel(billNo)}`,
               subtitle: `Supplier: ${supplier}`,
               sourceRef: bill,
             });
@@ -817,7 +817,7 @@ export function getAccountActivity({
           direction: 'out',
           category: 'Returns',
           amount: amt,
-          title: `Sales Return Refund #${r.invoiceNo}`,
+          title: `Sales Return Refund - ${invoiceNoLabel(r.invoiceNo)}`,
           subtitle: `Customer: ${r.customerName || 'Customer'} • ${r.description || 'Goods returned'}`,
           sourceRef: r,
         });
@@ -832,7 +832,7 @@ export function getAccountActivity({
             direction: 'out',
             category: 'Returns',
             amount: amt,
-            title: `Sales Return Refund #${r.invoiceNo}`,
+            title: `Sales Return Refund - ${invoiceNoLabel(r.invoiceNo)}`,
             subtitle: `Customer: ${r.customerName || 'Customer'} • ${r.description || 'Goods returned'}`,
             sourceRef: r,
           });
@@ -856,7 +856,7 @@ export function getAccountActivity({
           direction: 'in',
           category: 'Returns',
           amount: amt,
-          title: `Purchase Return Refund #${r.invoiceNo}`,
+          title: `Purchase Return Refund - ${invoiceNoLabel(r.invoiceNo)}`,
           subtitle: `Supplier: ${r.supplierName || 'Supplier'} • ${r.description || 'Goods returned'}`,
           sourceRef: r,
         });
@@ -871,7 +871,7 @@ export function getAccountActivity({
             direction: 'in',
             category: 'Returns',
             amount: amt,
-            title: `Purchase Return Refund #${r.invoiceNo}`,
+            title: `Purchase Return Refund - ${invoiceNoLabel(r.invoiceNo)}`,
             subtitle: `Supplier: ${r.supplierName || 'Supplier'} • ${r.description || 'Goods returned'}`,
             sourceRef: r,
           });

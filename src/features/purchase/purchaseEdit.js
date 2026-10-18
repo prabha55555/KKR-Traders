@@ -49,8 +49,14 @@ export function purchaseEditFormFromBill(bill, payments) {
     supplierName: bill.supplierName || '',
     supplierAddress: bill.supplierAddress || '',
     rows: products.length
-      ? products.map((p) => ({ description: p.description, qty: String(p.qty), rate: String(p.rate) }))
-      : [{ description: '', qty: '0', rate: '0' }],
+      ? products.map((p) => ({
+          description: p.description,
+          // older lines have no roll count: the box stays blank
+          rolls: toNum(p.rolls) ? String(p.rolls) : '',
+          qty: String(p.qty),
+          rate: String(p.rate),
+        }))
+      : [{ description: '', rolls: '', qty: '0', rate: '0' }],
     previousBalance: bill.previousBalance || 0,
     manualPreviousBalance: bill.manualPreviousBalance !== undefined ? String(bill.manualPreviousBalance) : '',
     // history/PDF read `discountAmount || discount`, so older bills may only carry the former
@@ -111,9 +117,10 @@ export function buildPurchaseEditBill(form) {
   const t = purchaseEditTotals(form);
   // purchase.js stores line items without `sno`
   const products = buildProductLines(form.rows, { requirePositiveQty: true }).map(
-    ({ description, qty, rate, amount }) => ({
+    ({ description, qty, rolls, rate, amount }) => ({
       description,
       qty,
+      rolls,
       rate,
       amount,
     }),

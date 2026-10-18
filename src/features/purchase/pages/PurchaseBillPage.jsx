@@ -45,7 +45,6 @@ export default function PurchaseBillPage() {
           }
         />
         <InvoiceHeaderFields
-          lastLabel="Last Purchase"
           last={bill.suggestion.lastInvoiceNo}
           suggested={bill.suggestion.nextInvoiceNo}
           onApplySuggestion={bill.applySuggestion}

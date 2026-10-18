@@ -32,7 +32,7 @@ export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, la
     <article className="flex h-full flex-col rounded-2xl border border-line bg-white p-3.5 shadow-card transition duration-200 hover:shadow-lift sm:p-4">
       <div className="flex items-start justify-between gap-2">
         <h3 className="border-l-[3px] border-gold-400 pl-2.5 font-display text-base font-extrabold text-brand-800">
-          Invoice #{displayInvoiceNo(labels, no)}
+          Invoice No {displayInvoiceNo(labels, no)}
         </h3>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <InvoiceSlipBadge invoice={invoice} />

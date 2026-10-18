@@ -62,7 +62,7 @@ describe('buildCsv', () => {
   test('all columns: header, quoting, raw numbers, Indian-format last invoice date, N/A fallbacks', () => {
     expect(buildCsv(customers, ALL)).toBe(
       [
-        'Customer Name,Phone,Address,Total Invoices,Total Amount,Amount Paid,Returns,Balance Due,Last Invoice,Last Invoice Date',
+        'Customer Name,Phone,Address,Total Invoices,Total Amount,Amount Paid,Returns,Balance Due,Last Invoice No,Last Invoice Date',
         // Ravi: 1500 bill - 400 paid - 230.25 returns - 50 discount = 819.75 ; quotes doubled inside quoted fields
         '"Ravi ""RS"" Textiles","9876543210","Gandhi Road, ""Tirupur""",2,1500,400,230.25,819.75,12,3/10/2026',
         '"Meena","N/A","N/A",1,250.5,250.5,0,0,5,15/9/2026',
@@ -74,7 +74,7 @@ describe('buildCsv', () => {
   test('unticked columns are dropped; the Discount column never exists; "invoices" has no effect on CSV', () => {
     expect(buildCsv(customers, [])).toBe(
       [
-        'Customer Name,Total Invoices,Total Amount,Amount Paid,Balance Due,Last Invoice,Last Invoice Date',
+        'Customer Name,Total Invoices,Total Amount,Amount Paid,Balance Due,Last Invoice No,Last Invoice Date',
         '"Ravi ""RS"" Textiles",2,1500,400,819.75,12,3/10/2026',
         '"Meena",1,250.5,250.5,0,5,15/9/2026',
         '"Kumar",1,800,100,700,N/A,N/A',
@@ -86,12 +86,12 @@ describe('buildCsv', () => {
   test('only Returns ticked', () => {
     const csv = buildCsv(customers.slice(2), ['returns']);
     expect(csv).toBe(
-      'Customer Name,Total Invoices,Total Amount,Amount Paid,Returns,Balance Due,Last Invoice,Last Invoice Date\n"Kumar",1,800,100,0,700,N/A,N/A\n',
+      'Customer Name,Total Invoices,Total Amount,Amount Paid,Returns,Balance Due,Last Invoice No,Last Invoice Date\n"Kumar",1,800,100,0,700,N/A,N/A\n',
     );
   });
   test('empty list -> header only', () => {
     expect(buildCsv([], ALL)).toBe(
-      'Customer Name,Phone,Address,Total Invoices,Total Amount,Amount Paid,Returns,Balance Due,Last Invoice,Last Invoice Date\n',
+      'Customer Name,Phone,Address,Total Invoices,Total Amount,Amount Paid,Returns,Balance Due,Last Invoice No,Last Invoice Date\n',
     );
   });
 });

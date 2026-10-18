@@ -106,7 +106,8 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
             >
               <div className="min-w-48 flex-1">
                 <p className="font-display font-bold text-brand-800">
-                  Invoice #{displayInvoiceNo(labels, invoice.invoiceNo)} - {formatDateIN(invoice.invoiceDate)}
+                  Invoice No {displayInvoiceNo(labels, invoice.invoiceNo)} -
+                  {formatDateIN(invoice.invoiceDate)}
                 </p>
                 <p className="text-[13px] text-slate-600 tabular-nums">
                   {`Current: ${rs(invoice.subtotal)}`}

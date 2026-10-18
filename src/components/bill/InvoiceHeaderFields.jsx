@@ -1,9 +1,9 @@
 /**
- * Invoice number + date block with the "Last Invoice / Suggested Next / Apply Suggestion" strip. Shared by the
+ * Invoice No + date block with the "Last Invoice / Suggested Next / Apply Suggestion" strip. Shared by the
  * Sales and Purchase bill screens.
  *
  * Props
- *  - lastLabel?: string                 default "Last Invoice"
+ *  - lastLabel?: string                 default "Last Invoice No"
  *  - last: string                       last invoice number of the financial year ('-' when none)
  *  - suggested: string                  suggested next number ('-' when none)
  *  - cycleRestarted?: boolean           shows "(Cycle Restarted)"
@@ -17,10 +17,11 @@
  *  - hideSuggestion?: boolean
  */
 import { Sparkles } from 'lucide-react';
+import { formatInvoiceNo } from '@/core/format';
 import { Button, DateField, TextField } from '@/ui';
 
 export function InvoiceHeaderFields({
-  lastLabel = 'Last Invoice',
+  lastLabel = 'Last Invoice No',
   last,
   suggested,
   cycleRestarted,
@@ -46,7 +47,7 @@ export function InvoiceHeaderFields({
                 {lastLabel}
               </div>
               <strong className="font-display text-base font-bold text-brand-800 tabular-nums">
-                {last || '-'}
+                {formatInvoiceNo(last) || '-'}
               </strong>
             </div>
             <div>
@@ -73,7 +74,7 @@ export function InvoiceHeaderFields({
       <div className="grid gap-3.5 sm:grid-cols-2">
         <TextField
           label={invoiceNoLabel}
-          placeholder="Invoice no."
+          placeholder="Invoice No"
           value={invoiceNo}
           readOnly={invoiceNoReadOnly}
           onChange={onInvoiceNoChange}

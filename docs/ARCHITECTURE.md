@@ -26,7 +26,7 @@ src/
 | --- | --- |
 | `/login`, `/` | Login, dashboard |
 | `/purchase/bill` · `history` · `add-supplier` · `suppliers?phone=` · `bin` · `edit/:invoiceNo` | Purchase module |
-| `/dyeing/batches` · `new` | Dyeing & Processing module |
+| `/processing/lots` · `completed` · `dyeing-units` · `combing-units` · `old` | Dyeing & Combing (processing lots; old `/dyeing/*`, `/combing/*` addresses redirect) |
 | `/sales/bill?edit=<no>` · `history` · `add-customer?phone=` · `customers` · `bin` | Sales module |
 | `/finance/accounts` · `records` · `settled` · `lenders` | Finance module |
 | `/overview/revenue` · `statistics` · `stocks` · `expenses` · `shortcuts` | Overview module |

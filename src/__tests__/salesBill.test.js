@@ -33,7 +33,7 @@ afterEach(() => jest.restoreAllMocks());
 describe('validateSalesBill (messages and order follow Utils.validateForm)', () => {
   test('requires invoice number, date, customer name', () => {
     expect(validateSalesBill(form({ invoiceNo: ' ' }), shortcuts)?.message).toBe(
-      'Please enter an invoice number',
+      'Please enter the Invoice No',
     );
     expect(validateSalesBill(form({ invoiceDate: '' }), shortcuts)?.message).toBe(
       'Please select an invoice date',
@@ -209,7 +209,7 @@ describe('loadSalesBillForEditing', () => {
     customerName: 'SLN TEX',
     customerAddress: 'Tirupur',
     customerPhone: '9876543210',
-    products: [{ sno: 1, description: 'Cotton Shirt', qty: 10, rate: 120.5, amount: 1205 }],
+    products: [{ sno: 1, description: 'Cotton Shirt', qty: 10, rolls: 4, rate: 120.5, amount: 1205 }],
     subtotal: 1205,
     previousBalance: 300,
     manualPreviousBalance: 50,
@@ -255,7 +255,9 @@ describe('loadSalesBillForEditing', () => {
       additionalPaymentsBreakdown: { cash: 100, account: 0 },
       discountAmount: '25',
     });
-    expect(loaded?.form.rows).toEqual([{ description: 'Cotton Shirt', qty: '10', rate: '120.5' }]);
+    expect(loaded?.form.rows).toEqual([
+      { description: 'Cotton Shirt', rolls: '4', qty: '10', rate: '120.5' },
+    ]);
     expect(loaded?.form.previousBalance).toBe(300);
   });
   test('missing invoice -> null', async () => {

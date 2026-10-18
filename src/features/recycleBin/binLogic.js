@@ -3,7 +3,7 @@
  * near-duplicates — one parameterised implementation serves both).
  */
 import { purchaseAmountPaid, purchaseBalanceDue } from '@/core/billing';
-import { formatCurrency, formatDateIN, toISODate } from '@/core/format';
+import { formatCurrency, formatDateIN, formatInvoiceNo, invoiceNoLabel, toISODate } from '@/core/format';
 import { methodLabel } from '@/core/paymentMethods';
 const DAY_MS = 1000 * 60 * 60 * 24;
 export const BIN_CONFIG = {
@@ -90,14 +90,13 @@ export function sortNewestFirst(items) {
 export function partyName(item) {
   return item.type === 'invoice' ? item.customerName : item.supplierName;
 }
-/** The number shown to the user: purchase bills lose their "P-" prefix (purchase-recycle-bin.js). */
+/** The number shown to the user: the plain invoice number (purchase bills lose their "P-" prefix, see core/format). */
 export function displayBillNo(item) {
-  const no = String(item.originalId);
-  return item.type === 'purchase_invoice' ? no.replace('P-', '') : no;
+  return formatInvoiceNo(item.originalId);
 }
-/** What the web card's `<h4>` said and what the restore / delete dialogs quoted: "Invoice 001". */
+/** What the card heading says and what the restore / delete dialogs quote: "Invoice No 001". */
 export function binItemName(item) {
-  return `Invoice ${displayBillNo(item)}`;
+  return invoiceNoLabel(displayBillNo(item));
 }
 /**
  * Text the web search matched against (`item.textContent` of the card), plus the invoice date, which the website-width
@@ -179,7 +178,10 @@ export function buildBinDetail(item, config) {
         }))
       : [];
   return {
-    heading: `${config.detailNoun} #${displayBillNo(item) || data.invoiceNo}`,
+    // "Invoice No 001" (sales) / "Purchase Bill - Invoice No 007"
+    heading: sales
+      ? invoiceNoLabel(displayBillNo(item) || data.invoiceNo)
+      : `${config.detailNoun} - ${invoiceNoLabel(displayBillNo(item) || data.invoiceNo)}`,
     dateText: invoiceDate,
     partyLabel: config.partyLabel,
     partyName: partyName(item) || 'N/A',

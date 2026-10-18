@@ -111,8 +111,8 @@ export function PurchaseBillLayout({
           <RefreshButton
             onClick={onRefresh}
             loading={refreshing}
-            aria-label="Refresh suppliers and invoice numbers"
-            title="Refresh suppliers and invoice numbers"
+            aria-label="Refresh suppliers and invoice nos"
+            title="Refresh suppliers and invoice nos"
           />
         ) : null
       }

@@ -33,7 +33,7 @@ export function SearchToolbar({ onTermChange }) {
       <SearchBar
         value={query}
         onChange={setQuery}
-        placeholder="Search name, phone, address or invoice no."
+        placeholder="Search name, phone, address or invoice no"
         aria-label="Search customers"
         className="min-w-0 basis-full sm:flex-1 sm:basis-64"
       />

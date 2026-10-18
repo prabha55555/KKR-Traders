@@ -27,7 +27,7 @@ afterEach(() => jest.restoreAllMocks());
 describe('validatePurchaseBill', () => {
   test('required fields in the web app order, with its messages', () => {
     expect(validatePurchaseBill(form({ invoiceNo: '' }), shortcuts)?.message).toBe(
-      'Please enter an Invoice Number.',
+      'Please enter the Invoice No.',
     );
     expect(validatePurchaseBill(form({ supplierName: '' }), shortcuts)?.message).toBe(
       'Please enter the Supplier Name.',
@@ -63,7 +63,7 @@ describe('buildPurchaseBill (schema must match what purchase.js wrote)', () => {
     });
     expect(bill.payment).not.toHaveProperty('upi');
     expect(emptyPurchaseForm()).not.toHaveProperty('upi');
-    expect(bill.products).toEqual([{ description: 'Yarn 30s', qty: 5, rate: 200, amount: 1000 }]);
+    expect(bill.products).toEqual([{ description: 'Yarn 30s', qty: 5, rolls: 0, rate: 200, amount: 1000 }]);
     expect(bill).not.toHaveProperty('amountPaid');
     expect(bill).not.toHaveProperty('discountAmount');
   });
@@ -126,4 +126,39 @@ test('acknowledgement: legacy UPI / GPay / bank payment documents are summed int
   expect(msg).not.toMatch(/UPI/);
   expect(msg).toContain('(Account: HDFC)'); // a new-style account (name = bank) is not printed as "HDFC (HDFC)"
   expect(msg).toContain('(Cash in Hand)');
+});
+describe('rolls on purchase bills', () => {
+  const rolled = form({
+    rows: [
+      { description: 'Yarn 30s', rolls: '12', qty: '5', rate: '200' },
+      { description: 'Yarn 40s', rolls: '', qty: '1', rate: '50' },
+    ],
+  });
+  test('buildPurchaseBill keeps the roll count of each line; the money is qty x rate only', () => {
+    const bill = buildPurchaseBill(rolled);
+    expect(bill.products).toEqual([
+      { description: 'Yarn 30s', qty: 5, rolls: 12, rate: 200, amount: 1000 },
+      { description: 'Yarn 40s', qty: 1, rolls: 0, rate: 50, amount: 50 },
+    ]);
+    expect(bill.subtotal).toBe(1050);
+    expect(emptyPurchaseForm().rows).toEqual([{ description: '', rolls: '', qty: '0', rate: '0' }]);
+  });
+  test('acknowledgement mentions rolls only when present', async () => {
+    const msg = await buildAcknowledgementMessage(rolled);
+    expect(msg).toContain('1. Yarn 30s - Qty: 5 - Rolls: 12 - Amount: ₹1000.00');
+    expect(msg).toContain('2. Yarn 40s - Qty: 1 - Amount: ₹50.00');
+    expect(msg).toContain('Total Rolls: 12');
+    expect(await buildAcknowledgementMessage(form())).not.toContain('Rolls');
+  });
+  test('acknowledgement return history shows the rolls of a return', async () => {
+    jest.spyOn(db, 'getPurchasePaymentsByInvoice').mockResolvedValue([]);
+    jest.spyOn(db, 'getAllBankAccounts').mockResolvedValue([]);
+    jest.spyOn(db, 'getPurchaseReturnsByInvoice').mockResolvedValue([
+      { description: 'Yarn 30s', qty: 2, rolls: 4, returnAmount: 400, returnDate: '2026-10-05' },
+      { description: 'Yarn 40s', qty: 1, returnAmount: 50, returnDate: '2026-10-05' },
+    ]);
+    const msg = await buildAcknowledgementMessage(form());
+    expect(msg).toContain('Yarn 30s (Qty: 2, Rolls: 4) - ₹400.00');
+    expect(msg).toContain('Yarn 40s (Qty: 1) - ₹50.00');
+  });
 });

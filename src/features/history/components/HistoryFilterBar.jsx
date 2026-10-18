@@ -69,12 +69,12 @@ export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels })
             />
           </button>
         ) : (
-          <RangeGroup label="Invoice number">
+          <RangeGroup label="Invoice No">
             <TextField
               className="flex-1"
               inputMode="numeric"
               placeholder="From Invoice No"
-              aria-label="From invoice number"
+              aria-label="From Invoice No"
               value={value.fromInvoiceNo}
               onChange={(v) => set({ fromInvoiceNo: digitsOnly(v) })}
             />
@@ -83,7 +83,7 @@ export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels })
               className="flex-1"
               inputMode="numeric"
               placeholder="To Invoice No"
-              aria-label="To invoice number"
+              aria-label="To Invoice No"
               value={value.toInvoiceNo}
               onChange={(v) => set({ toInvoiceNo: digitsOnly(v) })}
             />
@@ -109,12 +109,12 @@ export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels })
             />
           </RangeGroup>
           {isCompact ? (
-            <RangeGroup label="Invoice number">
+            <RangeGroup label="Invoice No">
               <TextField
                 className="flex-1"
                 inputMode="numeric"
                 placeholder="From Invoice No"
-                aria-label="From invoice number"
+                aria-label="From Invoice No"
                 value={value.fromInvoiceNo}
                 onChange={(v) => set({ fromInvoiceNo: digitsOnly(v) })}
               />
@@ -123,7 +123,7 @@ export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels })
                 className="flex-1"
                 inputMode="numeric"
                 placeholder="To Invoice No"
-                aria-label="To invoice number"
+                aria-label="To Invoice No"
                 value={value.toInvoiceNo}
                 onChange={(v) => set({ toInvoiceNo: digitsOnly(v) })}
               />

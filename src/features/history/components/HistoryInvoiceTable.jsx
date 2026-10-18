@@ -46,7 +46,7 @@ export function buildInvoiceColumns(labels, actions) {
   return [
     {
       key: 'no',
-      header: 'Invoice',
+      header: 'Invoice No',
       render: (i) => (
         <span className="inline-flex items-center gap-2 font-display font-bold text-brand-800">
           <span
@@ -61,7 +61,7 @@ export function buildInvoiceColumns(labels, actions) {
             title={balanceOf(i) > 0 ? (i.amountPaid > 0 ? 'Part paid' : 'Unpaid') : 'Paid'}
             aria-hidden
           />
-          #{displayInvoiceNo(labels, i.invoiceNo)}
+          {displayInvoiceNo(labels, i.invoiceNo)}
           <InvoiceSlipBadge invoice={i} />
         </span>
       ),
@@ -130,7 +130,7 @@ export function buildInvoiceColumns(labels, actions) {
                 {actions.edit ? (
                   <IconAction
                     icon={SquarePen}
-                    label={`Edit invoice ${displayInvoiceNo(labels, i.invoiceNo)}`}
+                    label={`Edit Invoice No ${displayInvoiceNo(labels, i.invoiceNo)}`}
                     tone="text-slate-600 hover:text-brand-800"
                     onClick={() => actions.edit(i.invoiceNo)}
                   />
@@ -138,7 +138,7 @@ export function buildInvoiceColumns(labels, actions) {
                 {actions.remove ? (
                   <IconAction
                     icon={Trash2}
-                    label={`Delete invoice ${displayInvoiceNo(labels, i.invoiceNo)}`}
+                    label={`Delete Invoice No ${displayInvoiceNo(labels, i.invoiceNo)}`}
                     tone="text-red-500 hover:text-red-700"
                     onClick={() => actions.remove(i.invoiceNo)}
                   />

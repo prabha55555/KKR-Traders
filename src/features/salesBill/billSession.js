@@ -3,7 +3,7 @@
  * (`window.isBillSaved` and the read-only invoice-number input of edit mode); here it is one plain object so every
  * transition can be unit-tested without rendering anything.
  */
-import { formatCurrency } from '@/core/format';
+import { formatCurrency, formatInvoiceNo } from '@/core/format';
 import { emptySalesForm, invoiceNoExists, validateSalesBill } from '@/core/services/salesBill';
 export function newBillSession() {
   return { form: emptySalesForm(), saved: false, editingNo: null, persistedNo: null };
@@ -78,5 +78,5 @@ export async function planSave(session, shortcuts, exists = invoiceNoExists) {
 }
 /** Body of the 'Bill Saved' toast (script.js saveBill). */
 export function savedBillMessage(invoice) {
-  return `Invoice #: ${invoice.invoiceNo}\nCustomer: ${invoice.customerName}\nAmount: ₹${formatCurrency(invoice.grandTotal)}`;
+  return `Invoice No: ${formatInvoiceNo(invoice.invoiceNo)}\nCustomer: ${invoice.customerName}\nAmount: ₹${formatCurrency(invoice.grandTotal)}`;
 }

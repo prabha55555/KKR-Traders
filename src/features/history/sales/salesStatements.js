@@ -5,6 +5,7 @@
  */
 import { copyText, openExternal } from '@/platform';
 import { db } from '@/core/db';
+import { formatInvoiceNo, invoiceNoLabel } from '@/core/format';
 import { SALES_LEDGER, groupParties, partySummary, returnsTotalsByInvoice } from '@/core/ledger';
 import { getLogoSrc } from '@/core/services/invoiceShare';
 import { printStatementHtml, shareStatementPdf } from '../lib/documentOutput';
@@ -128,7 +129,10 @@ async function buildInvoiceStatement(invoiceNo, now) {
     logoSrc: await getLogoSrc(),
     now,
   });
-  return { html, fileName: invoiceStatementFileName(invoice.invoiceNo, invoice.customerName, now) };
+  return {
+    html,
+    fileName: invoiceStatementFileName(formatInvoiceNo(invoice.invoiceNo), invoice.customerName, now),
+  };
 }
 /** generateStatement(): "Download Statement" -> the system print / Save-as-PDF dialog. */
 export async function downloadInvoiceStatement(invoiceNo, now = new Date()) {
@@ -141,7 +145,7 @@ export async function downloadInvoiceStatement(invoiceNo, now = new Date()) {
  */
 export async function shareInvoiceStatement(invoiceNo, now = new Date()) {
   const { html, fileName } = await buildInvoiceStatement(invoiceNo, now);
-  if ((await shareStatementPdf(html, fileName, `Statement for Invoice #${invoiceNo}`)) === 'shared')
+  if ((await shareStatementPdf(html, fileName, `Statement for ${invoiceNoLabel(invoiceNo)}`)) === 'shared')
     return 'shared';
   await printStatementHtml(html);
   return 'fallback';

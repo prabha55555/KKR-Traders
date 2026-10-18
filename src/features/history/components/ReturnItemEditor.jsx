@@ -1,6 +1,6 @@
 /**
  * ReturnItemEditor – one line of the return sheet: product picker (invoice products or a custom one),
- * qty, rate, read-only amount, reason. Used by ReturnSheet.
+ * rolls (optional roll count, for the stock), qty, rate, read-only amount, reason. Used by ReturnSheet.
  *
  * Props: index (0-based) · item (ReturnDraftItem, see lib/returns.js) · products (invoice product lines) ·
  *        returnedQty (Map description -> qty already returned) · onChange(nextItem) · onRemove().
@@ -79,7 +79,14 @@ export function ReturnItemEditor({ index, item, products, returnedQty, onChange,
         />
       ) : null}
 
-      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
+        <NumberField
+          label="Rolls"
+          value={item.rolls ?? ''}
+          wholeNumber
+          onChange={(rolls) => onChange({ ...item, rolls })}
+          className="min-w-0"
+        />
         <NumberField
           label="Qty"
           value={item.qty}

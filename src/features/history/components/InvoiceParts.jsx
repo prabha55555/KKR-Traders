@@ -4,7 +4,8 @@
  * InvoiceSummaryBox({ invoice })                       – bill, previous balance, discount, total, paid split, returns, balance.
  *                                                        Only returns settled against the balance lower the due; refunded
  *                                                        returns are listed ("Returns (refunded)") without changing it.
- * InvoiceProducts({ invoice })                         – Product / Qty / Rate list ("View Details").
+ * InvoiceProducts({ invoice })                         – Product / (Rolls) / Qty / Rate list ("View Details"); the Rolls
+ *                                                        column only when a line has a roll count.
  * InvoiceHistoryLinks({ invoice, onViewPayments, onViewReturns })
  *                                                      – "Payment History (₹x)" / "Return History (₹x)" rows.
  * InvoiceActionButtons({ invoice, actions, compact })  – wrapped button grid (see HistoryInvoiceActions in ./types.js);
@@ -28,7 +29,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useMemo } from 'react';
-import { formatCurrency } from '@/core/format';
+import { formatCurrency, toNum } from '@/core/format';
 import { methodLabel } from '@/core/paymentMethods';
 import { Badge, Button, cn } from '@/ui';
 import { additionalPaymentsLabel, splitPayments } from '../lib/payments';
@@ -194,10 +195,12 @@ export function InvoiceSummaryBox({ invoice }) {
 }
 
 export function InvoiceProducts({ invoice }) {
+  const showRolls = invoice.products.some((p) => toNum(p?.rolls) > 0);
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-white text-sm">
       <div className="flex gap-2 bg-linear-to-b from-slate-50 to-slate-100/70 px-3 py-2 text-[11px] font-bold tracking-[0.08em] text-slate-500 uppercase">
         <span className="flex-1">Product</span>
+        {showRolls ? <span className="w-12 text-right">Rolls</span> : null}
         <span className="w-16 text-right">Qty</span>
         <span className="w-20 text-right">Rate</span>
       </div>
@@ -208,6 +211,11 @@ export function InvoiceProducts({ invoice }) {
             className="flex gap-2 border-t border-slate-100 px-3 py-2 text-slate-800"
           >
             <span className="min-w-0 flex-1 break-words">{p.description}</span>
+            {showRolls ? (
+              <span className="w-12 text-right tabular-nums">
+                {toNum(p.rolls) > 0 ? toNum(p.rolls) : '-'}
+              </span>
+            ) : null}
             <span className="w-16 text-right tabular-nums">{p.qty}</span>
             <span className="w-20 text-right tabular-nums">{rs(p.rate)}</span>
           </div>

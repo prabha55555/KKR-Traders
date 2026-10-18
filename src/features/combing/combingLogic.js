@@ -7,7 +7,7 @@
  * - Weight loss calculation measured upon return
  * - Finished combed fabric stock conversion and true unit costing
  */
-import { digitsOnly, toNum, todayISO } from '@/core/format';
+import { digitsOnly, invoiceNoLabel, toNum, todayISO } from '@/core/format';
 
 export const COMBING_STATUS = {
   IN_PROCESS: 'IN_PROCESS',
@@ -114,12 +114,12 @@ export function computeInputFabricRate(
               const amount = round2(qty * rate);
               totalQty += qty;
               totalCost += amount;
-              const source = `${batch.processorName || 'Dye House'} (Batch #${batch.batchId})`;
+              const source = `${batch.processorName || 'Dye House'} (Batch ${batch.batchId})`;
               sourceSet.add(source);
               history.push({
                 sourceName: source,
                 date: batch.completedAt || batch.batchDate || '',
-                ref: `Batch #${batch.batchId}`,
+                ref: `Batch ${batch.batchId}`,
                 qty,
                 rate,
                 amount,
@@ -152,7 +152,7 @@ export function computeInputFabricRate(
             history.push({
               sourceName: supplier,
               date: bill.invoiceDate || bill.date || '',
-              ref: bill.invoiceNo ? `Bill #${bill.invoiceNo}` : 'Purchase',
+              ref: bill.invoiceNo ? invoiceNoLabel(bill.invoiceNo) : 'Purchase',
               qty,
               rate,
               amount,

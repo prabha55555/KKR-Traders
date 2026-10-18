@@ -1,15 +1,21 @@
+import { setDoc } from 'firebase/firestore';
 import { db } from '@/core/db';
 import {
   buildStockMap,
   computeStocks,
   filterStocks,
+  hasRolls,
   historyDate,
   historyInvoiceNo,
+  historyRolls,
   historyTotal,
   lookupStock,
   openingActions,
+  OPENING_ROLLS_INVALID,
   OPENING_STOCK_INVALID,
   parseOpeningStockQty,
+  parseOpeningStockRolls,
+  stockLabel,
   stockTone,
 } from '@/features/overview/stocks/stocksLogic';
 import {
@@ -153,6 +159,7 @@ describe('computeStocks', () => {
         date: '2026-09-15',
         party: 'Unknown',
         qty: 2.5,
+        rolls: 0,
         rate: 20,
         invoiceNo: 'P-002',
         rawInvoiceNo: 'P-002',
@@ -162,6 +169,7 @@ describe('computeStocks', () => {
         date: '2026-09-01',
         party: 'ABC',
         qty: 10,
+        rolls: 0,
         rate: 100,
         invoiceNo: 'P-001',
         rawInvoiceNo: 'P-001',
@@ -177,6 +185,7 @@ describe('computeStocks', () => {
         date: '2026-09-20',
         party: 'SLN',
         qty: 4,
+        rolls: 0,
         rate: 150,
         invoiceNo: '001',
         rawInvoiceNo: '001',
@@ -188,6 +197,7 @@ describe('computeStocks', () => {
         date: '2026-09-25',
         party: 'Unknown',
         qty: 1,
+        rolls: 0,
         rate: 99.999,
         invoiceNo: '002',
         rawInvoiceNo: '002',
@@ -251,9 +261,14 @@ describe('filterStocks / presentation helpers', () => {
     expect(openingActions({ opening: 0 })).toBe('add');
     expect(openingActions({ opening: -2 })).toBe('add');
   });
-  test('history tables drop a "P-" prefix and print en-IN dates', () => {
+  test('history tables show the plain invoice number (no "P-" / "#") and print en-IN dates', () => {
     expect(historyInvoiceNo('P-001')).toBe('001');
     expect(historyInvoiceNo('012')).toBe('012');
+    expect(historyInvoiceNo('#012')).toBe('012');
+    // return / batch / DC references are shown as built
+    expect(historyInvoiceNo('Return - Invoice No 001')).toBe('Return - Invoice No 001');
+    expect(historyInvoiceNo('Batch B-101')).toBe('Batch B-101');
+    expect(historyInvoiceNo('DC-001')).toBe('DC-001');
     expect(historyDate('2026-09-15')).toBe('15/9/2026');
     expect(historyDate('')).toBe('');
   });
@@ -360,5 +375,159 @@ describe('stock lookup map', () => {
     expect(lookupStock(map, 'cotton shirt').avgPurchaseRate).toBe(10);
     expect(lookupStock(map, 'Cotton Shirt').avgPurchaseRate).toBe(20);
     invalidateStocksCache();
+  });
+});
+describe('rolls (counted next to the quantity, never in the money)', () => {
+  const rollLine = (description, qty, rolls, rate) => ({ ...line(description, qty, rate), rolls });
+  /** grey issued 50 kg / 10 rolls, 2 kg / 1 roll sent back by the dyer, 40 kg / 8 rolls received as Cotton Blue */
+  const lot = {
+    id: 'lot1',
+    dcNo: 'DC-001',
+    dcDate: '2026-10-01',
+    status: 'RECEIVED',
+    grey: { description: 'Cotton Grey', qty: 50, rolls: 10, rate: 100 },
+    finishedDescription: 'Cotton Blue',
+    dyer: { id: 'd1', name: 'Murugan Dyers' },
+    combingUnit: { id: 'c1', name: 'KR Combers' },
+    dyeing: { dcNo: 'D-9', date: '2026-10-05', qty: 45, rolls: 9 },
+    received: { dcNo: 'C-3', date: '2026-10-10', qty: 40, rolls: 8 },
+    returns: [{ from: 'dyeing', date: '2026-10-04', description: 'Cotton Grey', qty: 2, rolls: 1 }],
+  };
+  const out = computeStocks(
+    [purchase({ invoiceNo: 'P-1', products: [rollLine('Cotton Grey', 100, 20, 100)] })],
+    [
+      sale({
+        invoiceNo: '001',
+        products: [rollLine('Cotton Grey', 30, 6, 150), rollLine('Cotton Blue', 10, 2, 300)],
+      }),
+    ],
+    [{ description: 'Cotton Grey', qty: 5, rolls: 1 }],
+    [],
+    [{ description: 'Cotton Grey', qty: 5, rolls: 1, rate: 150, invoiceNo: '001', returnDate: '2026-10-12' }],
+    [
+      {
+        description: 'Cotton Grey',
+        qty: 10,
+        rolls: 2,
+        rate: 100,
+        invoiceNo: 'P-1',
+        returnDate: '2026-09-20',
+      },
+    ],
+    [],
+    [],
+    [lot],
+  );
+  const row = (d) => out.rows.find((r) => r.description === d);
+  test('available rolls = opening + purchased - sold, from bills, returns, opening stock and processing lots', () => {
+    // purchased: 20 bought - 2 returned to the supplier + 1 sent back by the dyer; sold: 6 sold - 1 returned + 10 issued
+    expect(row('Cotton Grey')).toMatchObject({
+      opening: 5,
+      purchased: 92,
+      sold: 75,
+      available: 22,
+      openingRolls: 1,
+      purchasedRolls: 19,
+      soldRolls: 15,
+      availableRolls: 5,
+    });
+    // the finished fabric enters with the rolls received back
+    expect(row('Cotton Blue')).toMatchObject({
+      purchased: 40,
+      sold: 10,
+      available: 30,
+      purchasedRolls: 8,
+      soldRolls: 2,
+      availableRolls: 6,
+    });
+  });
+  test('history entries carry their rolls (returns negative) and the money is untouched', () => {
+    const grey = row('Cotton Grey');
+    expect(grey.purchaseHistory.map((e) => [e.invoiceNo, e.qty, e.rolls, e.amount])).toEqual([
+      ['DC-001', 2, 1, 200],
+      ['Return - Invoice No 1', -10, -2, -1000],
+      ['P-1', 100, 20, 10000],
+    ]);
+    // the return keeps the stored number for opening the bill
+    expect(grey.purchaseHistory[1].rawInvoiceNo).toBe('P-1');
+    expect(grey.salesHistory.map((e) => [e.invoiceNo, e.qty, e.rolls])).toEqual([
+      ['Return - Invoice No 001', -5, -1],
+      ['DC-001', 50, 10],
+      ['001', 30, 6],
+    ]);
+    expect(historyRolls(grey.purchaseHistory)).toBe(19);
+    expect(historyRolls(grey.salesHistory)).toBe(15);
+    expect(historyRolls([{ qty: 1 }])).toBe(0);
+    expect(grey.avgPurchaseRate).toBe(100);
+  });
+  test('lines, returns and opening stock without rolls count 0 (older data)', () => {
+    const plain = computeStocks(purchases, sales, opening);
+    plain.rows.forEach((r) => {
+      expect(r).toMatchObject({ openingRolls: 0, purchasedRolls: 0, soldRolls: 0, availableRolls: 0 });
+      expect(hasRolls(r)).toBe(false);
+    });
+    expect(hasRolls(row('Cotton Grey'))).toBe(true);
+  });
+  test('old dyeing / combing batches: only an explicit rolls field counts, never their fixed "Rolls" unit', () => {
+    const batches = computeStocks(
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [
+        {
+          batchId: 'B-1',
+          status: 'COMPLETED',
+          input: { description: 'Old Grey', unit: 'Rolls', qty: 30, avgGreyRate: 10 },
+          output: [{ description: 'Old Red', unit: 'Rolls', qty: 28, unitCost: 20 }],
+        },
+        {
+          batchId: 'B-2',
+          status: 'COMPLETED',
+          input: { description: 'Old Grey', unit: 'Kgs', qty: 12, rolls: 3, avgGreyRate: 10 },
+          output: [{ description: 'Old Red', qty: 11, rolls: 3, unitCost: 20 }],
+        },
+      ],
+    );
+    const find = (d) => batches.rows.find((r) => r.description === d);
+    expect(find('Old Grey')).toMatchObject({ sold: 42, soldRolls: 3, availableRolls: -3 });
+    expect(find('Old Red')).toMatchObject({ purchased: 39, purchasedRolls: 3, availableRolls: 3 });
+  });
+  test('stock map exposes availableRolls / hasRolls; the bill hint reads "80 kg · 12 rolls" only for roll products', () => {
+    const map = buildStockMap(out.rows);
+    expect(lookupStock(map, 'cotton grey')).toMatchObject({
+      available: 22,
+      availableRolls: 5,
+      hasRolls: true,
+    });
+    expect(stockLabel(lookupStock(map, 'Cotton Grey'))).toBe('22 kg · 5 rolls');
+    expect(stockLabel({ available: 3, availableRolls: 1, hasRolls: true })).toBe('3 kg · 1 roll');
+    const plainMap = buildStockMap(computeStocks(purchases, sales, opening).rows);
+    expect(lookupStock(plainMap, 'T Shirt')).toMatchObject({
+      available: 2,
+      availableRolls: 0,
+      hasRolls: false,
+    });
+    expect(stockLabel(lookupStock(plainMap, 'T Shirt'))).toBe('2');
+    expect(stockLabel(null)).toBe('');
+  });
+  test('opening stock: optional whole-number rolls; a rolls-only opening stock can be edited / deleted', () => {
+    expect(parseOpeningStockRolls('')).toEqual({ rolls: 0 });
+    expect(parseOpeningStockRolls(' 12 ')).toEqual({ rolls: 12 });
+    expect(parseOpeningStockRolls('1.5')).toEqual({ error: OPENING_ROLLS_INVALID });
+    expect(parseOpeningStockRolls('-2')).toEqual({ error: OPENING_ROLLS_INVALID });
+    expect(openingActions({ opening: 0, openingRolls: 4 })).toBe('edit');
+    expect(openingActions({ opening: 0, openingRolls: 0 })).toBe('add');
+  });
+  test('db.saveOpeningStock stores rolls when given; the old 2-argument call writes what it always did', async () => {
+    setDoc.mockClear();
+    await db.saveOpeningStock('Cotton Grey', 5, 3);
+    await db.saveOpeningStock('Cotton Grey', 7);
+    expect(setDoc.mock.calls.map((c) => c[1])).toEqual([
+      { description: 'Cotton Grey', qty: 5, rolls: 3, updatedAt: '__serverTimestamp__' },
+      { description: 'Cotton Grey', qty: 7, updatedAt: '__serverTimestamp__' },
+    ]);
   });
 });

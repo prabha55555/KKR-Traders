@@ -156,9 +156,9 @@ describe('validateReturnDraft (order and wording of saveReturn)', () => {
       refundMethod: 'cash',
     });
   });
-  test('success: lines carry description, qty, rate, rounded amount, reason (untrimmed) and the date', () => {
+  test('success: lines carry description, qty, rolls, rate, rounded amount, reason (untrimmed) and the date', () => {
     const result = validate({
-      items: [shirt('2', { reason: ' torn ' }), item({ choice: 1, qty: '1', rate: '250.5' })],
+      items: [shirt('2', { reason: ' torn ', rolls: '3' }), item({ choice: 1, qty: '1', rate: '250.5' })],
     });
     expect(result).toEqual({
       ok: true,
@@ -168,6 +168,7 @@ describe('validateReturnDraft (order and wording of saveReturn)', () => {
         {
           description: 'Shirt',
           qty: 2,
+          rolls: 3,
           rate: 100,
           returnAmount: 200,
           reason: ' torn ',
@@ -176,6 +177,7 @@ describe('validateReturnDraft (order and wording of saveReturn)', () => {
         {
           description: 'Trouser',
           qty: 1,
+          rolls: 0,
           rate: 250.5,
           returnAmount: 250.5,
           reason: '',
@@ -183,6 +185,14 @@ describe('validateReturnDraft (order and wording of saveReturn)', () => {
         },
       ],
     });
+  });
+  test('rolls are optional, never capped by what was sold and never change the amount', () => {
+    expect(newReturnItem('k').rolls).toBe('');
+    // the bill lines carry no roll counts at all: 40 rolls are still accepted for the 2 kg returned
+    const result = validate({ items: [shirt('2', { rolls: '40' })] });
+    expect(result.ok).toBe(true);
+    expect(result.lines[0]).toMatchObject({ qty: 2, rolls: 40, returnAmount: 200 });
+    expect(result.total).toBe(200);
   });
   test('success message', () => {
     expect(returnSuccessMessage(450.5)).toBe('Return processed successfully! Total return amount: ₹450.50');
@@ -241,7 +251,7 @@ describe('saveSalesReturn', () => {
       '003',
       {
         returnDate: '2026-10-03',
-        items: [shirt('2', { reason: 'torn' }), item({ choice: 1, qty: '1', rate: '250.5' })],
+        items: [shirt('2', { reason: 'torn', rolls: '2' }), item({ choice: 1, qty: '1', rate: '250.5' })],
       },
       now,
     );
@@ -252,6 +262,7 @@ describe('saveSalesReturn', () => {
         customerName: 'SLN TEX',
         description: 'Shirt',
         qty: 2,
+        rolls: 2,
         rate: 100,
         returnAmount: 200,
         reason: 'torn',
@@ -265,6 +276,7 @@ describe('saveSalesReturn', () => {
         customerName: 'SLN TEX',
         description: 'Trouser',
         qty: 1,
+        rolls: 0,
         rate: 250.5,
         returnAmount: 250.5,
         reason: '',

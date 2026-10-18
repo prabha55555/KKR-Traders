@@ -8,7 +8,7 @@
 import { Box, Camera, IndianRupee, Receipt, ReceiptText, User, Wallet, Zap } from 'lucide-react';
 import { useEffect } from 'react';
 import { InvoiceHeaderFields, ProductRowsEditor } from '@/components/bill';
-import { formatCurrency } from '@/core/format';
+import { formatCurrency, formatInvoiceNo } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   Button,
@@ -98,7 +98,7 @@ export default function SalesBillPage() {
             <div className="flex items-center gap-2">
               {form.invoiceNo.trim() ? (
                 <span className="rounded-lg bg-brand-800 px-2.5 py-1 font-display text-xs font-bold tracking-wide text-gold-300 tabular-nums">
-                  #{form.invoiceNo.trim()}
+                  {formatInvoiceNo(form.invoiceNo)}
                 </span>
               ) : null}
               {editing ? null : <SaveBadge saved={session.saved} />}
@@ -180,8 +180,8 @@ export default function SalesBillPage() {
         <RefreshButton
           onClick={bill.refresh}
           loading={bill.refreshing}
-          aria-label="Refresh customers and invoice numbers"
-          title="Refresh customers and invoice numbers"
+          aria-label="Refresh customers and invoice nos"
+          title="Refresh customers and invoice nos"
         />
       }
     >

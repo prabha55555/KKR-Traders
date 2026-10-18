@@ -9,10 +9,12 @@
 import { formatCurrency, toNum } from '@/core/format';
 import { compareLedgerOrder, partyBills } from '@/core/ledger';
 import { normalizeMethod } from '@/core/paymentMethods';
+/** A blank return line; `rolls` = optional roll count (never part of the amount). */
 export const newReturnItem = (key) => ({
   key,
   choice: null,
   custom: '',
+  rolls: '',
   qty: '0',
   rate: '0',
   reason: '',
@@ -106,6 +108,9 @@ export function refundSettlement(input) {
  *
  * Deviation: two lines for the same product in one submission are checked against their COMBINED quantity (the web
  * checked each line against stored returns only, so the same product could be returned twice past its sold quantity).
+ *
+ * Each line keeps its optional roll count (`rolls`, 0 when blank) for the stock; rolls are not checked against what was
+ * sold (older bills have no roll counts) and never change the amount.
  */
 export function validateReturnDraft(input) {
   const { returnDate, items, products, existingReturns } = input;
@@ -119,6 +124,7 @@ export function validateReturnDraft(input) {
     const item = items[index];
     const description = returnItemDescription(item, products);
     const qty = toNum(item.qty);
+    const rolls = toNum(item.rolls);
     const rate = toNum(item.rate);
     const returnAmount = returnItemAmount(item);
     if (!description || qty <= 0 || rate <= 0) {
@@ -141,7 +147,7 @@ export function validateReturnDraft(input) {
       }
       pending.set(description, (pending.get(description) ?? 0) + qty);
     }
-    lines.push({ description, qty, rate, returnAmount, reason: item.reason, returnDate });
+    lines.push({ description, qty, rolls, rate, returnAmount, reason: item.reason, returnDate });
     total += returnAmount;
   }
   const settlement = refundSettlement(input);

@@ -1,6 +1,6 @@
 /**
- * ReturnSheet – "Process Return - Invoice #x": pick products (from the party's bills, or a custom one), qty, rate,
- * reason, and how the money goes back: Cash (default) or Account. A return is always a direct refund — the bill's
+ * ReturnSheet – "Process Return - Invoice No x": pick products (from the party's bills, or a custom one), rolls
+ * (optional, for the stock), qty, rate, reason, and how the money goes back: Cash (default) or Account. A return is always a direct refund — the bill's
  * balance due does not change. Errors are shown inside the sheet.
  *
  * Props:
@@ -15,7 +15,7 @@
 import { AlertTriangle, Banknote, Landmark, Plus, Save } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { accountLabel } from '@/core/accountLabel';
-import { formatCurrency, formatDateIN, todayISO } from '@/core/format';
+import { formatCurrency, formatDateIN, invoiceNoLabel, todayISO } from '@/core/format';
 import { Button, DateField, SelectField, cn } from '@/ui';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 import { newReturnItem, returnTotal, returnedQtyByDescription } from '../lib/returns';
@@ -148,7 +148,7 @@ export function ReturnSheet({
     <HistorySheet
       open={open}
       onClose={onClose}
-      title={`Process Return - Invoice #${invoiceNo}`}
+      title={`Process Return - ${invoiceNoLabel(invoiceNo)}`}
       size="lg"
       actions={
         <>
