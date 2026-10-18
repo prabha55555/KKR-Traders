@@ -34,13 +34,15 @@ function UnitTile({ title, name, charge, paid, due, active, onPick, disabled }) 
       disabled={disabled}
       aria-pressed={active}
       className={cn(
-        'rounded-2xl p-3 text-left ring-1 transition',
+        'min-w-0 rounded-2xl p-3 text-left ring-1 transition',
         active ? 'bg-gold-50 ring-gold-300' : 'bg-white ring-line hover:bg-slate-50',
         disabled && 'cursor-not-allowed opacity-50',
       )}
     >
       <div className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">{title}</div>
-      <div className="truncate font-semibold text-brand-800">{name || '—'}</div>
+      <div className="truncate font-semibold text-brand-800" title={name || undefined}>
+        {name || '—'}
+      </div>
       <div className="mt-1 text-xs text-slate-600 tabular-nums">
         Charge {rupees(charge)} · Paid {rupees(paid)}
       </div>
@@ -119,10 +121,10 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
       title={`Add payment — lot ${formatDcNo(lot.dcNo)}`}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="neutral" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" form={formId} variant="primary" loading={saving}>
+          <Button type="submit" form={formId} variant="success" loading={saving}>
             Save payment
           </Button>
         </>
@@ -159,7 +161,7 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
             {error}
           </p>
         ) : null}
-        <Grid cols={{ base: 2 }}>
+        <Grid cols={{ base: 1, sm: 2 }}>
           <NumberField label="Amount (₹)" value={form.amount} onChange={(amount) => patch({ amount })} />
           <DateField label="Date" value={form.date} onChange={(date) => patch({ date })} />
         </Grid>
@@ -197,6 +199,8 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
 }
 
 export function LotPaymentHistoryModal({ open, onClose, lot, onChanged, onAddPayment, confirm, toast }) {
+  // one delete at a time: a second one started meanwhile would work on the lot from before the first
+  const [busy, setBusy] = useState(false);
   if (!lot) return null;
   const t = lotTotals(lot);
   const history = [
@@ -211,10 +215,13 @@ export function LotPaymentHistoryModal({ open, onClose, lot, onChanged, onAddPay
       confirmText: 'Delete',
     });
     if (!ok) return;
+    setBusy(true);
     try {
       onChanged(await deleteLotPayment(lot, p.role, p.id));
     } catch {
       toast('Error', 'Could not delete the payment.', 'error');
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -224,10 +231,10 @@ export function LotPaymentHistoryModal({ open, onClose, lot, onChanged, onAddPay
       title={`Payment history — lot ${formatDcNo(lot.dcNo)}`}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="neutral" onClick={onClose}>
             Close
           </Button>
-          <Button icon={Wallet} onClick={onAddPayment}>
+          <Button variant="success" icon={Wallet} onClick={onAddPayment}>
             Add payment
           </Button>
         </>
@@ -238,7 +245,7 @@ export function LotPaymentHistoryModal({ open, onClose, lot, onChanged, onAddPay
           ['Dyeing unit', t.dyeingCharge, t.dyeingPaid, t.dyeingDue],
           ['Combing unit', t.combingCharge, t.combingPaid, t.combingDue],
         ].map(([label, charge, paid, due]) => (
-          <div key={label} className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-line">
+          <div key={label} className="min-w-0 rounded-xl bg-slate-50 p-2.5 ring-1 ring-line">
             <dt className="text-xs text-slate-500">{label}</dt>
             <dd className="text-xs text-slate-600 tabular-nums">
               Charge {rupees(charge)} · Paid {rupees(paid)}
@@ -256,20 +263,34 @@ export function LotPaymentHistoryModal({ open, onClose, lot, onChanged, onAddPay
           message="Payments to the dyeing and combing units appear here."
         />
       ) : (
-        <ul className="divide-y divide-line rounded-xl ring-1 ring-line">
-          {history.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-brand-800 tabular-nums">{rupees(p.amount)}</div>
-                <div className="truncate text-xs text-slate-500">
-                  {formatDateIN(p.date)} · {p.unit} ·{' '}
-                  {p.mode === 'Cash' ? 'Cash' : `Account${p.bankAccountName ? `: ${p.bankAccountName}` : ''}`}
-                  {p.reference ? ` · ${p.reference}` : ''}
+        <ul className="divide-y divide-slate-200 rounded-xl ring-1 ring-slate-300">
+          {history.map((p) => {
+            const detail = [
+              formatDateIN(p.date),
+              p.unit,
+              p.mode === 'Cash' ? 'Cash' : `Account${p.bankAccountName ? `: ${p.bankAccountName}` : ''}`,
+              p.reference,
+            ]
+              .filter(Boolean)
+              .join(' · ');
+            return (
+              <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-brand-800 tabular-nums">{rupees(p.amount)}</div>
+                  <div className="truncate text-xs text-slate-500" title={detail}>
+                    {detail}
+                  </div>
                 </div>
-              </div>
-              <IconButton icon={Trash2} label="Delete payment" onClick={() => remove(p)} />
-            </li>
-          ))}
+                <IconButton
+                  icon={Trash2}
+                  variant="outlineDanger"
+                  label="Delete payment"
+                  disabled={busy}
+                  onClick={() => remove(p)}
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
     </Modal>

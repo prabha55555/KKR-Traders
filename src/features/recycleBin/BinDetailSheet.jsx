@@ -25,10 +25,10 @@ function SectionTitle({ children }) {
 function Line({ first, title, sub, amount }) {
   return (
     <div className={`py-2.5 ${first ? '' : 'border-t border-line'}`}>
-      <div className="font-semibold text-slate-900">{title}</div>
+      <div className="font-semibold break-words text-slate-900">{title}</div>
       <div className="mt-0.5 flex justify-between gap-3 text-sm">
         <span className="text-slate-500">{sub}</span>
-        <span className="font-bold text-brand-800 tabular-nums">{amount}</span>
+        <span className="shrink-0 font-bold text-brand-800 tabular-nums">{amount}</span>
       </div>
     </div>
   );
@@ -57,7 +57,9 @@ function DetailBody({ detail }) {
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-display text-xl font-extrabold text-brand-800">{detail.heading}</h3>
+        <h3 className="min-w-0 font-display text-xl font-extrabold break-words text-brand-800">
+          {detail.heading}
+        </h3>
         <span className="text-sm font-medium text-slate-500">Date: {detail.dateText}</span>
       </div>
 
@@ -80,7 +82,7 @@ function DetailBody({ detail }) {
               key={i}
               first={i === 0}
               title={l.description}
-              sub={`${l.qty} � ${rupees(l.rate)}`}
+              sub={`${l.qty} × ${rupees(l.rate)}`}
               amount={rupees(l.amount)}
             />
           ))
@@ -114,7 +116,7 @@ function DetailBody({ detail }) {
               <Line
                 key={p.id}
                 first={i === 0}
-                title={`${formatDateIN(p.date)} � ${p.method}`}
+                title={`${formatDateIN(p.date)} · ${p.method}`}
                 sub={p.type}
                 amount={rupees(p.amount)}
               />
@@ -132,7 +134,7 @@ function DetailBody({ detail }) {
                 key={r.id}
                 first={i === 0}
                 title={r.description}
-                sub={`${formatDateIN(r.date)} � Qty ${r.qty}`}
+                sub={`${formatDateIN(r.date)} · Qty ${r.qty}`}
                 amount={rupees(r.amount)}
               />
             ))}
@@ -156,7 +158,7 @@ export function BinDetailSheet({ item, config, onClose }) {
       onClose={onClose}
       title="View Details"
       footer={
-        <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
+        <Button variant="neutral" onClick={onClose} className="flex-1 sm:flex-none">
           Close
         </Button>
       }

@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { db } from '@/core/db';
 
 /**
- * Runs `load` when the page mounts and again whenever the app comes back to the foreground (tab/PWA focus), so data
- * edited on another screen or device is not stale. Exposes loading / refreshing / error state.
+ * Runs `load` when the page mounts and again whenever the app comes back to the foreground (tab/PWA visible, window
+ * focused, or back online after being offline), so data edited on another screen or device is not stale — this replaces
+ * the old Refresh buttons. Exposes loading / refreshing / error state.
  *
  * `load` is called through a ref, so it may close over fresh state without retriggering the effect.
  */
@@ -44,17 +45,28 @@ export function useFocusLoad(load) {
   useEffect(() => {
     void run();
     // Returning to the app after >1 minute away: reload (the in-memory db cache is dropped first).
-    const onVisible = () => {
+    const reloadIfStale = () => {
       if (document.visibilityState === 'visible' && Date.now() - lastRun.current > 60_000) {
         db.invalidateAll();
         void run();
       }
     };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    // back online: whatever was read while offline came from the device cache
+    const onOnline = () => {
+      db.invalidateAll();
+      void run();
+    };
+    document.addEventListener('visibilitychange', reloadIfStale);
+    window.addEventListener('focus', reloadIfStale);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', reloadIfStale);
+      window.removeEventListener('focus', reloadIfStale);
+      window.removeEventListener('online', onOnline);
+    };
   }, [run]);
 
-  /** refresh button: drop in-memory caches so the next read hits Firestore */
+  /** explicit reload ("Try again" on a load error): drop in-memory caches so the next read hits Firestore */
   const refresh = useCallback(async () => {
     db.invalidateAll();
     await run(true);

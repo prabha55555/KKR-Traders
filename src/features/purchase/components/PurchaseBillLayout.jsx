@@ -12,16 +12,16 @@
  *  - saveLabel: string          "Save Purchase Bill" | "Update Purchase Bill"
  *  - saving: boolean
  *  - onSave() · onShare()
- *  - onRefresh?() · refreshing?: boolean     adds a refresh button to the page header
  */
 import { Receipt, Save, Share2, Zap } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { Button, Card, Page, RefreshButton, SectionHeader, TwoPane } from '@/ui';
-import { cn } from '@/ui/cn';
+import { Button, Card, Page, SectionHeader, TwoPane } from '@/ui';
 
 // Save = green (confirm), Acknowledge = purple (share) so the two never look alike.
-const barBtn = 'min-h-14! flex-col! gap-0.5! rounded-xl! px-1! text-xs!';
+// Phone bar: equal columns that may shrink; a label wraps instead of overflowing on a 360px phone.
+const barBtn =
+  'min-h-14! min-w-0! flex-1 flex-col! gap-0.5! rounded-xl! px-1! text-xs! leading-tight! whitespace-normal! text-center';
 
 function ActionButtons({ layout, saveLabel, saving, onSave, onShare }) {
   if (layout === 'panel') {
@@ -50,7 +50,7 @@ function ActionButtons({ layout, saveLabel, saving, onSave, onShare }) {
   return (
     <div className="flex gap-2">
       <Button
-        className={cn(barBtn, 'flex-1')}
+        className={barBtn}
         variant="success"
         icon={Save}
         loading={saving}
@@ -60,7 +60,7 @@ function ActionButtons({ layout, saveLabel, saving, onSave, onShare }) {
         {saveLabel.split(' ')[0]}
       </Button>
       <Button
-        className={cn(barBtn, 'flex-1')}
+        className={barBtn}
         variant="purple"
         icon={Share2}
         aria-label="Share Acknowledgement"
@@ -81,8 +81,6 @@ export function PurchaseBillLayout({
   saving,
   onSave,
   onShare,
-  onRefresh,
-  refreshing,
 }) {
   const { isExpanded } = useBreakpoint();
   const saveRef = useRef(onSave);
@@ -102,21 +100,7 @@ export function PurchaseBillLayout({
     <ActionButtons layout={layout} saveLabel={saveLabel} saving={saving} onSave={onSave} onShare={onShare} />
   );
   return (
-    <Page
-      title={title}
-      icon={icon}
-      max="7xl"
-      actions={
-        onRefresh ? (
-          <RefreshButton
-            onClick={onRefresh}
-            loading={refreshing}
-            aria-label="Refresh suppliers and invoice nos"
-            title="Refresh suppliers and invoice nos"
-          />
-        ) : null
-      }
-    >
+    <Page title={title} icon={icon} max="7xl">
       <TwoPane
         main={main}
         side={

@@ -164,6 +164,15 @@ export async function saveDyerRecord(dyer) {
     phone: dyer.phone.trim(),
     address: (dyer.address || '').trim(),
   };
+  // a NEW unit with the phone of an existing one would overwrite it (the id is built from the phone)
+  if (!dyer.id) {
+    const taken = (await db.getAllDyers()).find((d) => String(d.phone ?? '').trim() === clean.phone);
+    if (taken) {
+      throw new Error(
+        `Duplicate: ${taken.dyeingName || 'Another dyeing unit'} already uses this phone number. Edit that unit instead.`,
+      );
+    }
+  }
   const id = await db.saveDyer(clean);
   db.invalidate('dyers');
   return { ...clean, id };

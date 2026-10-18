@@ -5,8 +5,8 @@
 import { buildProductLines, calculateSupplierPreviousBalanceAtTime, rowAmount } from '@/core/billing';
 import { db } from '@/core/db';
 import { toNum } from '@/core/format';
-import { PURCHASE_LEDGER, sameParty } from '@/core/ledger';
-import { foldPurchasePayment, PAYMENT_METHODS, sumByMethod } from '@/core/paymentMethods';
+import { PURCHASE_LEDGER, normalizePhone, sameParty } from '@/core/ledger';
+import { foldPurchasePayment, normalizeMethod, PAYMENT_METHODS, sumByMethod } from '@/core/paymentMethods';
 import { round2 } from './money';
 /** `{ cash, account }` of payment documents: legacy UPI / GPAY / BANK count as Account, anything else (or nothing) as Cash. */
 export function initialPaymentBreakdown(payments) {
@@ -33,8 +33,17 @@ function untrackedInitialSplit(bill, payments) {
     return { cash, account };
   }
   const documents = payments.reduce((sum, p) => sum + toNum(p.amount), 0);
-  return { cash: Math.max(0, toNum(bill.amountPaid) - documents), account: 0 };
+  const total = Math.max(0, toNum(bill.amountPaid) - documents);
+  // a bill paid by one method: all of it under that method (legacy 'upi' / 'account' = Account)
+  return normalizeMethod(bill.paymentMethod) === 'account'
+    ? { cash: 0, account: total }
+    : { cash: total, account: 0 };
 }
+/** The bank of the money paid WITH the bill (a later payment from another bank must not move it on re-save). */
+const initialBankOf = (payments) =>
+  payments.find(
+    (p) => p.paymentType === 'initial' && normalizeMethod(p.paymentMethod) === 'account' && p.bankAccountId,
+  )?.bankAccountId;
 /** Turns a stored bill + its payments into the editable form (the web filled the same inputs; zeros show blank). */
 export function purchaseEditFormFromBill(bill, payments) {
   const split = splitPurchasePayments(payments);
@@ -64,7 +73,7 @@ export function purchaseEditFormFromBill(bill, payments) {
     cash: amountText(initial.cash),
     account: amountText(initial.account),
     // the bank the Account money went through (kept on re-save so per-bank balances do not move)
-    bankAccountId: bill.bankAccountId || bill.payment?.bankAccountId || '',
+    bankAccountId: initialBankOf(payments) || bill.bankAccountId || bill.payment?.bankAccountId || '',
     additionalPaymentsTotal: additionalTotal,
   };
 }
@@ -158,6 +167,19 @@ export function buildPurchaseEditBill(form) {
 export async function savePurchaseEdit(form) {
   const bill = buildPurchaseEditBill(form);
   const before = await db.getPurchaseBill(bill.invoiceNo).catch(() => null);
+  // a phone-less (older) bill stays in the ledger chain it was put in while it keeps its name and has no phone
+  if (
+    before &&
+    before.ledgerParty !== undefined &&
+    before.ledgerParty !== null &&
+    !normalizePhone(before.supplierPhone) &&
+    !normalizePhone(bill.supplierPhone) &&
+    String(before.supplierName ?? '')
+      .trim()
+      .toLowerCase() === bill.supplierName.toLowerCase()
+  ) {
+    bill.ledgerParty = before.ledgerParty;
+  }
   await db.savePurchaseBill(bill);
   try {
     const existing = await db.getPurchasePaymentsByInvoice(bill.invoiceNo);

@@ -21,10 +21,16 @@ export function BinRowActions({ item, onView, onRestore, onDelete }) {
   const name = binItemName(item);
   return (
     <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-      <Button size="sm" variant="outline" icon={Eye} onClick={onView} aria-label={`View ${name}`}>
+      <Button size="sm" variant="outlineInfo" icon={Eye} onClick={onView} aria-label={`View ${name}`}>
         View
       </Button>
-      <Button size="sm" variant="success" icon={Undo2} onClick={onRestore} aria-label={`Restore ${name}`}>
+      <Button
+        size="sm"
+        variant="outlineSuccess"
+        icon={Undo2}
+        onClick={onRestore}
+        aria-label={`Restore ${name}`}
+      >
         Restore
       </Button>
       <Button
@@ -54,18 +60,23 @@ export function BinItemCard({ item, now, onView, onRestore, onDelete }) {
   const name = binItemName(item);
   const deleted = toDate(item.deletedAt);
   return (
-    <Card className="p-3.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-lift sm:p-4">
+    <Card className="transition duration-200 hover:-translate-y-0.5 hover:shadow-lift">
       <div className="flex items-start gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gold-100 text-gold-700 ring-1 ring-gold-200">
           <FileText className="size-5" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-display text-[17px] leading-snug font-bold text-brand-800">{name}</h3>
+          <h3
+            className="truncate font-display text-[17px] leading-snug font-bold text-brand-800"
+            title={name}
+          >
+            {name}
+          </h3>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <BinTypeBadge item={item} />
             {deleted ? (
               <Badge tone="warning">
-                <Clock className="mr-1 size-3" aria-hidden />
+                <Clock className="mr-1 inline size-3 align-[-2px]" aria-hidden />
                 {daysAgoText(daysAgo(deleted, now))}
               </Badge>
             ) : null}
@@ -83,10 +94,10 @@ export function BinItemCard({ item, now, onView, onRestore, onDelete }) {
         {partyName(item) ? <MetaLine icon={User} text={partyName(item)} /> : null}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button variant="outline" icon={Eye} onClick={onView} aria-label={`View ${name}`}>
+        <Button variant="outlineInfo" icon={Eye} onClick={onView} aria-label={`View ${name}`}>
           View
         </Button>
-        <Button variant="success" icon={Undo2} onClick={onRestore} aria-label={`Restore ${name}`}>
+        <Button variant="outlineSuccess" icon={Undo2} onClick={onRestore} aria-label={`Restore ${name}`}>
           Restore
         </Button>
       </div>

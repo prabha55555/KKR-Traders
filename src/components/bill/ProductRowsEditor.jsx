@@ -14,23 +14,52 @@
  *                                                                    (the Stocks page's average purchase rate) under Rate
  * Stock hints: under Qty the quantity in stock, under Rolls the rolls in stock (products counted in rolls only); on
  * phones one line "Stock: 80 kg · 12 rolls". When any line has rolls, the bill's total qty and rolls show underneath.
+ * Layout: the app's bordered table (.erp-table, every cell outlined) when the editor is at least TABLE_MIN_WIDTH wide;
+ * otherwise one card per line — on phones, and in the narrow form column of the bill screens on laptop-sized windows,
+ * where the table's number columns would leave no room for the description.
  * Removing the last row leaves one blank row. `EMPTY_ROW`, `matchShortcuts`, `isKnownProduct` are re-exported.
  */
 import { Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { rowAmount, totalRolls } from '@/core/billing';
 import { formatCurrency, toNum } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { lookupStock, rollsText, stockLabel } from '@/features/overview/stocks/stocksLogic';
 import { getStockQuantityMap } from '@/features/overview/stocks/stocksService';
-import { Button, IconButton, NumberField } from '@/ui';
+import { Badge, Button, IconButton, NumberField } from '@/ui';
 import { cn } from '@/ui/cn';
-import { ProductDescriptionInput } from './ProductDescriptionInput';
+import { CHIP_CLASS, ProductDescriptionInput, StockBadge } from './ProductDescriptionInput';
 import { EMPTY_ROW, removeRowAt } from './productMatch';
 
 export { EMPTY_ROW, isKnownProduct, matchShortcuts } from './productMatch';
 
 const rupees = (n) => `₹${formatCurrency(n)}`;
+
+/** Editor width (px) the table needs: its number columns take ~520px, the description gets the rest. */
+const TABLE_MIN_WIDTH = 680;
+
+/** Rendered width of `ref`'s element in px; 0 until measured (and where ResizeObserver is missing, e.g. tests). */
+function useElementWidth(ref) {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    setWidth(el.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
+}
+
+// The table sits in a flat .erp-table frame (rounded 0.75rem, 1px border) that does not clip, so the product
+// suggestions can drop over the rows below; the corner cells follow the frame's curve so their tint stays inside it.
+const CORNER_TL = 'rounded-tl-[calc(0.75rem_-_1px)]';
+const CORNER_TR = 'rounded-tr-[calc(0.75rem_-_1px)]';
+const LAST_ROW_CORNERS =
+  '[&>tr:last-child>td:first-child]:rounded-bl-[calc(0.75rem_-_1px)] [&>tr:last-child>td:last-child]:rounded-br-[calc(0.75rem_-_1px)]';
+/** Text in a cell lines up with the middle of the 2.5rem inputs beside it. */
+const INPUT_LINE = 'inline-flex min-h-10 items-center';
 
 /**
  * On-screen only (never printed): the product's average purchase price, the same number as the Stocks page's
@@ -41,35 +70,12 @@ function AvgCostChip({ stock, className = 'mt-1 text-right' }) {
   const avg = Number(stock.avgPurchaseRate) || 0;
   return (
     <div className={cn('no-print', className)}>
-      <span
-        className={cn(
-          'inline-block rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
-          avg > 0 ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-500',
-        )}
-        title="Average purchase price (purchase bills + dyeing / combing receipts; returns and opening stock excluded)"
-      >
-        Avg buy {avg > 0 ? rupees(avg) : '-'}
+      <span title="Average purchase price (purchase bills + dyeing / combing receipts; returns and opening stock excluded)">
+        <Badge tone={avg > 0 ? 'info' : 'neutral'} className={CHIP_CLASS}>
+          Avg buy {avg > 0 ? rupees(avg) : '-'}
+        </Badge>
       </span>
     </div>
-  );
-}
-
-/** Stock pill: green in stock, amber none left, red oversold (`value` decides the colour). */
-function StockChip({ value, title, children }) {
-  return (
-    <span
-      title={title}
-      className={cn(
-        'inline-block rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
-        value > 0
-          ? 'bg-emerald-50 text-emerald-700'
-          : value === 0
-            ? 'bg-amber-50 text-amber-700'
-            : 'bg-red-50 text-red-700',
-      )}
-    >
-      {children}
-    </span>
   );
 }
 
@@ -82,6 +88,9 @@ export function ProductRowsEditor({
   showAvgCost = false,
 }) {
   const { isCompact } = useBreakpoint();
+  const rootRef = useRef(null);
+  const width = useElementWidth(rootRef);
+  const asCards = isCompact || (width > 0 && width < TABLE_MIN_WIDTH);
   const [stockMap, setStockMap] = useState(new Map());
 
   useEffect(() => {
@@ -105,15 +114,15 @@ export function ProductRowsEditor({
   const qtyTotal = Math.round(rows.reduce((sum, r) => sum + toNum(r.qty), 0) * 1000) / 1000;
 
   return (
-    <div>
-      {isCompact ? (
+    <div ref={rootRef}>
+      {asCards ? (
         <ul className="space-y-3">
           {rows.map((row, i) => {
             const st = knownStock(row.description);
             const avg = showAvgCost ? getStock(row.description) : null;
             return (
               <li key={i} className="rounded-2xl border border-line bg-white p-3.5 shadow-card">
-                <div className="mb-2.5 flex items-center justify-between">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-sm font-bold text-brand-800">
                     <span
                       aria-hidden
@@ -127,7 +136,7 @@ export function ProductRowsEditor({
                     <IconButton
                       icon={Trash2}
                       label={`Remove item ${i + 1}`}
-                      className="text-red-600 hover:bg-red-50"
+                      variant="outlineDanger"
                       onClick={() => remove(i)}
                     />
                   ) : null}
@@ -172,7 +181,7 @@ export function ProductRowsEditor({
                 </div>
                 {st || avg ? (
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {st ? <StockChip value={st.available}>Stock: {stockLabel(st)}</StockChip> : null}
+                    {st ? <StockBadge value={st.available}>Stock: {stockLabel(st)}</StockBadge> : null}
                     <AvgCostChip stock={avg} className="ml-auto" />
                   </div>
                 ) : null}
@@ -189,46 +198,34 @@ export function ProductRowsEditor({
           })}
         </ul>
       ) : (
-        <div className="rounded-xl border border-line">
-          <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
+        <div className="erp-table-wrap erp-table-flat overflow-visible">
+          <table className="erp-table erp-table-dense table-fixed">
             <thead>
-              <tr className="text-left text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
-                <th className="w-14 rounded-tl-xl border-b border-line bg-slate-50/80 px-3 py-2.5">S.No</th>
-                <th className="border-b border-line bg-slate-50/80 px-2 py-2.5">Description</th>
-                <th className="w-20 border-b border-line bg-slate-50/80 px-2 py-2.5 text-right lg:w-24">
-                  Rolls
+              <tr>
+                <th data-align="center" className={cn('w-13', CORNER_TL)}>
+                  S.No
                 </th>
-                <th className="w-24 border-b border-line bg-slate-50/80 px-2 py-2.5 text-right lg:w-28">
-                  Qty
-                </th>
-                <th className="w-28 border-b border-line bg-slate-50/80 px-2 py-2.5 text-right lg:w-32">
-                  Rate
-                </th>
-                <th
-                  className={cn(
-                    'w-32 border-b border-line bg-slate-50/80 px-3 py-2.5 text-right lg:w-36',
-                    readOnly && 'rounded-tr-xl',
-                  )}
-                >
-                  Amount
-                </th>
+                <th>Description</th>
+                <th className="num w-20">Rolls</th>
+                <th className="num w-24">Qty</th>
+                <th className="num w-24">Rate</th>
+                <th className={cn('num w-34', readOnly && CORNER_TR)}>Amount</th>
                 {!readOnly ? (
-                  <th className="w-12 rounded-tr-xl border-b border-line bg-slate-50/80 py-2.5">
+                  <th className={cn('w-14', CORNER_TR)}>
                     <span className="sr-only">Remove</span>
                   </th>
                 ) : null}
               </tr>
             </thead>
-            <tbody className="[&>tr:last-child>td]:border-b-0 [&>tr:last-child>td:first-child]:rounded-bl-xl [&>tr:last-child>td:last-child]:rounded-br-xl">
+            <tbody className={LAST_ROW_CORNERS}>
               {rows.map((row, i) => {
                 const st = knownStock(row.description);
                 return (
-                  <tr
-                    key={i}
-                    className="group align-top transition-colors focus-within:bg-gold-50/40 hover:bg-gold-50/40"
-                  >
-                    <td className="border-b border-line px-3 pt-4 text-slate-400 tabular-nums">{i + 1}</td>
-                    <td className="border-b border-line px-1.5 py-2">
+                  <tr key={i} className="[&:focus-within>td]:bg-gold-50/60 [&>td]:align-top">
+                    <td data-align="center" className="text-slate-400 tabular-nums">
+                      <span className={INPUT_LINE}>{i + 1}</span>
+                    </td>
+                    <td>
                       <ProductDescriptionInput
                         label={`Description of item ${i + 1}`}
                         value={row.description}
@@ -238,58 +235,63 @@ export function ProductRowsEditor({
                         readOnly={readOnly}
                       />
                     </td>
-                    <td className="border-b border-line px-1.5 py-2">
+                    <td>
                       <NumberField
                         wholeNumber
                         aria-label={`Rolls of item ${i + 1}`}
+                        inputClassName="px-2!"
                         value={row.rolls ?? ''}
                         readOnly={readOnly}
                         onChange={(rolls) => update(i, { rolls })}
                       />
                       {st?.hasRolls ? (
                         <div className="mt-1 text-right">
-                          <StockChip value={st.availableRolls} title="Rolls in stock">
+                          <StockBadge value={st.availableRolls} title="Rolls in stock">
                             {rollsText(st.availableRolls)}
-                          </StockChip>
+                          </StockBadge>
                         </div>
                       ) : null}
                     </td>
-                    <td className="border-b border-line px-1.5 py-2">
+                    <td>
                       <NumberField
                         aria-label={`Quantity of item ${i + 1}`}
+                        inputClassName="px-2!"
                         value={row.qty}
                         readOnly={readOnly}
                         onChange={(qty) => update(i, { qty })}
                       />
                       {st ? (
                         <div className="mt-1 text-right">
-                          <StockChip value={st.available}>
+                          <StockBadge value={st.available}>
                             Stock: {st.available}
                             {st.hasRolls ? ' kg' : ''}
-                          </StockChip>
+                          </StockBadge>
                         </div>
                       ) : null}
                     </td>
-                    <td className="border-b border-line px-1.5 py-2">
+                    <td>
                       <NumberField
                         aria-label={`Rate of item ${i + 1}`}
+                        inputClassName="px-2!"
                         value={row.rate}
                         readOnly={readOnly}
                         onChange={(rate) => update(i, { rate })}
                       />
                       {showAvgCost ? <AvgCostChip stock={getStock(row.description)} /> : null}
                     </td>
-                    <td className="border-b border-line px-3 pt-3.5 text-right font-display font-bold text-brand-800 tabular-nums">
-                      {rupees(rowAmount(row.qty, row.rate))}
+                    <td className="num font-display font-bold text-brand-800">
+                      <span className={INPUT_LINE}>{rupees(rowAmount(row.qty, row.rate))}</span>
                     </td>
                     {!readOnly ? (
-                      <td className="border-b border-line px-1 py-2 text-center">
-                        <IconButton
-                          icon={Trash2}
-                          label={`Remove item ${i + 1}`}
-                          className="text-slate-400 hover:bg-red-50 hover:text-red-600"
-                          onClick={() => remove(i)}
-                        />
+                      <td data-align="center">
+                        <span className={INPUT_LINE}>
+                          <IconButton
+                            icon={Trash2}
+                            label={`Remove item ${i + 1}`}
+                            variant="outlineDanger"
+                            onClick={() => remove(i)}
+                          />
+                        </span>
                       </td>
                     ) : null}
                   </tr>
@@ -307,7 +309,7 @@ export function ProductRowsEditor({
         </p>
       ) : null}
       {!readOnly ? (
-        <Button variant="primary" icon={Plus} onClick={add} fullWidth className="mt-3 min-h-12">
+        <Button variant="primary" icon={Plus} onClick={add} fullWidth className="mt-3 min-h-12!">
           {addLabel}
         </Button>
       ) : null}

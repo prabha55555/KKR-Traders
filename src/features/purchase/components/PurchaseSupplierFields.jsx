@@ -7,7 +7,7 @@
  *  - onPhoneChange(phone) · onNameChange(name) · onAddressChange(address)
  */
 import { Phone } from 'lucide-react';
-import { TextArea, TextField } from '@/ui';
+import { Grid, TextArea, TextField } from '@/ui';
 
 export function PurchaseSupplierFields({
   phone,
@@ -19,7 +19,7 @@ export function PurchaseSupplierFields({
 }) {
   return (
     <div className="space-y-3.5">
-      <div className="grid gap-3.5 sm:grid-cols-2">
+      <Grid cols={{ base: 1, sm: 2 }}>
         <TextField
           label="Supplier phone"
           type="tel"
@@ -31,7 +31,7 @@ export function PurchaseSupplierFields({
           onChange={onPhoneChange}
         />
         <TextField label="Name" placeholder="e.g. ABC Traders" value={name} onChange={onNameChange} />
-      </div>
+      </Grid>
       <TextArea
         label="Address"
         placeholder="Street, area, city"

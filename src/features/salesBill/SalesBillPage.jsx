@@ -5,22 +5,12 @@
  * Phones: stacked cards (product rows become cards) with a sticky action bar above the tab bar.
  * Logic lives in useSalesBill (session, lookup, save / generate / share / reset).
  */
-import { Box, Camera, IndianRupee, Receipt, ReceiptText, User, Wallet, Zap } from 'lucide-react';
+import { Box, Camera, Receipt, ReceiptText, User, Wallet, Zap } from 'lucide-react';
 import { useEffect } from 'react';
 import { InvoiceHeaderFields, ProductRowsEditor } from '@/components/bill';
 import { formatCurrency, formatInvoiceNo } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import {
-  Button,
-  Card,
-  ErrorState,
-  LoadingState,
-  Modal,
-  Page,
-  RefreshButton,
-  SectionHeader,
-  TwoPane,
-} from '@/ui';
+import { Badge, Button, Card, ErrorState, LoadingState, Modal, Page, SectionHeader, TwoPane } from '@/ui';
 import { BillActionBar } from './BillActionBar';
 import { EditBanner, SaveBadge } from './BillStatusBar';
 import { CalculationSection } from './CalculationSection';
@@ -95,9 +85,9 @@ export default function SalesBillPage() {
           title="Invoice"
           icon={Receipt}
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               {form.invoiceNo.trim() ? (
-                <span className="rounded-lg bg-brand-800 px-2.5 py-1 font-display text-xs font-bold tracking-wide text-gold-300 tabular-nums">
+                <span className="max-w-full truncate rounded-lg bg-brand-800 px-2.5 py-1 font-display text-xs font-bold tracking-wide text-gold-300 tabular-nums">
                   {formatInvoiceNo(form.invoiceNo)}
                 </span>
               ) : null}
@@ -143,13 +133,7 @@ export default function SalesBillPage() {
         <SectionHeader
           title="Manual Bill Attachment"
           icon={Camera}
-          right={
-            form.manualBillImage ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-600/20">
-                Slip Attached
-              </span>
-            ) : null
-          }
+          right={form.manualBillImage ? <Badge tone="success">Slip Attached</Badge> : null}
         />
         <ManualBillAttachment
           value={form.manualBillImage}
@@ -172,19 +156,7 @@ export default function SalesBillPage() {
   );
 
   return (
-    <Page
-      title="Sales Bill"
-      icon={ReceiptText}
-      max="7xl"
-      actions={
-        <RefreshButton
-          onClick={bill.refresh}
-          loading={bill.refreshing}
-          aria-label="Refresh customers and invoice nos"
-          title="Refresh customers and invoice nos"
-        />
-      }
-    >
+    <Page title="Sales Bill" icon={ReceiptText} max="7xl">
       <TwoPane main={main} side={side} />
       {isExpanded ? null : (
         <div className="no-print sticky bottom-[calc(3.7rem+env(safe-area-inset-bottom))] z-20 mt-4 rounded-2xl border border-line bg-white p-2 shadow-pop ring-1 ring-brand-900/5">
@@ -199,16 +171,16 @@ export default function SalesBillPage() {
         title="Customer Opening Balance"
         size="sm"
         footer={
-          <Button variant="primary" onClick={bill.closeOpeningBalancePopup} className="w-full sm:w-auto">
+          <Button variant="purple" onClick={bill.closeOpeningBalancePopup} className="w-full sm:w-auto">
             Acknowledge & Continue
           </Button>
         }
       >
         <div className="flex flex-col items-center p-2 text-center">
           <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 shadow-xs ring-8 ring-amber-50/50">
-            <Wallet className="size-7" />
+            <Wallet className="size-7" aria-hidden />
           </div>
-          <h3 className="font-display text-lg font-bold text-brand-900">
+          <h3 className="max-w-full font-display text-lg font-bold break-words text-brand-900">
             {bill.openingBalancePopup?.customerName || 'Customer'}
           </h3>
           {bill.openingBalancePopup?.customerPhone ? (
@@ -220,7 +192,7 @@ export default function SalesBillPage() {
             <span className="text-xs font-semibold tracking-wider text-amber-700 uppercase">
               Opening Balance Amount
             </span>
-            <div className="mt-1 font-display text-3xl font-extrabold text-amber-900 tabular-nums">
+            <div className="mt-1 font-display text-3xl font-extrabold [overflow-wrap:anywhere] text-amber-900 tabular-nums">
               ₹{formatCurrency(bill.openingBalancePopup?.openingBalance || 0)}
             </div>
           </div>

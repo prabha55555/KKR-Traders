@@ -5,7 +5,8 @@ import { formatRupees } from '@/core/format';
 import { RevealablePhone } from './RevealablePhone';
 import { SupplierSummaryCard } from './SupplierSummaryCard';
 
-const num = (key, header, value) => ({ key, header, align: 'right', className: 'tabular-nums', value });
+// right-aligned columns are one-line, tabular figures in the app table (.erp-table [data-align='right'])
+const num = (key, header, value) => ({ key, header, align: 'right', value });
 
 /** The columns of the original supplier table (supplier-details.html). */
 export const SUPPLIER_COLUMNS = [
@@ -16,7 +17,7 @@ export const SUPPLIER_COLUMNS = [
     render: (s) => (
       <div className="flex items-center gap-3">
         <InitialAvatar name={s.name} size="sm" />
-        <span className="min-w-0 font-semibold text-brand-800">{s.name}</span>
+        <span className="min-w-0 font-semibold break-words text-brand-800">{s.name}</span>
       </div>
     ),
   },
@@ -27,7 +28,6 @@ export const SUPPLIER_COLUMNS = [
     key: 'bills',
     header: 'Bills',
     align: 'right',
-    className: 'tabular-nums',
     render: (s) => (
       <TotalInvoicesClickable
         count={s.totalBills}
@@ -45,7 +45,6 @@ export const SUPPLIER_COLUMNS = [
     key: 'balance',
     header: 'Balance Due',
     align: 'right',
-    className: 'tabular-nums',
     render: (s) => (
       <Badge tone={s.balanceDue > 0 ? 'danger' : 'success'} className="tabular-nums">
         {formatRupees(s.balanceDue)}

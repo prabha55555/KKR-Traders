@@ -11,7 +11,7 @@ import { accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { isBalanceReturn } from '@/core/ledger';
 import { formatCurrency, formatDateIN, invoiceNoLabel, toNum } from '@/core/format';
-import { Button, EmptyState } from '@/ui';
+import { Badge, Button, EmptyState } from '@/ui';
 import { dateMillis } from '../lib/dates';
 import { sumReturnAmounts } from '../lib/lookups';
 import { HistorySheet } from './HistorySheet';
@@ -27,25 +27,25 @@ function ReturnMethodBadge({ item, bankMap, defaultBank }) {
     if (String(item.refundMethod ?? '').toLowerCase() !== 'cash') {
       const bank = (item.bankAccountId ? bankMap.get(item.bankAccountId) : null) || defaultBank;
       return (
-        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 ring-1 ring-blue-200">
-          <Landmark className="size-3.5 text-blue-600" />
-          <span>Account Refund: {accountLabel(bank)}</span>
-        </span>
+        <Badge tone="info">
+          <Landmark className="mr-1 inline size-3.5 align-[-3px]" aria-hidden />
+          Account Refund: {accountLabel(bank)}
+        </Badge>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 ring-1 ring-emerald-200">
-        <Banknote className="size-3.5 text-emerald-600" />
-        <span>Cash Refund</span>
-      </span>
+      <Badge tone="success">
+        <Banknote className="mr-1 inline size-3.5 align-[-3px]" aria-hidden />
+        Cash Refund
+      </Badge>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
-      <RotateCcw className="size-3.5 text-amber-600" />
-      <span>Bill Balance Adjustment</span>
-    </span>
+    <Badge tone="warning">
+      <RotateCcw className="mr-1 inline size-3.5 align-[-3px]" aria-hidden />
+      Bill Balance Adjustment
+    </Badge>
   );
 }
 
@@ -94,7 +94,9 @@ export function ReturnStatusSheet({
       }
     >
       <div className="mb-4 rounded-2xl border border-white/10 surface-ink p-4 text-white shadow-lift">
-        <p className="truncate font-display text-lg font-bold">{partyName}</p>
+        <p className="truncate font-display text-lg font-bold" title={partyName}>
+          {partyName}
+        </p>
         <p className="text-sm text-brand-300">Total Returns: {returns.length}</p>
       </div>
 
@@ -113,13 +115,13 @@ export function ReturnStatusSheet({
               className="rounded-2xl border border-l-[3px] border-line border-l-amber-400 bg-white p-3.5 text-sm text-slate-700 shadow-sm"
             >
               <div className="mb-2 flex items-center justify-between gap-2 border-b border-dashed border-slate-200 pb-2">
-                <span className="font-display font-bold text-red-600">Return #{index + 1}</span>
-                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                <span className="font-display font-bold text-amber-800">Return #{index + 1}</span>
+                <Badge tone="neutral" className="tabular-nums">
                   {formatDateIN(item.returnDate)}
-                </span>
+                </Badge>
               </div>
               <div className="space-y-1.5">
-                <p>
+                <p className="break-words">
                   <span className="font-semibold text-slate-500">Product: </span>
                   {item.description}
                 </p>
@@ -142,7 +144,7 @@ export function ReturnStatusSheet({
                     ₹{formatCurrency(item.returnAmount)}
                   </span>
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-semibold text-slate-500">Method: </span>
                   <ReturnMethodBadge item={item} bankMap={bankMap} defaultBank={bankAccounts[0]} />
                 </div>
@@ -152,7 +154,7 @@ export function ReturnStatusSheet({
                 </p>
               </div>
               <div className="mt-2 flex justify-end">
-                <Button variant="danger" size="sm" icon={Undo2} onClick={() => onUndo(item.id)}>
+                <Button variant="outlineWarning" size="sm" icon={Undo2} onClick={() => onUndo(item.id)}>
                   Undo This Return
                 </Button>
               </div>

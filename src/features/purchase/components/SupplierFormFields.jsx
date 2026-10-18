@@ -8,7 +8,7 @@ import { cn, TextField } from '@/ui';
 export function SupplierFormFields({ value, onChange, layout = 'stack', idPrefix = 'supplier' }) {
   const set = (key) => (v) => onChange({ ...value, [key]: v });
   return (
-    <div className={cn('grid gap-4', layout === 'row' && 'sm:grid-cols-3 xl:grid-cols-1')}>
+    <div className={cn('grid gap-3.5', layout === 'row' && 'sm:grid-cols-3 xl:grid-cols-1')}>
       <TextField
         id={`${idPrefix}-phone`}
         label="Phone Number *"

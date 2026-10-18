@@ -10,12 +10,9 @@ import { Link } from 'react-router';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
 import { formatCurrency, formatDateShort, formatInvoiceNo, invoiceNoLabel } from '@/core/format';
-import { DataTable, EmptyState, ErrorState, Page, StatCard, cn } from '@/ui';
+import { DataTable, EmptyState, ErrorState, Page, StatCard, StatGrid, cn } from '@/ui';
 
 import FilterBar from '../components/FilterBar';
-import InkStat from '../components/InkStat';
-import KpiRow from '../components/KpiRow';
-import RefreshButton from '../components/RefreshButton';
 import ShowMore from '../components/ShowMore';
 import SkeletonRows from '../components/SkeletonRows';
 import StickyBar from '../components/StickyBar';
@@ -24,6 +21,7 @@ import { filterRevenueRows, revenueTotals } from './revenueLogic';
 import { loadRevenueRows } from './revenueService';
 
 const rupees = (n) => `₹${formatCurrency(n)}`;
+/** Profit in green, loss in red (the app-wide success / danger colours). */
 const profitColor = (n) => (n >= 0 ? 'text-emerald-700' : 'text-red-600');
 
 /** The invoice number, linking to the bill's edit screen; `withLabel` (cards, no column header): "Invoice No 001". */
@@ -39,12 +37,13 @@ function BillLink({ row, withLabel = false }) {
   );
 }
 
-/** "Shirt (₹150.00 - ₹110.00) ₹40.00 × 4 = ₹160.00" per product, then the discount. */
+/** "Shirt (₹150.00 - ₹110.00) ₹40.00 × 4 = ₹160.00" per product (a sales return: "Returned:", negative qty), then the discount. */
 function DetailLines({ row }) {
   return (
     <div className="space-y-1 text-left text-[13px] leading-snug text-slate-600">
       {row.lines.map((l, i) => (
-        <div key={i} className="sm:whitespace-nowrap">
+        <div key={i}>
+          {l.isReturn ? <span className="font-medium text-red-600">Returned: </span> : null}
           <span className="font-semibold text-slate-800">{l.description}</span> ({rupees(l.sellingRate)} -{' '}
           {rupees(l.costRate)}) {rupees(l.profitPerUnit)} × {l.qty} ={' '}
           <strong className="text-brand-800 tabular-nums">{rupees(l.totalProfit)}</strong>
@@ -64,18 +63,13 @@ function RevenueCard({ row }) {
         <BillLink row={row} withLabel />
         <span className="text-sm text-slate-500">{formatDateShort(row.date)}</span>
       </div>
-      <div className="mt-2 font-display font-bold text-brand-800">{row.name}</div>
+      <div className="mt-2 font-display font-bold break-words text-brand-800">{row.name}</div>
       <div className="mt-2 rounded-xl bg-slate-50/70 p-2.5">
         <DetailLines row={row} />
       </div>
       <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
         <span className="text-xs font-bold tracking-[0.08em] text-slate-500 uppercase">Profit</span>
-        <span
-          className={cn(
-            'font-display text-lg font-extrabold tabular-nums',
-            row.profit >= 0 ? 'text-emerald-700' : 'text-red-600',
-          )}
-        >
+        <span className={cn('font-display text-lg font-extrabold tabular-nums', profitColor(row.profit))}>
           {rupees(row.profit)}
         </span>
       </div>
@@ -83,30 +77,19 @@ function RevenueCard({ row }) {
   );
 }
 
-/** `ink` = dark totals panel in the table footer (gold figure); default = light line inside the phone sticky bar. */
-function TotalLine({ total, ink = false }) {
-  const loss = total < 0;
-  if (ink) {
-    return (
-      <div className="flex items-center justify-between gap-4 rounded-xl border border-white/10 surface-ink px-5 py-3 text-white shadow-lift lg:ml-auto lg:w-fit lg:min-w-80">
-        <span className="flex items-center gap-2 font-display text-sm font-bold text-brand-200">
-          <TrendingUp className="size-4 text-gold-300" aria-hidden />
-          Total Net Profit:
-        </span>
-        <span
-          className={cn(
-            'font-display text-2xl font-extrabold tabular-nums',
-            loss ? 'text-red-300' : 'text-gold-300',
-          )}
-        >
-          {rupees(total)}
-        </span>
-      </div>
-    );
-  }
+/** "Total Net Profit" line: the table's totals row on tablets / desktops, the phone sticky bar otherwise. */
+function TotalLine({ total, footer = false }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="font-display font-bold text-brand-800">Total Net Profit:</span>
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-x-4 gap-y-1',
+        footer && 'sm:justify-end',
+      )}
+    >
+      <span className="flex items-center gap-2 font-display font-bold text-brand-800">
+        <TrendingUp className="size-4 text-gold-600" aria-hidden />
+        Total Net Profit:
+      </span>
       <span className={cn('font-display text-xl font-extrabold tabular-nums', profitColor(total))}>
         {rupees(total)}
       </span>
@@ -116,14 +99,14 @@ function TotalLine({ total, ink = false }) {
 
 const COLUMNS = [
   { key: 'bill', header: 'Invoice No', render: (r) => <BillLink row={r} /> },
-  { key: 'date', header: 'Date', className: 'whitespace-nowrap', value: (r) => formatDateShort(r.date) },
-  { key: 'name', header: 'Customer Name', value: (r) => r.name },
-  { key: 'details', header: 'Details', render: (r) => <DetailLines row={r} /> },
+  { key: 'date', header: 'Date', nowrap: true, value: (r) => formatDateShort(r.date) },
+  { key: 'name', header: 'Customer Name', className: 'min-w-36', value: (r) => r.name },
+  { key: 'details', header: 'Details', className: 'min-w-72', render: (r) => <DetailLines row={r} /> },
   {
     key: 'profit',
     header: 'Profit Amount',
     align: 'right',
-    className: 'font-display font-bold tabular-nums whitespace-nowrap',
+    className: 'font-display font-bold',
     render: (r) => <span className={profitColor(r.profit)}>{rupees(r.profit)}</span>,
   },
 ];
@@ -134,7 +117,7 @@ export default function RevenuePage() {
   const [dateTerm, setDateTerm] = useState('');
   const [nameTerm, setNameTerm] = useState('');
 
-  const { loading, refreshing, error, refresh, reload } = useFocusLoad(async () => {
+  const { loading, error, reload } = useFocusLoad(async () => {
     try {
       setRows(await loadRevenueRows());
     } catch (e) {
@@ -167,7 +150,7 @@ export default function RevenuePage() {
               message="Saved bills appear here with the profit earned on each."
             />
           }
-          footer={showTotal && isExpanded ? <TotalLine total={totals.profit} ink /> : undefined}
+          footer={showTotal && isExpanded ? <TotalLine total={totals.profit} footer /> : undefined}
         />
         <ShowMore pager={paged.pager} noun="records" />
         {showTotal ? (
@@ -179,21 +162,17 @@ export default function RevenuePage() {
     );
 
   return (
-    <Page
-      title="Revenue & Profit Tracking"
-      icon={TrendingUp}
-      actions={<RefreshButton onClick={refresh} refreshing={refreshing} />}
-    >
-      <KpiRow>
-        <StatCard icon={ReceiptText} label="Bills" value={loading ? '…' : totals.bills} tint="brand" />
+    <Page title="Revenue & Profit Tracking" icon={TrendingUp}>
+      <StatGrid cols={4} className="mb-5">
+        <StatCard icon={ReceiptText} label="Bills" value={loading ? '…' : totals.bills} tone="info" />
         <StatCard
           icon={IndianRupee}
           label="Revenue"
           value={loading ? '…' : rupees(totals.revenue)}
-          tint="sky"
+          tone="brand"
         />
-        <StatCard icon={Wallet} label="Cost" value={loading ? '…' : rupees(totals.cost)} tint="amber" />
-        <InkStat
+        <StatCard icon={Wallet} label="Cost" value={loading ? '…' : rupees(totals.cost)} tone="neutral" />
+        <StatCard
           icon={TrendingUp}
           label={
             !loading && totals.revenue > 0
@@ -201,9 +180,9 @@ export default function RevenuePage() {
               : 'Net Profit'
           }
           value={loading ? '…' : rupees(totals.profit)}
-          negative={!loading && totals.profit < 0}
+          tone={!loading && totals.profit < 0 ? 'danger' : 'success'}
         />
-      </KpiRow>
+      </StatGrid>
       <FilterBar
         date={dateTerm}
         onDateChange={setDateTerm}

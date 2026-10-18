@@ -259,7 +259,8 @@ describe('filterStocks / presentation helpers', () => {
     expect(stockTone(0)).toBe('zero');
     expect(openingActions({ opening: 5 })).toBe('edit');
     expect(openingActions({ opening: 0 })).toBe('add');
-    expect(openingActions({ opening: -2 })).toBe('add');
+    // a negative opening (the form accepts it) is an opening stock: Edit + Delete
+    expect(openingActions({ opening: -2 })).toBe('edit');
   });
   test('history tables show the plain invoice number (no "P-" / "#") and print en-IN dates', () => {
     expect(historyInvoiceNo('P-001')).toBe('001');

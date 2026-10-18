@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react';
 import { db } from '@/core/db';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
 import {
+  Badge,
   Button,
   Card,
   DataTable,
@@ -18,13 +19,13 @@ import {
   Page,
   SearchBar,
   StatCard,
+  StatGrid,
+  TextField,
   useFeedback,
 } from '@/ui';
 
 import FloatingAddButton from '../components/FloatingAddButton';
 import KeyCap from '../components/KeyCap';
-import KpiRow from '../components/KpiRow';
-import RefreshButton from '../components/RefreshButton';
 import RowActions from '../components/RowActions';
 import ShowMore from '../components/ShowMore';
 import SkeletonRows from '../components/SkeletonRows';
@@ -44,7 +45,7 @@ export default function ShortcutsPage() {
   const [form, setForm] = useState(null); // null = sheet closed; oldKey '' = adding
   const [saving, setSaving] = useState(false);
 
-  const { loading, refreshing, error, refresh, reload } = useFocusLoad(async () => {
+  const { loading, error, reload } = useFocusLoad(async () => {
     try {
       setShortcuts(await db.getAllShortcuts());
     } catch (e) {
@@ -162,7 +163,7 @@ export default function ShortcutsPage() {
         icon={copied ? Check : Copy}
         label={`Copy shortcut key ${s.shortcutKey}`}
         onClick={(e) => handleCopy(s.shortcutKey, e)}
-        className={copied ? 'text-emerald-600' : 'text-slate-400'}
+        variant={copied ? 'outlineSuccess' : 'outline'}
       />
     );
   };
@@ -182,7 +183,7 @@ export default function ShortcutsPage() {
     {
       key: 'description',
       header: 'Full Description',
-      className: 'font-medium text-slate-800',
+      className: 'font-medium break-words text-slate-800',
       value: (s) => s.fullDescription,
     },
     { key: 'actions', header: 'Actions', align: 'center', className: 'w-32', render: actions },
@@ -233,57 +234,59 @@ export default function ShortcutsPage() {
       title="Product Shortcuts"
       icon={Zap}
       actions={
-        <>
-          <RefreshButton onClick={refresh} refreshing={refreshing} />
-          <Button icon={Plus} onClick={openAdd} className="max-sm:hidden">
-            Add Shortcut
-          </Button>
-        </>
+        <Button variant="primary" icon={Plus} onClick={openAdd} className="max-sm:hidden">
+          Add Shortcut
+        </Button>
       }
     >
-      <KpiRow cols={2}>
+      <StatGrid cols={2} className="mb-5">
         <StatCard
           icon={Layers}
           label="Total shortcuts"
           value={loading ? '…' : shortcuts.length}
-          tint="brand"
+          tone="info"
         />
         <StatCard
           icon={ListFilter}
           label={search.trim() ? 'Matching search' : 'Showing'}
           value={loading ? '…' : shown.length}
-          tint="violet"
+          tone="brand"
         />
-      </KpiRow>
-      <Card className="mb-5 space-y-3 bg-white/80 p-3 sm:p-3.5">
+      </StatGrid>
+      <Card className="mb-5 space-y-3">
         <SearchBar
           value={search}
           onChange={setSearch}
           placeholder="Search shortcuts..."
           aria-label="Search shortcuts"
         />
-        <div className="border-t border-slate-100 pt-3">
-          <div className="flex flex-col gap-2 text-xs sm:flex-row sm:items-center">
-            <span className="flex items-center gap-1.5 font-semibold text-slate-600">
-              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+        <div className="border-t border-line pt-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
+              <Sparkles className="size-3.5 text-gold-600" aria-hidden />
               Test Autocomplete:
             </span>
-            <div className="flex flex-1 items-center gap-2">
-              <input
-                type="text"
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <TextField
                 value={testKey}
-                onChange={(e) => setTestKey(e.target.value)}
+                onChange={setTestKey}
                 placeholder="Type a key (e.g. 101)..."
-                className="max-w-xs rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-800 focus:bg-white focus:ring-1 focus:ring-brand-500 focus:outline-none"
+                aria-label="Test autocomplete key"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="off"
+                className="w-full max-w-xs"
               />
               {testKey.trim() &&
                 (testMatch ? (
-                  <span className="inline-flex max-w-md items-center gap-1 truncate rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
-                    <Check className="h-3 w-3 shrink-0" />
-                    Expands to: &ldquo;{testMatch.fullDescription}&rdquo;
+                  <span title={testMatch.fullDescription} className="inline-flex max-w-full min-w-0">
+                    <Badge tone="success">
+                      <Check className="mr-1 inline size-3 align-[-1px]" aria-hidden />
+                      Expands to: &ldquo;{testMatch.fullDescription}&rdquo;
+                    </Badge>
                   </span>
                 ) : (
-                  <span className="text-slate-400 italic">No exact shortcut match</span>
+                  <span className="text-xs text-slate-500 italic">No exact shortcut match</span>
                 ))}
             </div>
           </div>

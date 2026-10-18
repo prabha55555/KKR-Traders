@@ -18,7 +18,7 @@
  */
 import { Sparkles } from 'lucide-react';
 import { formatInvoiceNo } from '@/core/format';
-import { Button, DateField, TextField } from '@/ui';
+import { Button, DateField, Grid, TextField } from '@/ui';
 
 export function InvoiceHeaderFields({
   lastLabel = 'Last Invoice No',
@@ -42,15 +42,15 @@ export function InvoiceHeaderFields({
       {!invoiceNoReadOnly && !hideSuggestion ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gold-50/70 p-3 ring-1 ring-gold-200/80">
           <div className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-1 text-sm text-slate-600">
-            <div>
+            <div className="min-w-0">
               <div className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
                 {lastLabel}
               </div>
-              <strong className="font-display text-base font-bold text-brand-800 tabular-nums">
+              <strong className="block truncate font-display text-base font-bold text-brand-800 tabular-nums">
                 {formatInvoiceNo(last) || '-'}
               </strong>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
                 Suggested Next
               </div>
@@ -61,7 +61,7 @@ export function InvoiceHeaderFields({
             </div>
           </div>
           <Button
-            variant="secondary"
+            variant="outlineGold"
             size="sm"
             icon={Sparkles}
             disabled={noSuggestion}
@@ -71,7 +71,7 @@ export function InvoiceHeaderFields({
           </Button>
         </div>
       ) : null}
-      <div className="grid gap-3.5 sm:grid-cols-2">
+      <Grid cols={{ base: 1, sm: 2 }}>
         <TextField
           label={invoiceNoLabel}
           placeholder="Invoice No"
@@ -84,7 +84,7 @@ export function InvoiceHeaderFields({
           spellCheck={false}
         />
         <DateField label={dateLabel} value={date} readOnly={dateReadOnly} onChange={onDateChange} />
-      </div>
+      </Grid>
     </div>
   );
 }

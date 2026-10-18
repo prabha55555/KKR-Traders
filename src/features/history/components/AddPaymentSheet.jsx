@@ -96,7 +96,7 @@ export function AddPaymentSheet({
       size="sm"
       actions={
         <>
-          <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
+          <Button variant="neutral" onClick={onClose} className="flex-1 sm:flex-none">
             Cancel
           </Button>
           <Button

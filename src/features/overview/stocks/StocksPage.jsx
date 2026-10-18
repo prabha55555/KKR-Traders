@@ -3,15 +3,28 @@
  * Financial summary tiles, searchable per-product stock (table → cards on phones), "Stock Details" history dialog and
  * the opening ("old") stock add / edit / delete flow.
  */
-import { Boxes, SearchX } from 'lucide-react';
+import { Boxes, Save, SearchX } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { formatRupees } from '@/core/format';
 import { db } from '@/core/db';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
-import { Card, DataTable, EmptyState, ErrorState, Page, SearchBar, useFeedback, Button } from '@/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  ChoiceChips,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Modal,
+  NumberField,
+  Page,
+  SearchBar,
+  statusTone,
+  useFeedback,
+} from '@/ui';
 
-import RefreshButton from '../components/RefreshButton';
 import ShowMore from '../components/ShowMore';
 import SkeletonRows from '../components/SkeletonRows';
 import { usePagedRows } from '../components/paging';
@@ -23,6 +36,22 @@ import { AvailableValue, OpeningValue, RollsLine, StockActions, StockCard } from
 import { filterStocks } from './stocksLogic';
 import { loadStocks } from './stocksService';
 
+const CATEGORY_OPTIONS = [
+  { value: 'all', label: 'All Items' },
+  { value: 'finished', label: 'Finished Fabric' },
+  { value: 'rawGrey', label: 'Raw Grey Fabric' },
+];
+
+/** Inventory health filters; each count badge takes its colour from the app-wide status map. */
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'All Products', tone: 'brand' },
+  { value: 'inStock', label: 'In Stock', tone: statusTone('In stock') },
+  { value: 'lowStock', label: 'Low Stock', tone: statusTone('Low stock') },
+  { value: 'outOfStock', label: 'Out of Stock', tone: statusTone('Out of stock') },
+];
+
+const MIN_STOCK_FORM_ID = 'min-stock-form';
+
 export default function StocksPage() {
   const { toast, confirm } = useFeedback();
   const [data, setData] = useState(null);
@@ -30,9 +59,10 @@ export default function StocksPage() {
   const [historyRow, setHistoryRow] = useState(null);
   const [openingRow, setOpeningRow] = useState(null);
   const [minStockRow, setMinStockRow] = useState(null);
+  const [minStockValue, setMinStockValue] = useState('');
   const [savingMinStock, setSavingMinStock] = useState(false);
 
-  const { loading, refreshing, error, refresh, reload } = useFocusLoad(async () => {
+  const { loading, error, reload } = useFocusLoad(async () => {
     try {
       setData(await loadStocks());
     } catch (e) {
@@ -136,14 +166,17 @@ export default function StocksPage() {
     onViewHistory: () => setHistoryRow(row),
     onEditOpening: () => setOpeningRow(row),
     onDeleteOpening: () => void deleteOpening(row),
-    onSetMinStock: () => setMinStockRow(row),
+    onSetMinStock: () => {
+      setMinStockValue(row.minStockLevel ? String(row.minStockLevel) : '');
+      setMinStockRow(row);
+    },
   });
 
   const columns = [
     {
       key: 'product',
       header: 'Product Description',
-      className: 'min-w-44 font-semibold text-brand-800',
+      className: 'min-w-44 font-semibold break-words text-brand-800',
       value: (r) => r.description,
     },
     {
@@ -161,7 +194,7 @@ export default function StocksPage() {
       key: 'purchased',
       header: 'Total Purchased Qty',
       align: 'right',
-      className: 'tabular-nums text-slate-700',
+      className: 'text-slate-700',
       render: (r) => (
         <>
           {r.purchased}
@@ -173,14 +206,14 @@ export default function StocksPage() {
       key: 'avgPurchaseRate',
       header: 'Average Purchase Rate',
       align: 'right',
-      className: 'tabular-nums font-semibold text-brand-800',
+      className: 'font-semibold text-brand-800',
       render: (r) => (r.avgPurchaseRate > 0 ? formatRupees(r.avgPurchaseRate) : '-'),
     },
     {
       key: 'sold',
       header: 'Total Sold Qty',
       align: 'right',
-      className: 'tabular-nums text-slate-700',
+      className: 'text-slate-700',
       render: (r) => (
         <>
           {r.sold}
@@ -203,10 +236,10 @@ export default function StocksPage() {
       key: 'minStock',
       header: 'Min Stock',
       align: 'right',
-      className: 'tabular-nums text-slate-700 font-medium',
+      className: 'font-medium text-slate-700',
       value: (r) => r.minStockLevel || '-',
     },
-    { key: 'actions', header: 'Details', render: (r) => <StockActions {...actionsFor(r)} compact /> },
+    { key: 'actions', header: 'Details', nowrap: true, render: (r) => <StockActions {...actionsFor(r)} /> },
   ];
 
   let body;
@@ -225,121 +258,31 @@ export default function StocksPage() {
       );
     body = (
       <>
-        {data ? <RestockDashboard rows={data.rows} onReload={() => void reload()} /> : null}
+        {data ? <RestockDashboard rows={data.rows} /> : null}
         {data ? <FinancialSummary summary={data.summary} /> : null}
-        <Card className="mb-4 space-y-3 bg-white/80 p-3 sm:p-3.5">
-          {/* FABRIC CLASSIFICATION TABS: All / Finished Goods / Raw Grey Rolls */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="mr-1 text-[11px] font-bold tracking-wider text-slate-500 uppercase">
-                Category:
-              </span>
-              {[
-                { id: 'all', label: 'All Items' },
-                { id: 'finished', label: 'Finished Fabric' },
-                { id: 'rawGrey', label: 'Raw Grey Fabric' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setTypeFilter(tab.id)}
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    typeFilter === tab.id
-                      ? 'bg-brand-900 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+        <Card className="mb-4 space-y-3">
+          {/* FABRIC CLASSIFICATION: All / Finished Goods / Raw Grey Rolls */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">Category:</span>
+            <ChoiceChips value={typeFilter} onChange={setTypeFilter} options={CATEGORY_OPTIONS} />
           </div>
 
-          {/* INVENTORY HEALTH STATUS TABS */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setStatusFilter('all')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap transition ${
-                statusFilter === 'all'
-                  ? 'bg-brand-900 text-gold-300 shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <span>All Products</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  statusFilter === 'all' ? 'bg-brand-800 text-gold-200' : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {statusCounts.all}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('inStock')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap transition ${
-                statusFilter === 'inStock'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <span className="inline-block size-2 rounded-full bg-emerald-400" />
-              <span>In Stock</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  statusFilter === 'inStock' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {statusCounts.inStock}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('lowStock')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap transition ${
-                statusFilter === 'lowStock'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <span className="inline-block size-2 rounded-full bg-amber-400" />
-              <span>Low Stock</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  statusFilter === 'lowStock'
-                    ? 'bg-amber-700 text-white'
-                    : statusCounts.lowStock > 0
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {statusCounts.lowStock}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('outOfStock')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap transition ${
-                statusFilter === 'outOfStock'
-                  ? 'bg-rose-700 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <span className="inline-block size-2 rounded-full bg-rose-400" />
-              <span>Out of Stock</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  statusFilter === 'outOfStock'
-                    ? 'bg-rose-800 text-white'
-                    : statusCounts.outOfStock > 0
-                      ? 'bg-rose-100 text-rose-800'
-                      : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {statusCounts.outOfStock}
-              </span>
-            </button>
+          {/* INVENTORY HEALTH STATUS (counts in the app-wide status colours) */}
+          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+            <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">Status:</span>
+            <ChoiceChips
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={STATUS_OPTIONS.map((o) => ({
+                value: o.value,
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    {o.label}
+                    <Badge tone={o.tone}>{statusCounts[o.value]}</Badge>
+                  </span>
+                ),
+              }))}
+            />
           </div>
 
           <SearchBar
@@ -363,74 +306,76 @@ export default function StocksPage() {
   }
 
   return (
-    <Page
-      title="Available Stocks"
-      icon={Boxes}
-      actions={<RefreshButton onClick={refresh} refreshing={refreshing} />}
-    >
+    <Page title="Available Stocks" icon={Boxes}>
       {body}
       <StockDetailModal row={historyRow} onClose={() => setHistoryRow(null)} />
       <OpeningStockModal row={openingRow} onClose={() => setOpeningRow(null)} onSave={saveOpening} />
 
-      {/* Mini-modal for setting min stock */}
-      {minStockRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="animate-in fade-in zoom-in-95 w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-xl duration-200">
-            <div className="border-b border-line px-5 py-4">
-              <h3 className="text-lg font-bold text-brand-900">Set Minimum Stock</h3>
-              <p className="mt-1 text-sm text-slate-500">{minStockRow.description}</p>
-            </div>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setSavingMinStock(true);
-                try {
-                  await db.saveProductMetadata(minStockRow.description, {
-                    minStockLevel: Number(e.target.minVal.value),
-                  });
-                  setMinStockRow(null);
-                  toast('Saved!', 'Minimum stock alert updated.', 'success');
-                  await reload();
-                } catch (err) {
-                  console.error(err);
-                  toast('Error', 'Failed to save Min Stock Level', 'error');
-                } finally {
-                  setSavingMinStock(false);
-                }
-              }}
-              className="p-5"
+      {/* Minimum stock alert */}
+      <Modal
+        open={minStockRow !== null}
+        onClose={savingMinStock ? undefined : () => setMinStockRow(null)}
+        title="Set Minimum Stock"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="neutral"
+              disabled={savingMinStock}
+              onClick={() => setMinStockRow(null)}
+              className="max-sm:flex-1"
             >
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Alert me when stock falls below:
-              </label>
-              <input
-                name="minVal"
-                type="number"
-                min="0"
-                step="any"
-                required
-                defaultValue={minStockRow.minStockLevel || ''}
-                className="w-full rounded-lg border-slate-300 py-2 text-lg shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                autoFocus
-                disabled={savingMinStock}
-              />
-              <div className="mt-6 flex justify-end gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={savingMinStock}
-                  onClick={() => setMinStockRow(null)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" variant="success" loading={savingMinStock}>
-                  Save Alert
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={MIN_STOCK_FORM_ID}
+              variant="success"
+              icon={Save}
+              loading={savingMinStock}
+              className="max-sm:flex-1"
+            >
+              Save Alert
+            </Button>
+          </>
+        }
+      >
+        {minStockRow ? (
+          <form
+            id={MIN_STOCK_FORM_ID}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setSavingMinStock(true);
+              try {
+                await db.saveProductMetadata(minStockRow.description, {
+                  minStockLevel: Number(minStockValue),
+                });
+                setMinStockRow(null);
+                toast('Saved!', 'Minimum stock alert updated.', 'success');
+                await reload();
+              } catch (err) {
+                console.error(err);
+                toast('Error', 'Failed to save Min Stock Level', 'error');
+              } finally {
+                setSavingMinStock(false);
+              }
+            }}
+          >
+            <p className="mb-4 rounded-xl bg-gold-50/60 px-3.5 py-2.5 text-sm font-semibold break-words text-brand-800 ring-1 ring-gold-100">
+              {minStockRow.description}
+            </p>
+            <NumberField
+              name="minVal"
+              label="Alert me when stock falls below:"
+              value={minStockValue}
+              onChange={setMinStockValue}
+              required
+              autoFocus
+              disabled={savingMinStock}
+            />
+          </form>
+        ) : null}
+      </Modal>
     </Page>
   );
 }

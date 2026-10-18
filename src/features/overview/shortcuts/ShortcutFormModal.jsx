@@ -21,12 +21,13 @@ export default function ShortcutFormModal({ state, onChange, saving, onClose, on
       size="sm"
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving} className="max-sm:flex-1">
+          <Button variant="neutral" onClick={onClose} disabled={saving} className="max-sm:flex-1">
             Cancel
           </Button>
           <Button
             type="submit"
             form={FORM_ID}
+            variant={adding ? 'primary' : 'success'}
             icon={adding ? Plus : Save}
             loading={saving}
             className="max-sm:flex-1"

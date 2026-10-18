@@ -7,13 +7,19 @@
  * avgPurchaseRate = weighted average rate of the positive purchase entries (purchase-bill lines + dyeing / combing
  * receipts at their unit cost); purchase returns and opening stock (no price) are left out.
  *
+ * FINANCIAL SUMMARY (same figures as the Statistics page for all time): Total Sales / Total Purchases = each bill's own
+ * amount less the value of the returns entered against it (returnAmount, else amount, else qty × rate — returned goods
+ * re-enter / leave stock, refunded or settled on the balance alike); Net Profit / Loss = net sales − net purchases;
+ * Cash Received = amount paid on the invoices less the sales returns refunded in cash / to an account.
+ *
  * ROLLS are counted the same way, next to the quantity: availableRolls = openingRolls + purchasedRolls - soldRolls, from
  * the optional `rolls` of opening stock, bill lines, returns and processing-lot movements. A line without a roll count
  * adds 0, and rolls never touch the quantities or the money.
  */
 import { formatDateIN, formatInvoiceNo, invoiceNoLabel, toNum } from '@/core/format';
-import { PURCHASE_LEDGER, SALES_LEDGER, billAmount } from '@/core/ledger';
-import { lotStockMovements } from '@/features/processing/lotLogic';
+import { PURCHASE_LEDGER, SALES_LEDGER, billAmount, isBalanceReturn } from '@/core/ledger';
+import { returnValue } from '@/features/overview/revenue/revenueLogic';
+import { LOT_STATUS, formatDcNo, lotStockMovements } from '@/features/processing/lotLogic';
 const round3 = (n) => Math.round(n * 1000) / 1000;
 const round2 = (n) => Number(n.toFixed(2));
 const newAccumulator = (opening = 0) => ({
@@ -110,7 +116,10 @@ export function computeStocks(
 
   // Account for purchase returns (goods returned to supplier decrease purchased stock)
   if (Array.isArray(purchaseReturns)) {
+    // Total Purchases is net of the goods sent back against a loaded bill (as Statistics attaches them to their bill)
+    const purchaseBillNos = new Set(purchaseBills.map((bill) => String(bill.invoiceNo)));
     purchaseReturns.forEach((pr) => {
+      if (purchaseBillNos.has(String(pr.invoiceNo ?? ''))) totalPurchases -= returnValue(pr);
       if (!pr.description) return;
       const qty = toNum(pr.qty);
       const rolls = toNum(pr.rolls);
@@ -159,7 +168,13 @@ export function computeStocks(
 
   // Account for sales returns (goods returned by customer decrease sold stock / add back to stock)
   if (Array.isArray(salesReturns)) {
+    // Total Sales is net of the goods returned against a loaded invoice (as Statistics attaches them to their bill)
+    const invoiceNos = new Set(salesInvoices.map((invoice) => String(invoice.invoiceNo)));
     salesReturns.forEach((sr) => {
+      if (invoiceNos.has(String(sr.invoiceNo ?? ''))) totalSales -= returnValue(sr);
+      // a refunded return (Cash / Account) handed the money back: Cash Received is net of it, as in Finance
+      const refund = isBalanceReturn(sr) ? 0 : toNum(sr.returnAmount) || toNum(sr.amount);
+      if (refund > 0) cashReceived -= refund;
       if (!sr.description) return;
       const qty = toNum(sr.qty);
       const rolls = toNum(sr.rolls);
@@ -290,6 +305,7 @@ export function computeStocks(
 
   // Processing lots (Issue -> Dyeing -> Combing -> Received): grey leaves stock on my DC, the finished fabric enters
   // stock only when it is received back, at the lot's cost per kg. Rolls move with every DC (m.rolls, 0 when not typed).
+  // `lotStatus` = where the lot is now, so its history line opens the right lot page (processingLotLink).
   (processingLots || []).forEach((lot) => {
     lotStockMovements(lot).forEach((m) => {
       const acc = entry(m.description);
@@ -303,6 +319,7 @@ export function computeStocks(
         invoiceNo: m.ref,
         rawInvoiceNo: m.rawRef,
         amount: round2(m.qty * m.rate),
+        lotStatus: lot.status,
       };
       if (m.kind === 'issue') {
         acc.sold += m.qty;
@@ -438,6 +455,17 @@ export function stockLabel(stock) {
 export function historyInvoiceNo(invoiceNo) {
   return formatInvoiceNo(invoiceNo);
 }
+/**
+ * Page a processing-lot history line opens, searched by the lot's DC: a received lot on Completed Lots, an ongoing one
+ * on Processing Lots at the stage it is in NOW (that page lists one stage at a time, dyeing by default).
+ */
+export function processingLotLink(entry) {
+  const search = encodeURIComponent(formatDcNo(entry?.rawInvoiceNo));
+  if (entry?.lotStatus === LOT_STATUS.RECEIVED || entry?.isProcessingReceipt)
+    return `/processing/completed?search=${search}`;
+  const stage = entry?.lotStatus === LOT_STATUS.AT_COMBING ? 'combing' : 'dyeing';
+  return `/processing/lots?search=${search}&stage=${stage}`;
+}
 /** Date column of the history tables (3/10/2026); unparseable values are shown as stored. */
 export function historyDate(date) {
   return date ? formatDateIN(date) : '';
@@ -458,7 +486,10 @@ export function parseOpeningStockRolls(input) {
   if (!/^\d+$/.test(value)) return { error: OPENING_ROLLS_INVALID };
   return { rolls: parseInt(value, 10) };
 }
-/** Which opening-stock actions a row offers: "Add Old Stock" when there is none (no quantity, no rolls), else Edit + Delete. */
+/**
+ * Which opening-stock actions a row offers: "Add Old Stock" when there is none (no quantity, no rolls), else Edit +
+ * Delete. A negative opening (the form accepts it) is an opening stock too.
+ */
 export function openingActions(row) {
-  return row.opening > 0 || toNum(row.openingRolls) > 0 ? 'edit' : 'add';
+  return toNum(row.opening) !== 0 || toNum(row.openingRolls) !== 0 ? 'edit' : 'add';
 }

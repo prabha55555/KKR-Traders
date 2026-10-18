@@ -16,7 +16,6 @@ import {
   LoadingState,
   Page,
   Pagination,
-  RefreshButton,
   SearchBar,
   SectionHeader,
   useFeedback,
@@ -36,7 +35,7 @@ export default function SupplierDetailsPage() {
   const [query, setQuery] = useState(() => (typeof params.phone === 'string' ? params.phone : ''));
   const [exporting, setExporting] = useState(false);
 
-  const { loading, refreshing, error, refresh } = useFocusLoad(async () => {
+  const { loading, error, refresh } = useFocusLoad(async () => {
     const [b, r, s] = await Promise.all([
       db.getAllPurchaseBills(),
       db.getAllPurchaseReturns(),
@@ -89,16 +88,15 @@ export default function SupplierDetailsPage() {
 
   const actions = (
     <>
-      <Button variant="secondary" icon={Download} loading={exporting} onClick={onExport}>
-        Export
+      <Button variant="secondary" icon={Download} loading={exporting} onClick={onExport} title="Export">
+        <span className="max-sm:sr-only">Export</span>
       </Button>
-      <RefreshButton loading={refreshing} onClick={refresh} />
     </>
   );
 
   return (
     <Page title="Supplier Details" icon={Truck} max="7xl" actions={actions}>
-      <div className="space-y-5">
+      <div className="space-y-4 sm:space-y-5">
         <form
           role="search"
           className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-white p-2.5 shadow-card"
@@ -113,10 +111,15 @@ export default function SupplierDetailsPage() {
             aria-label="Search suppliers"
             className="min-w-0 basis-full sm:flex-1 sm:basis-64"
           />
-          <Button type="submit" icon={Search} className="flex-1 sm:flex-none">
+          <Button type="submit" variant="info" icon={Search} className="flex-1 sm:flex-none">
             Search
           </Button>
-          <Button variant="outline" icon={X} onClick={() => setQuery('')} className="flex-1 sm:flex-none">
+          <Button
+            variant="outlineWarning"
+            icon={X}
+            onClick={() => setQuery('')}
+            className="flex-1 sm:flex-none"
+          >
             Clear
           </Button>
         </form>

@@ -16,7 +16,7 @@
  */
 import { Calendar, FileSearch } from 'lucide-react';
 import { formatCurrency } from '@/core/format';
-import { EmptyState, ErrorState, Pagination, usePagination } from '@/ui';
+import { Badge, EmptyState, ErrorState, Pagination, usePagination } from '@/ui';
 import { HistoryInvoiceGroupBody } from './HistoryInvoiceTable';
 import { InvoiceListSkeleton } from './Skeleton';
 
@@ -42,9 +42,7 @@ function DateHeading({ group, onClick }) {
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2.5">
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 ring-inset">
-            {count}
-          </span>
+          <Badge tone="neutral">{count}</Badge>
           <span className="hidden text-right sm:block">
             <span className="block text-[10px] leading-none font-bold tracking-[0.08em] text-slate-400 uppercase">
               Day total
@@ -108,7 +106,7 @@ export function HistoryDateGroupList({
           style={{ animationDelay: `${Math.min(index, 6) * 50}ms` }}
         >
           <DateHeading group={group} onClick={() => onFilterDate(group.key)} />
-          <div className="pt-1 pb-3 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-line lg:bg-white lg:p-1.5 lg:shadow-card">
+          <div className="pt-1 pb-3">
             <HistoryInvoiceGroupBody invoices={group.invoices} labels={labels} actions={actions} />
           </div>
         </section>

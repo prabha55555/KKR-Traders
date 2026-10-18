@@ -15,7 +15,6 @@ import {
   Modal,
   Page,
   Pagination,
-  RefreshButton,
   SearchBar,
   SectionHeader,
   TwoPane,
@@ -108,7 +107,7 @@ export default function AddSupplierPage() {
         Phone number and name are required; address is optional.
       </p>
       <SupplierFormFields value={dir.newSupplier} onChange={dir.setNewSupplier} idPrefix="new-supplier" />
-      <Button type="submit" icon={UserPlus} fullWidth loading={dir.adding} className="mt-5">
+      <Button type="submit" variant="primary" icon={UserPlus} fullWidth loading={dir.adding} className="mt-5">
         Add Supplier
       </Button>
     </Card>
@@ -122,11 +121,15 @@ export default function AddSupplierPage() {
         <>
           {/* tablets: the add popup opens from here (the floating button is phone-only) */}
           {isExpanded ? null : (
-            <Button icon={UserPlus} onClick={() => setIsAddOpen(true)} className="max-sm:hidden">
+            <Button
+              variant="primary"
+              icon={UserPlus}
+              onClick={() => setIsAddOpen(true)}
+              className="max-sm:hidden"
+            >
               Add Supplier
             </Button>
           )}
-          <RefreshButton loading={dir.refreshing} onClick={dir.refresh} />
         </>
       }
     >
@@ -143,7 +146,7 @@ export default function AddSupplierPage() {
             footer={
               <>
                 <Button
-                  variant="outline"
+                  variant="neutral"
                   onClick={() => setIsAddOpen(false)}
                   disabled={dir.adding}
                   className="flex-1 sm:flex-none"
@@ -182,7 +185,7 @@ export default function AddSupplierPage() {
         title="Edit Supplier"
         footer={
           <>
-            <Button variant="outline" onClick={() => dir.setEditing(null)}>
+            <Button variant="neutral" onClick={() => dir.setEditing(null)}>
               Cancel
             </Button>
             <Button type="submit" form={EDIT_FORM_ID} variant="success" icon={Save} loading={dir.savingEdit}>

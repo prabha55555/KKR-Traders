@@ -30,7 +30,10 @@ export function Page({ title, icon: Icon, actions, max = '6xl', className, child
               </span>
             ) : null}
             <div className="min-w-0">
-              <h1 className="truncate font-display text-lg leading-tight font-extrabold text-brand-800 sm:text-xl lg:text-[26px]">
+              <h1
+                title={typeof title === 'string' ? title : undefined}
+                className="truncate font-display text-[clamp(1.125rem,0.85rem+1.1vw,1.625rem)] leading-tight font-extrabold text-brand-800"
+              >
                 {title}
               </h1>
               <span
@@ -96,10 +99,10 @@ export function Grid({ cols = { base: 1, sm: 2, lg: 3 }, gap = 'gap-3.5', classN
   );
 }
 
-/** Pill-style single choice: <ChoiceChips value onChange options={[{value,label}]}/> */
-export function ChoiceChips({ value, onChange, options, className }) {
+/** Pill-style single choice: <ChoiceChips value onChange options={[{value,label}]} label="Filter by status"/> */
+export function ChoiceChips({ value, onChange, options, label, className }) {
   return (
-    <div className={cn('flex flex-wrap gap-2', className)} role="radiogroup">
+    <div className={cn('flex flex-wrap gap-2', className)} role="radiogroup" aria-label={label}>
       {options.map((o) => {
         const active = o.value === value;
         return (

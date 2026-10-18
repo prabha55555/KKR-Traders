@@ -31,10 +31,10 @@ export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, la
   return (
     <article className="flex h-full flex-col rounded-2xl border border-line bg-white p-3.5 shadow-card transition duration-200 hover:shadow-lift sm:p-4">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="border-l-[3px] border-gold-400 pl-2.5 font-display text-base font-extrabold text-brand-800">
+        <h3 className="min-w-0 border-l-[3px] border-gold-400 pl-2.5 font-display text-base font-extrabold break-words text-brand-800">
           Invoice No {displayInvoiceNo(labels, no)}
         </h3>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <InvoiceSlipBadge invoice={invoice} />
           <InvoiceStatusBadge invoice={invoice} />
         </div>
@@ -42,7 +42,9 @@ export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, la
       <p className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-600">
         <User className="size-3.5 shrink-0 text-slate-400" aria-hidden />
         <span className="sr-only">{labels.party}: </span>
-        <span className="min-w-0 truncate font-medium text-slate-800">{invoice.partyName}</span>
+        <span className="min-w-0 truncate font-medium text-slate-800" title={invoice.partyName}>
+          {invoice.partyName}
+        </span>
       </p>
 
       <div className="mt-3 flex items-end justify-between gap-3">

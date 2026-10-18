@@ -35,10 +35,10 @@ export function UpdatePrompt() {
           A new version of Brightlight Billing is ready. Update now to get the latest improvements.
         </p>
         <div className="mt-6 grid grid-cols-2 gap-3">
-          <Button variant="outline" onClick={() => setNeedRefresh(false)}>
+          <Button variant="neutral" onClick={() => setNeedRefresh(false)}>
             Later
           </Button>
-          <Button variant="primary" icon={RefreshCw} onClick={() => updateServiceWorker(true)}>
+          <Button variant="success" icon={RefreshCw} onClick={() => updateServiceWorker(true)}>
             Update
           </Button>
         </div>

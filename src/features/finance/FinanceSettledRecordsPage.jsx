@@ -8,8 +8,6 @@ import {
   Phone,
   CheckCircle2,
   CheckCheck,
-  Banknote,
-  Building2,
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
@@ -18,9 +16,17 @@ import { accountLabel, accountLabelWithBank } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, toNum } from '@/core/format';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
-import { Button, DataTable, EmptyState, ErrorState, Page, IconButton, useFeedback } from '@/ui';
-import KpiRow from '../overview/components/KpiRow';
-import InkStat from '../overview/components/InkStat';
+import {
+  Badge,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Page,
+  StatCard,
+  StatGrid,
+  useFeedback,
+} from '@/ui';
 import SkeletonRows from '../overview/components/SkeletonRows';
 import FilterBar from '../overview/components/FilterBar';
 import ShowMore from '../overview/components/ShowMore';
@@ -30,6 +36,18 @@ import FinanceFormModal from './FinanceFormModal';
 import FinancePaymentHistoryModal from './FinancePaymentHistoryModal';
 
 const rs = (n) => `Rs. ${formatCurrency(n)}`;
+
+/** "Receive Loan In": Cash in Hand (green) or the bank account (blue), the same colours as everywhere else. */
+function LoanAccount({ record, bankMap }) {
+  const isCash = !record.depositAccount || record.depositAccount === 'cash';
+  if (isCash) return <Badge tone="success">Cash in Hand</Badge>;
+  const bank = bankMap[record.depositAccount];
+  return (
+    <span title={bank ? accountLabelWithBank(bank) : 'Bank Account'} className="inline-flex max-w-full">
+      <Badge tone="info">{bank ? accountLabel(bank) : 'Bank Account'}</Badge>
+    </span>
+  );
+}
 
 export default function FinanceSettledRecordsPage() {
   const { toast, confirm } = useFeedback();
@@ -139,32 +157,36 @@ export default function FinanceSettledRecordsPage() {
     {
       key: 'lender',
       header: 'Lender',
-      className: 'whitespace-nowrap font-bold text-slate-900',
+      className: 'min-w-32 font-bold break-words text-brand-800',
       value: (e) => e.lenderName,
     },
     {
       key: 'phone',
       header: 'Phone',
-      className: 'whitespace-nowrap text-slate-600 font-mono text-xs',
+      nowrap: true,
+      className: 'font-mono text-xs text-slate-600',
       value: (e) => e.phone,
     },
     {
       key: 'start',
       header: 'Start Date',
-      className: 'whitespace-nowrap text-slate-600',
+      nowrap: true,
+      className: 'text-slate-600',
       value: (e) => formatDateShort(e.startDate),
     },
     {
       key: 'end',
       header: 'End Date',
-      className: 'whitespace-nowrap text-slate-600',
+      nowrap: true,
+      className: 'text-slate-600',
       value: (e) => (e.endDate ? formatDateShort(e.endDate) : 'Ongoing'),
     },
     {
       key: 'totalMonths',
       header: 'Total Months',
       align: 'center',
-      className: 'whitespace-nowrap font-semibold text-slate-800 tabular-nums',
+      nowrap: true,
+      className: 'font-semibold text-slate-800 tabular-nums',
       value: (e) => {
         const stats = calculateFinanceStats(e, calcDate || undefined);
         const m = e.endDate ? stats.totalMonths : stats.monthsElapsed;
@@ -175,44 +197,27 @@ export default function FinanceSettledRecordsPage() {
     {
       key: 'rate',
       header: 'Rate/Mo',
-      className: 'whitespace-nowrap font-bold text-amber-800 tabular-nums',
+      align: 'right',
+      className: 'font-bold text-amber-700',
       value: (e) => `${e.rate}%`,
     },
     {
       key: 'principal',
       header: 'Principal Settled',
       align: 'right',
-      className: 'font-display font-bold text-slate-800 tabular-nums whitespace-nowrap',
+      className: 'font-display font-bold text-brand-800',
       value: (e) => rs(toNum(e.principal)),
     },
     {
       key: 'receiveLoanIn',
       header: 'Receive Loan In',
-      className: 'whitespace-nowrap',
-      render: (e) => {
-        const isCash = !e.depositAccount || e.depositAccount === 'cash';
-        const bank = !isCash ? bankMap[e.depositAccount] : null;
-        return isCash ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-            <Banknote className="size-3.5" />
-            Cash in Hand
-          </span>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200"
-            title={bank ? accountLabelWithBank(bank) : 'Bank Account'}
-          >
-            <Building2 className="size-3.5" />
-            {bank ? accountLabel(bank) : 'Bank Account'}
-          </span>
-        );
-      },
+      render: (e) => <LoanAccount record={e} bankMap={bankMap} />,
     },
     {
       key: 'paid',
       header: 'Total Repaid',
       align: 'right',
-      className: 'font-display font-extrabold text-blue-700 tabular-nums whitespace-nowrap',
+      className: 'font-display font-extrabold text-emerald-700',
       value: (e) => {
         const stats = calculateFinanceStats(e, calcDate || undefined);
         return rs(stats.totalPaid);
@@ -222,32 +227,28 @@ export default function FinanceSettledRecordsPage() {
       key: 'status',
       header: 'Status',
       align: 'center',
-      className: 'whitespace-nowrap',
-      render: () => (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
-          <CheckCircle2 className="size-3.5 text-emerald-600" />
-          Settled
-        </span>
-      ),
+      nowrap: true,
+      render: () => <Badge status="Settled" />,
     },
     {
       key: 'actions',
       header: 'Actions',
       align: 'center',
+      nowrap: true,
       render: (e) => (
         <div className="flex items-center justify-center gap-2">
           <IconButton
             icon={History}
             onClick={() => setHistoryRecord(e)}
             label="Payment History"
-            className="text-slate-600 hover:bg-slate-50 hover:text-brand-700"
+            variant="outlineInfo"
           />
-          <IconButton icon={Edit} onClick={() => openEdit(e)} label="Edit Record" />
+          <IconButton icon={Edit} onClick={() => openEdit(e)} label="Edit Record" variant="edit" />
           <IconButton
             icon={Trash2}
             onClick={() => void remove(e)}
             label="Delete Record"
-            className="text-red-500 hover:bg-red-50 hover:text-red-700"
+            variant="outlineDanger"
           />
         </div>
       ),
@@ -268,11 +269,11 @@ export default function FinanceSettledRecordsPage() {
             const stats = calculateFinanceStats(e, calcDate || undefined);
             return (
               <div className="flex flex-col gap-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-bold text-slate-900">{e.lenderName}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-bold break-words text-brand-800">{e.lenderName}</div>
                     <div className="mt-0.5 flex items-center gap-1 font-mono text-xs text-slate-600">
-                      <Phone className="size-3 text-slate-400" />
+                      <Phone className="size-3 text-slate-400" aria-hidden />
                       {e.phone}
                     </div>
                     <div className="mt-1 space-y-0.5 text-[11px] font-medium text-slate-600">
@@ -296,58 +297,46 @@ export default function FinanceSettledRecordsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-800">
-                      <CheckCircle2 className="size-3 text-emerald-600" />
-                      Settled
-                    </span>
-                    <IconButton
-                      icon={History}
-                      onClick={() => setHistoryRecord(e)}
-                      label="History"
-                      className="text-slate-500 hover:text-brand-700"
-                    />
-                    <IconButton icon={Edit} onClick={() => openEdit(e)} label="Edit" />
-                    <IconButton
-                      icon={Trash2}
-                      onClick={() => void remove(e)}
-                      label="Delete"
-                      className="text-red-500 hover:text-red-700"
-                    />
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <Badge status="Settled" />
+                    <div className="flex gap-1.5">
+                      <IconButton
+                        icon={History}
+                        onClick={() => setHistoryRecord(e)}
+                        label="History"
+                        variant="outlineInfo"
+                      />
+                      <IconButton icon={Edit} onClick={() => openEdit(e)} label="Edit" variant="edit" />
+                      <IconButton
+                        icon={Trash2}
+                        onClick={() => void remove(e)}
+                        label="Delete"
+                        variant="outlineDanger"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-line bg-slate-50/80 p-2.5">
+                <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-line bg-slate-50/80 p-2.5 tabular-nums">
                   <div>
                     <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                       Principal Settled
                     </div>
-                    <div className="font-display font-bold text-slate-800">{rs(toNum(e.principal))}</div>
+                    <div className="font-display font-bold text-brand-800">{rs(toNum(e.principal))}</div>
                   </div>
                   <div>
                     <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                       Receive Loan In
                     </div>
-                    <div className="mt-0.5 text-xs font-semibold">
-                      {!e.depositAccount || e.depositAccount === 'cash' ? (
-                        <span className="flex items-center gap-1 font-semibold text-emerald-700">
-                          <Banknote className="size-3.5" /> Cash in Hand
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 font-semibold text-blue-700">
-                          <Building2 className="size-3.5" />{' '}
-                          {bankMap[e.depositAccount]
-                            ? accountLabel(bankMap[e.depositAccount])
-                            : 'Bank Account'}
-                        </span>
-                      )}
+                    <div className="mt-0.5">
+                      <LoanAccount record={e} bankMap={bankMap} />
                     </div>
                   </div>
                   <div className="col-span-2 mt-0.5 border-t border-slate-200/60 pt-1.5">
                     <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                       Total Repaid
                     </div>
-                    <div className="font-display text-base font-black text-blue-800">
+                    <div className="font-display text-base font-black text-emerald-700">
                       {rs(stats.totalPaid)}
                     </div>
                   </div>
@@ -369,12 +358,12 @@ export default function FinanceSettledRecordsPage() {
 
   return (
     <Page title="Settled Finance Records" icon={CheckCircle2}>
-      <KpiRow cols={4}>
-        <InkStat icon={CheckCheck} label="Settled Loans" value={totals.count} />
-        <InkStat icon={Landmark} label="Total Principal" value={rs(totals.principal)} />
-        <InkStat icon={Sigma} label="Interest Repaid" value={rs(totals.interestPaid)} />
-        <InkStat icon={CreditCard} label="Total Amount Repaid" value={rs(totals.totalPaid)} />
-      </KpiRow>
+      <StatGrid cols={4} className="mb-5">
+        <StatCard icon={CheckCheck} label="Settled Loans" value={totals.count} tone="info" />
+        <StatCard icon={Landmark} label="Total Principal" value={rs(totals.principal)} tone="brand" />
+        <StatCard icon={Sigma} label="Interest Repaid" value={rs(totals.interestPaid)} tone="success" />
+        <StatCard icon={CreditCard} label="Total Amount Repaid" value={rs(totals.totalPaid)} tone="success" />
+      </StatGrid>
 
       <FilterBar
         date={calcDate}

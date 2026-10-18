@@ -57,7 +57,9 @@ function MethodButton({ active, disabled, icon: Icon, label, tone, onClick }) {
       onClick={onClick}
       className={cn(
         'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border p-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50',
-        active ? tone : 'border-line bg-white text-slate-700 hover:bg-slate-50',
+        active
+          ? tone
+          : 'border-line bg-white text-slate-700 enabled:hover:border-gold-300 enabled:hover:bg-gold-50',
       )}
     >
       <Icon className="size-4 shrink-0" aria-hidden />
@@ -152,11 +154,11 @@ export function ReturnSheet({
       size="lg"
       actions={
         <>
-          <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
+          <Button variant="neutral" onClick={onClose} className="flex-1 sm:flex-none">
             Cancel
           </Button>
           <Button
-            variant="warning"
+            variant="success"
             icon={Save}
             onClick={submit}
             loading={busy}
@@ -168,7 +170,7 @@ export function ReturnSheet({
       }
     >
       <div className="mb-4 rounded-2xl border border-line bg-slate-50/70 p-3.5">
-        <p className="font-display text-base font-bold text-brand-800">{`${labels.party}: ${partyName}`}</p>
+        <p className="font-display text-base font-bold break-words text-brand-800">{`${labels.party}: ${partyName}`}</p>
         <p className="text-sm text-slate-500">Invoice Date: {formatDateIN(invoiceDate)}</p>
         {previousReturns > 0 ? (
           <p className="mt-0.5 text-sm font-bold text-amber-700">Previous Returns: {rs(previousReturns)}</p>
@@ -190,7 +192,7 @@ export function ReturnSheet({
         />
       ))}
       <Button
-        variant="warning"
+        variant="outlineGold"
         icon={Plus}
         fullWidth
         onClick={() => setItems((list) => [...list, makeItem()])}

@@ -114,11 +114,12 @@ export default function AddAdditionalAmountModal({
     );
   };
 
+  // segmented switch: the active mode takes its action colour (add = green, deduct = red, edit = blue)
   const modes = [
     { value: 'in', label: '+ Add', icon: ArrowDownLeft, active: 'bg-emerald-600 text-white shadow-sm' },
-    { value: 'out', label: '− Deduct', icon: ArrowUpRight, active: 'bg-rose-600 text-white shadow-sm' },
+    { value: 'out', label: '− Deduct', icon: ArrowUpRight, active: 'bg-red-600 text-white shadow-sm' },
     ...(isCash
-      ? [{ value: 'set', label: 'Edit Balance', icon: Scale, active: 'bg-brand-800 text-white shadow-sm' }]
+      ? [{ value: 'set', label: 'Edit Balance', icon: Scale, active: 'bg-blue-600 text-white shadow-sm' }]
       : []),
   ];
 
@@ -130,13 +131,13 @@ export default function AddAdditionalAmountModal({
       size="md"
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving} className="max-sm:flex-1">
+          <Button variant="neutral" onClick={onClose} disabled={saving} className="max-sm:flex-1">
             Cancel
           </Button>
           <Button
             type="submit"
             form={FORM_ID}
-            variant={mode === 'out' ? 'danger' : mode === 'set' ? 'secondary' : 'success'}
+            variant={mode === 'out' ? 'danger' : 'success'}
             icon={Save}
             loading={saving}
             className="max-sm:flex-1"
@@ -154,7 +155,7 @@ export default function AddAdditionalAmountModal({
     >
       <form id={FORM_ID} onSubmit={handleSubmit} className="space-y-4">
         <div
-          className={`grid gap-2 rounded-xl bg-slate-100 p-1 ${modes.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}
+          className={`grid gap-1.5 rounded-xl bg-slate-100 p-1 ring-1 ring-slate-200 ring-inset ${modes.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}
         >
           {modes.map((m) => (
             <button
@@ -162,8 +163,8 @@ export default function AddAdditionalAmountModal({
               type="button"
               aria-pressed={mode === m.value}
               onClick={() => changeMode(m.value)}
-              className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-1 text-xs font-bold transition sm:text-sm ${
-                mode === m.value ? m.active : 'text-slate-600 hover:text-slate-900'
+              className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-1 text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none sm:text-sm ${
+                mode === m.value ? m.active : 'text-slate-600 hover:bg-gold-50 hover:text-brand-800'
               }`}
             >
               <m.icon className="size-4 shrink-0" aria-hidden />
@@ -174,7 +175,7 @@ export default function AddAdditionalAmountModal({
 
         {mode === 'set' ? (
           <>
-            <div className="flex items-center justify-between rounded-xl border border-line bg-slate-50/80 px-3.5 py-2.5 text-sm">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-slate-50/80 px-3.5 py-2.5 text-sm">
               <span className="font-semibold text-slate-600">Current cash (system)</span>
               <span className="font-display font-extrabold text-slate-900 tabular-nums">
                 {rs(cashBalance)}

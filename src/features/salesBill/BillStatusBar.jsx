@@ -14,7 +14,7 @@ export function SaveBadge({ saved }) {
     <Badge tone={saved ? 'success' : 'warning'}>
       <span
         aria-hidden
-        className={`mr-1.5 size-1.5 rounded-full ${saved ? 'bg-emerald-500' : 'animate-pulse bg-amber-500'}`}
+        className={`mr-1.5 inline-block size-1.5 rounded-full align-middle ${saved ? 'bg-emerald-500' : 'animate-pulse bg-amber-500'}`}
       />
       {saved ? 'Saved' : 'Not saved'}
     </Badge>
@@ -34,7 +34,7 @@ export function EditBanner({ saved, editingNo, onNewBill }) {
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate font-display font-bold text-brand-800">
+            <span className="min-w-0 font-display font-bold break-words text-brand-800">
               Editing Invoice No {formatInvoiceNo(editingNo)}
             </span>
             <SaveBadge saved={saved} />
@@ -42,7 +42,7 @@ export function EditBanner({ saved, editingNo, onNewBill }) {
           <p className="text-xs text-slate-500">Changes are applied to the existing bill.</p>
         </div>
       </div>
-      <Button variant="outline" size="sm" icon={PlusCircle} onClick={onNewBill}>
+      <Button variant="primary" size="sm" icon={PlusCircle} onClick={onNewBill}>
         New bill
       </Button>
     </div>

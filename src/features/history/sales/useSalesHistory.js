@@ -46,7 +46,7 @@ export function useSalesHistory(onDataChanged) {
     ]);
     setData(buildSalesHistoryData(invoices, returns, payments));
   }, []);
-  const { loading, refreshing, error, refresh, reload } = useFocusLoad(load);
+  const { loading, error, reload } = useFocusLoad(load);
   const closeSheet = useCallback(() => setSheet(NONE), []);
   /** after any write: reload the list and let the statement section refresh itself */
   const reloadAll = useCallback(async () => {
@@ -411,9 +411,7 @@ export function useSalesHistory(onDataChanged) {
   );
   return {
     loading,
-    refreshing,
     error,
-    refresh,
     reload,
     draft,
     setDraft,

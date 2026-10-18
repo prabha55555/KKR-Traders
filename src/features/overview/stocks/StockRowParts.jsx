@@ -1,38 +1,36 @@
-import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
+import { BellPlus, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 
 import { formatRupees } from '@/core/format';
-import { Button, IconButton, cn } from '@/ui';
+import { Badge, Button, IconButton, cn, statusTone } from '@/ui';
 
 import { hasRolls, openingActions, rollsText, stockTone } from './stocksLogic';
 
 export const TONE_CLASS = { positive: 'text-emerald-700', negative: 'text-red-600', zero: 'text-slate-500' };
 
-/** Stock-level pill styles: in stock = emerald, out = neutral, oversold (negative) = red. */
-const LEVEL = {
-  positive: {
-    pill: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    dot: 'bg-emerald-500',
-    label: 'In stock',
-  },
-  zero: { pill: 'bg-slate-100 text-slate-600 ring-slate-200', dot: 'bg-slate-400', label: 'Out of stock' },
-  negative: { pill: 'bg-red-50 text-red-700 ring-red-200', dot: 'bg-red-500', label: 'Oversold' },
-};
+/**
+ * The stock status of a product, in the app-wide status colours (same as the Stocks filter chips): In stock (green),
+ * Low stock (amber, at or below its minimum), Out of stock (red), Oversold (red, negative stock).
+ */
+export function stockStatus(row) {
+  const tone = stockTone(row.available);
+  if (tone === 'negative') return { label: 'Oversold', tone: 'danger' };
+  if (tone === 'zero') return { label: 'Out of stock', tone: statusTone('Out of stock') };
+  const min = row.minStockLevel || 0;
+  if (min > 0 && row.available <= min) return { label: 'Low stock', tone: statusTone('Low stock') };
+  return { label: 'In stock', tone: statusTone('In stock') };
+}
 
-/** Available quantity as a stock-level badge (dot + number); `showLabel` adds "In stock" / "Out of stock" / "Oversold". */
+/** Available quantity as a stock-status badge; `showLabel` adds "In stock" / "Low stock" / "Out of stock" / "Oversold". */
 export function AvailableValue({ row, className, showLabel = false }) {
-  const level = LEVEL[stockTone(row.available)];
+  const status = stockStatus(row);
   return (
-    <span
-      title={level.label}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm font-bold tabular-nums ring-1 ring-inset',
-        level.pill,
-        className,
-      )}
-    >
-      <span className={cn('size-1.5 shrink-0 rounded-full', level.dot)} aria-hidden />
-      {row.available}
-      {showLabel ? <span className="text-[11px] font-semibold opacity-80">{level.label}</span> : null}
+    <span title={status.label} className="inline-flex max-w-full">
+      <Badge tone={status.tone} className={cn('text-sm font-bold tabular-nums', className)}>
+        {row.available}
+        {showLabel ? (
+          <span className="ml-1.5 text-[11px] font-semibold opacity-80">{status.label}</span>
+        ) : null}
+      </Badge>
     </span>
   );
 }
@@ -55,28 +53,28 @@ export function RollsLine({ row, rolls, strong = false }) {
   );
 }
 
-/** Opening stock value: a gold-tinted badge when there is one, a muted 0 otherwise. */
+/** Opening stock value: a gold-tinted badge when there is one (red when negative), a muted 0 otherwise. */
 export function OpeningValue({ row }) {
   if (openingActions(row) === 'edit') {
     return (
-      <span className="inline-block rounded-full bg-gold-100 px-2.5 py-0.5 text-sm font-bold text-gold-800 tabular-nums ring-1 ring-gold-200 ring-inset">
+      <Badge tone={row.opening < 0 ? 'danger' : 'brand'} className="text-sm font-bold tabular-nums">
         {row.opening}
-      </span>
+      </Badge>
     );
   }
   return <span className="text-slate-400 tabular-nums">0</span>;
 }
 
 /**
- * "View History" plus "Add Old Stock", or "Edit Old Stock" + "Delete Old Stock" when an opening stock exists.
- * `compact` (table rows) turns Delete into an icon-only button so the actions stay on one line.
+ * "History", "Set Min Stock" and "Add Old Stock", or "Edit Old Stock" + "Delete Old Stock" when an opening stock exists.
+ * Row-level colours: History = info, min-stock alert = amber (the Low stock colour), add = gold, edit = blue, delete = red.
  */
-export function StockActions({ row, onViewHistory, onEditOpening, onDeleteOpening, onSetMinStock, compact }) {
+export function StockActions({ row, onViewHistory, onEditOpening, onDeleteOpening, onSetMinStock }) {
   const hasOpening = openingActions(row) === 'edit';
   return (
     <div className="flex items-center gap-2">
       <Button
-        variant="secondary"
+        variant="outlineInfo"
         size="sm"
         icon={Eye}
         onClick={onViewHistory}
@@ -85,9 +83,9 @@ export function StockActions({ row, onViewHistory, onEditOpening, onDeleteOpenin
         History
       </Button>
       <IconButton
-        icon={Plus}
+        icon={BellPlus}
         label="Set Min Stock"
-        variant="primary"
+        variant="outlineWarning"
         onClick={onSetMinStock}
         className="max-sm:min-h-11 max-sm:min-w-11"
       />
@@ -110,7 +108,7 @@ export function StockActions({ row, onViewHistory, onEditOpening, onDeleteOpenin
         </>
       ) : (
         <Button
-          variant="primary"
+          variant="outlineGold"
           size="sm"
           icon={Plus}
           onClick={onEditOpening}
@@ -125,7 +123,7 @@ export function StockActions({ row, onViewHistory, onEditOpening, onDeleteOpenin
 
 function Metric({ label, children }) {
   return (
-    <div className="min-w-0 rounded-xl bg-slate-50/70 px-2 py-2 text-center">
+    <div className="min-w-0 rounded-xl bg-slate-50 px-2 py-2 text-center ring-1 ring-line ring-inset">
       <div className="text-[10px] font-bold tracking-[0.08em] text-slate-500 uppercase">{label}</div>
       <div className="mt-1 text-base">{children}</div>
     </div>

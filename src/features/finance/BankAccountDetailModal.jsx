@@ -1,6 +1,7 @@
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Banknote,
   Building2,
   CalendarDays,
   Check,
@@ -16,8 +17,22 @@ import { useMemo, useState } from 'react';
 import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, formatDateIN, toNum } from '@/core/format';
-import { Button, DateField, IconButton, Modal, SearchBar, useFeedback } from '@/ui';
-import { getAccountActivity, toDateKey } from './accountsLogic';
+import {
+  Badge,
+  Button,
+  ChoiceChips,
+  DateField,
+  IconButton,
+  KeyValue,
+  Modal,
+  SearchBar,
+  StatCard,
+  StatGrid,
+  cn,
+  useFeedback,
+} from '@/ui';
+import { getAccountActivity, isLotPaymentEntry, LOT_PAYMENT_UNDO_HINT, toDateKey } from './accountsLogic';
+import { findLoanPaymentIndex, removeLoanPayment } from './financeLogic';
 
 const rs = (n) => {
   const val = toNum(n);
@@ -27,18 +42,41 @@ const rs = (n) => {
   return `₹${formatCurrency(val)}`;
 };
 
-function getTransactionBadgeStyle(item) {
+/** Entry type badge colour = the money direction (in green, out red, transfers between own accounts blue). */
+function transactionTone(item) {
   const t = item.type || '';
-  if (t.startsWith('Sale')) return 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200/70';
-  if (t.startsWith('Purchase')) return 'bg-rose-100 text-rose-800 ring-1 ring-rose-200/70';
-  if (t.includes('Expense')) return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200/70';
-  if (t.includes('Repayment')) return 'bg-purple-100 text-purple-800 ring-1 ring-purple-200/70';
-  if (t.includes('Loan')) return 'bg-teal-100 text-teal-800 ring-1 ring-teal-200/70';
-  if (t.includes('Transfer In')) return 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200/70';
-  if (t.includes('Transfer Out')) return 'bg-orange-100 text-orange-800 ring-1 ring-orange-200/70';
-  return item.direction === 'in'
-    ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200/70'
-    : 'bg-rose-100 text-rose-800 ring-1 ring-rose-200/70';
+  if (t.includes('Transfer')) return 'info';
+  return item.direction === 'in' ? 'success' : 'danger';
+}
+
+const DIRECTION_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'in', label: '+ Inflows' },
+  { value: 'out', label: '- Outflows' },
+];
+
+const BREAKDOWN_TONE = {
+  success: { ring: 'border-emerald-200', title: 'text-emerald-800', total: 'text-emerald-700' },
+  danger: { ring: 'border-red-200', title: 'text-red-800', total: 'text-red-600' },
+};
+
+/** Inflow / outflow breakdown panel: tinted title row with the total, then label ..... value lines. */
+function BreakdownCard({ title, total, tone, children }) {
+  const t = BREAKDOWN_TONE[tone];
+  return (
+    <div className={cn('min-w-0 rounded-2xl border bg-white p-3.5 shadow-card', t.ring)}>
+      <div
+        className={cn(
+          'mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-bold tracking-wider uppercase',
+          t.title,
+        )}
+      >
+        <span>{title}</span>
+        <span className={cn('font-extrabold tabular-nums', t.total)}>{total}</span>
+      </div>
+      <div className="text-xs [&>div]:text-xs">{children}</div>
+    </div>
+  );
 }
 
 function formatDateHeading(dateKey, rawDate) {
@@ -132,8 +170,13 @@ export default function BankAccountDetailModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // the finance copy of a lot payment: the lot keeps its own record, so it is undone from Dyeing & Combing
+  const isLotPayment = (item) =>
+    (item?.id?.startsWith('tx-in-') || item?.id?.startsWith('tx-out-')) && isLotPaymentEntry(item.sourceRef);
+
   const canUndo = (item) => {
     if (!item) return false;
+    if (isLotPayment(item)) return false;
     if (item.id?.startsWith('tx-in-') || item.id?.startsWith('tx-out-')) return true;
     if (item.type === 'Additional Amount' || item.type === 'Manual Deduction') return true;
     if (item.id?.startsWith('fin-pay-') || item.type === 'Loan Repayment') return true;
@@ -142,6 +185,7 @@ export default function BankAccountDetailModal({
   };
 
   const handleUndo = async (item) => {
+    if (!canUndo(item)) return;
     const isTx =
       item.id?.startsWith('tx-in-') ||
       item.id?.startsWith('tx-out-') ||
@@ -166,16 +210,19 @@ export default function BankAccountDetailModal({
         const txId = item.sourceRef?.id || item.id.replace(/^tx-(?:in|out)-/, '');
         await db.deleteAccountTransaction(txId);
       } else if (isLoanPay) {
-        const payId = item.sourceRef?.id;
+        // older loan payments have no id: the loan and the position the activity list recorded find exactly this one
         const allRecords = allData?.financeRecords || [];
-        const record = allRecords.find((r) => (r.payments || []).some((p) => p.id === payId));
-        if (record && payId) {
-          const updated = {
-            ...record,
-            payments: (record.payments || []).filter((p) => p.id !== payId),
-          };
-          await db.saveFinanceRecord(updated);
+        const record =
+          allRecords.find((r) => item.recordId !== undefined && r.id === item.recordId) ||
+          allRecords.find((r) => findLoanPaymentIndex(r, item.sourceRef) >= 0);
+        const updated =
+          record &&
+          removeLoanPayment(record, findLoanPaymentIndex(record, item.sourceRef, item.paymentIndex));
+        if (!updated) {
+          toast('Error', 'This loan payment could not be found. Please refresh and try again.', 'error');
+          return;
         }
+        await db.saveFinanceRecord(updated);
       } else if (isExp) {
         const expId = item.sourceRef?.id || item.id.replace(/^exp-/, '');
         await db.deleteExpense(expId);
@@ -269,6 +316,14 @@ export default function BankAccountDetailModal({
 
   if (!account) return null;
 
+  const netMovement = activity.totalInflows - activity.totalOutflows;
+  const filtering = !!(searchDate || searchQuery || filterType !== 'all');
+  const resetFilters = () => {
+    setSearchDate('');
+    setSearchQuery('');
+    setFilterType('all');
+  };
+
   return (
     <Modal
       open={true}
@@ -297,63 +352,40 @@ export default function BankAccountDetailModal({
     >
       <div className="space-y-5">
         {/* TOP SUMMARY STATS */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="col-span-2 rounded-2xl border border-line bg-gradient-to-br from-brand-900 to-brand-950 p-4 text-white shadow-sm sm:col-span-1">
-            <div className="text-[11px] font-semibold tracking-wider text-gold-300 uppercase">
-              Current Balance
-            </div>
-            <div className="mt-1 font-display text-2xl font-black text-white sm:text-3xl">
-              {rs(activity.computedCurrentBalance)}
-            </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-brand-200">
-              <span>Opening:</span>
-              <span className="font-semibold text-white">{rs(activity.openingBalance)}</span>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-line bg-emerald-50/60 p-4 ring-1 ring-emerald-200/50">
-            <div className="flex items-center justify-between text-[11px] font-semibold tracking-wider text-emerald-800 uppercase">
-              <span>Total Inflows</span>
-              <ArrowDownLeft className="size-4 text-emerald-600" />
-            </div>
-            <div className="mt-1 font-display text-xl font-extrabold text-emerald-700 sm:text-2xl">
-              +{rs(activity.totalInflows)}
-            </div>
-            <div className="mt-2 text-[10px] text-emerald-600">Sales, Loans, Deposits & Inflows</div>
-          </div>
-
-          <div className="rounded-2xl border border-line bg-rose-50/60 p-4 ring-1 ring-rose-200/50">
-            <div className="flex items-center justify-between text-[11px] font-semibold tracking-wider text-rose-800 uppercase">
-              <span>Total Outflows</span>
-              <ArrowUpRight className="size-4 text-rose-600" />
-            </div>
-            <div className="mt-1 font-display text-xl font-extrabold text-rose-700 sm:text-2xl">
-              -{rs(activity.totalOutflows)}
-            </div>
-            <div className="mt-2 text-[10px] text-rose-600">Purchases, Exps, Deductions & Outflows</div>
-          </div>
-
-          <div className="rounded-2xl border border-line bg-slate-50 p-4">
-            <div className="text-[11px] font-semibold tracking-wider text-slate-600 uppercase">
-              Net Movement
-            </div>
-            <div
-              className={`mt-1 font-display text-xl font-extrabold sm:text-2xl ${
-                activity.totalInflows - activity.totalOutflows >= 0 ? 'text-emerald-700' : 'text-rose-700'
-              }`}
-            >
-              {activity.totalInflows - activity.totalOutflows >= 0 ? '+' : ''}
-              {rs(activity.totalInflows - activity.totalOutflows)}
-            </div>
-            <div className="mt-2 text-[10px] text-slate-500">
-              {activity.items.length} total entries recorded
-            </div>
-          </div>
-        </div>
+        <StatGrid cols={4}>
+          <StatCard
+            icon={isCash ? Banknote : Building2}
+            label="Current Balance"
+            value={rs(activity.computedCurrentBalance)}
+            tone={toNum(activity.computedCurrentBalance) < 0 ? 'danger' : 'brand'}
+            hint={`Opening: ${rs(activity.openingBalance)}`}
+          />
+          <StatCard
+            icon={ArrowDownLeft}
+            label="Total Inflows"
+            value={`+${rs(activity.totalInflows)}`}
+            tone="success"
+            hint="Sales, Loans, Deposits & Inflows"
+          />
+          <StatCard
+            icon={ArrowUpRight}
+            label="Total Outflows"
+            value={`-${rs(activity.totalOutflows)}`}
+            tone="danger"
+            hint="Purchases, Exps, Deductions & Outflows"
+          />
+          <StatCard
+            icon={Scale}
+            label="Net Movement"
+            value={`${netMovement >= 0 ? '+' : ''}${rs(netMovement)}`}
+            tone={netMovement >= 0 ? 'success' : 'danger'}
+            hint={`${activity.items.length} total entries recorded`}
+          />
+        </StatGrid>
 
         {/* DETAILS OF OLDER ACCOUNTS (bank name / number / type / notes), only when present */}
         {hasMetadata && (
-          <div className="rounded-2xl border border-line bg-slate-50/70 p-3.5 sm:p-4">
+          <div className="rounded-2xl border border-line bg-slate-50/70 p-4">
             <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
               {legacyBank && (
                 <div>
@@ -370,7 +402,7 @@ export default function BankAccountDetailModal({
                       icon={copied ? Check : Copy}
                       label="Copy Account Number"
                       onClick={handleCopyAccNumber}
-                      className="text-slate-400 hover:text-slate-700"
+                      variant={copied ? 'outlineSuccess' : 'outline'}
                     />
                   </div>
                 </div>
@@ -391,106 +423,97 @@ export default function BankAccountDetailModal({
           </div>
         )}
 
-        {/* INFLOW / OUTFLOW BREAKDOWN PILLS */}
+        {/* INFLOW / OUTFLOW BREAKDOWN */}
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-emerald-200/70 bg-gradient-to-br from-white to-emerald-50/20 p-3 shadow-sm">
-            <div className="mb-2 flex items-center justify-between text-xs font-bold tracking-wider text-emerald-800 uppercase">
-              <span>Inflow Sources</span>
-              <span className="font-extrabold text-emerald-700">+{rs(activity.totalInflows)}</span>
-            </div>
-            <div className="space-y-1.5 text-xs text-slate-600">
-              <div className="flex justify-between">
-                <span>{isCash ? 'Sales Collections (Cash):' : 'Sales Collections (Account):'}</span>
-                <span className="font-bold text-emerald-700">{rs(activity.breakdown.salesInflow)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Loans Borrowed (Finance):</span>
-                <span className="font-bold text-teal-700">{rs(activity.breakdown.loanInflow)}</span>
-              </div>
-              {activity.breakdown.transferInflow > 0 && (
-                <div className="flex justify-between">
-                  <span>Transfers In (From Cash/Banks):</span>
-                  <span className="font-bold text-indigo-700">{rs(activity.breakdown.transferInflow)}</span>
-                </div>
-              )}
-              {(activity.breakdown.additionalInflow > 0 ||
-                (!activity.breakdown.salesInflow &&
-                  !activity.breakdown.loanInflow &&
-                  !activity.breakdown.transferInflow &&
-                  activity.totalInflows > 0)) && (
-                <div className="flex justify-between">
-                  <span>Added Amounts &amp; Balance Edits:</span>
-                  <span className="font-bold text-emerald-700">
-                    +{rs(activity.breakdown.additionalInflow)}
-                  </span>
-                </div>
-              )}
-              {activity.breakdown.purchaseReturnInflow > 0 && (
-                <div className="flex justify-between">
-                  <span>Purchase Return Refunds:</span>
-                  <span className="font-bold text-teal-700">
-                    +{rs(activity.breakdown.purchaseReturnInflow)}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
+          <BreakdownCard title="Inflow Sources" total={`+${rs(activity.totalInflows)}`} tone="success">
+            <KeyValue
+              label={isCash ? 'Sales Collections (Cash):' : 'Sales Collections (Account):'}
+              value={rs(activity.breakdown.salesInflow)}
+              valueClassName="text-emerald-700"
+            />
+            <KeyValue
+              label="Loans Borrowed (Finance):"
+              value={rs(activity.breakdown.loanInflow)}
+              valueClassName="text-emerald-700"
+            />
+            {activity.breakdown.transferInflow > 0 && (
+              <KeyValue
+                label="Transfers In (From Cash/Banks):"
+                value={rs(activity.breakdown.transferInflow)}
+                valueClassName="text-sky-700"
+              />
+            )}
+            {(activity.breakdown.additionalInflow > 0 ||
+              (!activity.breakdown.salesInflow &&
+                !activity.breakdown.loanInflow &&
+                !activity.breakdown.transferInflow &&
+                activity.totalInflows > 0)) && (
+              <KeyValue
+                label="Added Amounts & Balance Edits:"
+                value={`+${rs(activity.breakdown.additionalInflow)}`}
+                valueClassName="text-emerald-700"
+              />
+            )}
+            {activity.breakdown.purchaseReturnInflow > 0 && (
+              <KeyValue
+                label="Purchase Return Refunds:"
+                value={`+${rs(activity.breakdown.purchaseReturnInflow)}`}
+                valueClassName="text-emerald-700"
+              />
+            )}
+          </BreakdownCard>
 
-          <div className="rounded-xl border border-rose-200/70 bg-gradient-to-br from-white to-rose-50/20 p-3 shadow-sm">
-            <div className="mb-2 flex items-center justify-between text-xs font-bold tracking-wider text-rose-800 uppercase">
-              <span>Outflow Destinations</span>
-              <span className="font-extrabold text-rose-700">-{rs(activity.totalOutflows)}</span>
-            </div>
-            <div className="space-y-1.5 text-xs text-slate-600">
-              <div className="flex justify-between">
-                <span>Purchase Payments:</span>
-                <span className="font-bold text-rose-700">{rs(activity.breakdown.purchaseOutflow)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Business Expenses:</span>
-                <span className="font-bold text-amber-700">{rs(activity.breakdown.expenseOutflow)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Loan Repayments:</span>
-                <span className="font-bold text-purple-700">{rs(activity.breakdown.loanRepayOutflow)}</span>
-              </div>
-              {activity.breakdown.transferOutflow > 0 && (
-                <div className="flex justify-between">
-                  <span>Transfers Out (To Cash/Banks):</span>
-                  <span className="font-bold text-orange-700">{rs(activity.breakdown.transferOutflow)}</span>
-                </div>
-              )}
-              {activity.breakdown.manualDeductionOutflow > 0 && (
-                <div className="flex justify-between">
-                  <span>Deductions &amp; Other Payments:</span>
-                  <span className="font-bold text-rose-700">
-                    -{rs(activity.breakdown.manualDeductionOutflow)}
-                  </span>
-                </div>
-              )}
-              {activity.breakdown.salesReturnOutflow > 0 && (
-                <div className="flex justify-between">
-                  <span>Sales Return Refunds:</span>
-                  <span className="font-bold text-rose-700">
-                    -{rs(activity.breakdown.salesReturnOutflow)}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
+          <BreakdownCard title="Outflow Destinations" total={`-${rs(activity.totalOutflows)}`} tone="danger">
+            <KeyValue
+              label="Purchase Payments:"
+              value={rs(activity.breakdown.purchaseOutflow)}
+              valueClassName="text-red-600"
+            />
+            <KeyValue
+              label="Business Expenses:"
+              value={rs(activity.breakdown.expenseOutflow)}
+              valueClassName="text-red-600"
+            />
+            <KeyValue
+              label="Loan Repayments:"
+              value={rs(activity.breakdown.loanRepayOutflow)}
+              valueClassName="text-red-600"
+            />
+            {activity.breakdown.transferOutflow > 0 && (
+              <KeyValue
+                label="Transfers Out (To Cash/Banks):"
+                value={rs(activity.breakdown.transferOutflow)}
+                valueClassName="text-sky-700"
+              />
+            )}
+            {activity.breakdown.manualDeductionOutflow > 0 && (
+              <KeyValue
+                label="Deductions & Other Payments:"
+                value={`-${rs(activity.breakdown.manualDeductionOutflow)}`}
+                valueClassName="text-red-600"
+              />
+            )}
+            {activity.breakdown.salesReturnOutflow > 0 && (
+              <KeyValue
+                label="Sales Return Refunds:"
+                value={`-${rs(activity.breakdown.salesReturnOutflow)}`}
+                valueClassName="text-red-600"
+              />
+            )}
+          </BreakdownCard>
         </div>
 
         {/* TRANSACTION ACTIVITY LEDGER */}
         <div className="space-y-3">
           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-display text-sm font-bold text-slate-800 sm:text-base">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-display text-sm font-bold text-brand-800 sm:text-base">
                   Transaction History
                 </h3>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">
+                <Badge tone="neutral" className="tabular-nums">
                   {filteredItems.length}
-                </span>
+                </Badge>
                 {groupedByDate.length > 0 && (
                   <span className="text-[11px] font-semibold text-slate-500">
                     ({groupedByDate.length} {groupedByDate.length === 1 ? 'day' : 'days'})
@@ -500,46 +523,12 @@ export default function BankAccountDetailModal({
               <p className="text-[11px] text-slate-500">Datewise itemized money in and out of this account</p>
             </div>
 
-            {/* FILTER DIRECTION BUTTONS */}
-            <div className="flex items-center self-start rounded-xl bg-slate-100 p-1 text-xs sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setFilterType('all')}
-                className={`min-h-8 rounded-lg px-3 font-semibold transition ${
-                  filterType === 'all'
-                    ? 'bg-white text-brand-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterType('in')}
-                className={`min-h-8 rounded-lg px-3 font-semibold transition ${
-                  filterType === 'in'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                + Inflows
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterType('out')}
-                className={`min-h-8 rounded-lg px-3 font-semibold transition ${
-                  filterType === 'out'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                - Outflows
-              </button>
-            </div>
+            {/* FILTER DIRECTION */}
+            <ChoiceChips value={filterType} onChange={setFilterType} options={DIRECTION_OPTIONS} />
           </div>
 
           {/* DATEWISE SEARCH & FILTER CONTROLS BAR */}
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-slate-50/70 p-2 sm:p-2.5">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-slate-50/70 p-2.5">
             {/* Specific Date Picker Search */}
             <DateField
               value={searchDate}
@@ -548,23 +537,15 @@ export default function BankAccountDetailModal({
               className="w-full sm:w-44"
             />
 
-            {/* Quick Date Chips */}
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant={searchDate === todayKey ? 'secondary' : 'outline'}
-                onClick={() => setSearchDate(searchDate === todayKey ? '' : todayKey)}
-              >
-                Today
-              </Button>
-              <Button
-                size="sm"
-                variant={searchDate === yesterdayKey ? 'secondary' : 'outline'}
-                onClick={() => setSearchDate(searchDate === yesterdayKey ? '' : yesterdayKey)}
-              >
-                Yesterday
-              </Button>
-            </div>
+            {/* Quick Date Chips (tap again to clear) */}
+            <ChoiceChips
+              value={searchDate}
+              onChange={(v) => setSearchDate(v === searchDate ? '' : v)}
+              options={[
+                { value: todayKey, label: 'Today' },
+                { value: yesterdayKey, label: 'Yesterday' },
+              ]}
+            />
 
             {/* Keyword / Text Search */}
             <SearchBar
@@ -576,17 +557,8 @@ export default function BankAccountDetailModal({
             />
 
             {/* Reset All Filters Button */}
-            {(searchDate || searchQuery || filterType !== 'all') && (
-              <Button
-                size="sm"
-                variant="outlineDanger"
-                icon={X}
-                onClick={() => {
-                  setSearchDate('');
-                  setSearchQuery('');
-                  setFilterType('all');
-                }}
-              >
+            {filtering && (
+              <Button size="sm" variant="outlineWarning" icon={X} onClick={resetFilters}>
                 Clear All
               </Button>
             )}
@@ -594,16 +566,16 @@ export default function BankAccountDetailModal({
 
           {/* ACTIVE FILTER STATUS PILL */}
           {searchDate && (
-            <div className="flex w-fit items-center gap-1.5 rounded-lg border border-brand-200/60 bg-brand-50 px-2.5 py-1 text-xs text-brand-900">
-              <CalendarDays className="size-3.5 text-brand-700" />
-              <span>
+            <div className="flex w-fit max-w-full items-center gap-1.5 rounded-lg bg-gold-50 px-2.5 py-1 text-xs text-brand-800 ring-1 ring-gold-200 ring-inset">
+              <CalendarDays className="size-3.5 shrink-0 text-gold-700" aria-hidden />
+              <span className="min-w-0">
                 Showing transactions for: <strong>{formatDateHeading(searchDate)}</strong>
               </span>
               <button
                 type="button"
                 onClick={() => setSearchDate('')}
                 aria-label="Clear date filter"
-                className="ml-1 rounded-full p-1 text-brand-700 hover:bg-brand-100 hover:text-brand-950"
+                className="ml-1 shrink-0 rounded-full p-1 text-gold-700 transition hover:bg-gold-100 hover:text-brand-900 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none"
               >
                 <X className="size-3.5" />
               </button>
@@ -612,26 +584,18 @@ export default function BankAccountDetailModal({
 
           {/* DATEWISE TRANSACTION LEDGER GROUPS */}
           {filteredItems.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center">
-              <Building2 className="mx-auto size-8 text-slate-400" />
-              <p className="mt-2 text-sm font-semibold text-slate-700">No transactions found</p>
+            <div className="rounded-2xl border border-dashed border-line p-6 text-center">
+              <Building2 className="mx-auto size-8 text-gold-600" aria-hidden />
+              <p className="mt-2 text-sm font-semibold text-brand-800">No transactions found</p>
               <p className="mt-0.5 text-xs text-slate-500">
-                {searchDate || searchQuery || filterType !== 'all'
+                {filtering
                   ? 'No entries match your date or search filters.'
                   : 'No sales, purchases, loans or entries recorded for this account yet.'}
               </p>
-              {(searchDate || searchQuery || filterType !== 'all') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchDate('');
-                    setSearchQuery('');
-                    setFilterType('all');
-                  }}
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-brand-800 hover:underline"
-                >
+              {filtering && (
+                <Button size="sm" variant="outlineWarning" onClick={resetFilters} className="mt-3">
                   Reset all filters
-                </button>
+                </Button>
               )}
             </div>
           ) : (
@@ -644,23 +608,23 @@ export default function BankAccountDetailModal({
                 return (
                   <div
                     key={group.dateKey}
-                    className="overflow-hidden rounded-xl border border-line bg-white shadow-sm"
+                    className="overflow-hidden rounded-2xl border border-line bg-white shadow-card"
                   >
                     {/* DATE SECTION HEADER */}
                     <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/95 px-3 py-2 backdrop-blur-sm">
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         <div
-                          className={`flex size-6 items-center justify-center rounded-lg ${
+                          className={`flex size-6 shrink-0 items-center justify-center rounded-lg ${
                             isToday
                               ? 'bg-brand-900 text-gold-300'
                               : isYesterday
-                                ? 'bg-indigo-100 text-indigo-700'
+                                ? 'bg-gold-100 text-gold-700'
                                 : 'bg-slate-200 text-slate-600'
                           }`}
                         >
-                          <CalendarDays className="size-3.5" />
+                          <CalendarDays className="size-3.5" aria-hidden />
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-display text-xs font-bold text-slate-900">
                             {isToday ? 'Today' : isYesterday ? 'Yesterday' : formattedGroupDate}
                           </span>
@@ -676,9 +640,9 @@ export default function BankAccountDetailModal({
                       </div>
 
                       {/* DAILY INFLOW / OUTFLOW TOTALS */}
-                      <div className="flex items-center gap-2.5 text-xs font-bold">
+                      <div className="flex items-center gap-2.5 text-xs font-bold tabular-nums">
                         {group.totalIn > 0 && <span className="text-emerald-700">+{rs(group.totalIn)}</span>}
-                        {group.totalOut > 0 && <span className="text-rose-700">-{rs(group.totalOut)}</span>}
+                        {group.totalOut > 0 && <span className="text-red-600">-{rs(group.totalOut)}</span>}
                       </div>
                     </div>
 
@@ -691,14 +655,14 @@ export default function BankAccountDetailModal({
                         return (
                           <div
                             key={item.id}
-                            className="flex items-center justify-between p-3 transition hover:bg-slate-50/80"
+                            className="flex items-center justify-between gap-3 p-3 transition hover:bg-gold-50/40"
                           >
-                            <div className="flex items-center gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
                               <div
                                 className={`flex size-8 shrink-0 items-center justify-center rounded-xl ring-1 ${
                                   isIn
                                     ? 'bg-emerald-50 text-emerald-600 ring-emerald-200'
-                                    : 'bg-rose-50 text-rose-600 ring-rose-200'
+                                    : 'bg-red-50 text-red-600 ring-red-200'
                                 }`}
                               >
                                 {isIn ? (
@@ -707,20 +671,14 @@ export default function BankAccountDetailModal({
                                   <ArrowUpRight className="size-4" />
                                 )}
                               </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-semibold text-slate-900 sm:text-sm">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <span className="text-xs font-semibold break-words text-slate-900 sm:text-sm">
                                     {item.title}
                                   </span>
-                                  <span
-                                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${getTransactionBadgeStyle(
-                                      item,
-                                    )}`}
-                                  >
-                                    {item.type}
-                                  </span>
+                                  <Badge tone={transactionTone(item)}>{item.type}</Badge>
                                 </div>
-                                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-500">
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
                                   <span>{formatDateShort(item.date)}</span>
                                   {timeStr && (
                                     <>
@@ -731,26 +689,31 @@ export default function BankAccountDetailModal({
                                   {item.subtitle && (
                                     <>
                                       <span>•</span>
-                                      <span>{item.subtitle}</span>
+                                      <span className="break-words">{item.subtitle}</span>
                                     </>
                                   )}
                                 </div>
                               </div>
                             </div>
 
-                            <div className="flex flex-col items-end text-right">
+                            <div className="flex shrink-0 flex-col items-end text-right">
                               <div
-                                className={`font-display text-sm font-extrabold tabular-nums sm:text-base ${
-                                  isIn ? 'text-emerald-700' : 'text-rose-700'
+                                className={`font-display text-sm font-extrabold whitespace-nowrap tabular-nums sm:text-base ${
+                                  isIn ? 'text-emerald-700' : 'text-red-600'
                                 }`}
                               >
                                 {isIn ? '+' : '-'}
                                 {rs(item.amount)}
                               </div>
+                              {isLotPayment(item) && (
+                                <span className="mt-1 text-[11px] font-semibold text-slate-500">
+                                  {LOT_PAYMENT_UNDO_HINT}
+                                </span>
+                              )}
                               {canUndo(item) && (
                                 <Button
                                   size="sm"
-                                  variant="outlineDanger"
+                                  variant="outlineWarning"
                                   icon={RotateCcw}
                                   onClick={(e) => {
                                     e.stopPropagation();

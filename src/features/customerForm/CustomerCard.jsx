@@ -1,4 +1,4 @@
-import { IndianRupee, MapPin, Pencil, Phone, Trash2, Wallet } from 'lucide-react';
+import { MapPin, Pencil, Phone, Trash2, Wallet } from 'lucide-react';
 import { memo } from 'react';
 
 import { Button } from '@/ui';
@@ -27,7 +27,7 @@ export const CustomerCard = memo(function CustomerCard({ customer, onEdit, onDel
       <div className="mt-3 space-y-1.5 rounded-xl bg-slate-50/70 p-3">
         <InfoRow icon={Phone} text={customer.phone || 'N/A'} />
         <InfoRow icon={MapPin} text={customer.address || 'N/A'} />
-        <div className="mt-1 flex items-center justify-between border-t border-slate-200/60 pt-2 text-xs">
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 border-t border-slate-200/60 pt-2 text-xs">
           <span className="flex items-center gap-1.5 font-medium text-slate-600">
             <Wallet className="size-3.5 text-gold-600" aria-hidden />
             Opening Balance:

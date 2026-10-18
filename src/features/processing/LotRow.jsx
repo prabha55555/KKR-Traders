@@ -1,6 +1,7 @@
 /**
- * One processing lot as a full-width row (header strip with the DC, status and every action; then labelled detail
- * columns). The details depend on the STAGE being looked at, so each process shows only its own information:
+ * One processing lot as a full-width row (RecordRow: header strip with the DC, status and every action; then labelled
+ * detail cells drawn like the app's bordered tables). The details depend on the STAGE being looked at, so each process
+ * shows only its own information:
  *  - 'dyeing'    at the dyeing unit: my DC, what was sent (rolls / kg), what it becomes, the dyeing charge
  *  - 'combing'   at the combing unit: the dyeing unit's DC, what the combing unit received, dyeing loss, combing charge
  *  - 'completed' received back: the three DCs, rolls / kg at each step, weight loss, cost per kg
@@ -32,12 +33,51 @@ export function daysSince(iso, today = todayISO()) {
   return Number.isNaN(a) || Number.isNaN(b) ? 0 : Math.max(0, Math.round((b - a) / 86400000));
 }
 
-function Cell({ label, children, sub, tone }) {
+/**
+ * A record as a full-width row, shared by the lots and the Old Batches archive: a header strip (the DC / batch number
+ * chip and status badges on the left, the action buttons on the right; on phones the buttons share each line evenly),
+ * then labelled detail cells laid out like the app's bordered tables (`.erp-table`): every cell outlined, a small-caps
+ * header band per cell, text that wraps instead of clipping. One column of cells on phones, two on tablets, four on
+ * desktop. `footer` = an optional line under the cells.
+ */
+export function RecordRow({ code, meta, actions, children, footer }) {
   return (
-    <div className="min-w-0">
-      <div className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{label}</div>
-      <div className={cn('mt-0.5 truncate text-sm font-semibold text-slate-800', tone)}>{children}</div>
-      {sub ? <div className="mt-0.5 truncate text-xs text-slate-500">{sub}</div> : null}
+    <article className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-card">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 border-b border-slate-300 px-3.5 py-3 sm:px-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="rounded bg-slate-900 px-2.5 py-1 font-mono text-sm font-bold text-white">
+            {code}
+          </span>
+          {meta}
+        </div>
+        <div className="flex flex-wrap gap-1.5 max-sm:w-full max-sm:*:flex-auto">{actions}</div>
+      </header>
+      <dl className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">{children}</dl>
+      {footer ? (
+        <p className="border-t border-slate-200 px-3.5 py-2 text-xs wrap-anywhere text-slate-500 sm:px-4">
+          {footer}
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
+/** One labelled cell of a RecordRow: small-caps label band, value, optional grey `sub` line. */
+export function Cell({ label, children, sub, tone }) {
+  return (
+    <div className="flex min-w-0 flex-col bg-white">
+      <dt className="border-b border-slate-200 bg-slate-100 px-3 py-1.5 text-[0.6875rem] leading-4 font-bold tracking-[0.06em] text-slate-600 uppercase">
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          'px-3 py-2.5 text-sm font-semibold wrap-anywhere tabular-nums',
+          tone ?? 'text-slate-800',
+        )}
+      >
+        {children}
+        {sub ? <span className="mt-0.5 block text-xs font-normal text-slate-500">{sub}</span> : null}
+      </dd>
     </div>
   );
 }
@@ -137,10 +177,11 @@ function CompletedDetails({ lot, t }) {
   );
 }
 
+/** Stage label; its colour comes from the app-wide status map (at dyeing / at combing = blue, received = green). */
 const STATUS = {
-  dyeing: { label: 'At dyeing', tone: 'info' },
-  combing: { label: 'At combing', tone: 'warning' },
-  completed: { label: 'Received', tone: 'success' },
+  dyeing: 'At dyeing',
+  combing: 'At combing',
+  completed: 'Received',
 };
 
 /** `stage`: 'dyeing' | 'combing' | 'completed'. */
@@ -163,52 +204,58 @@ export function LotRow({ lot, stage, onNext, onPrint, onAction }) {
   const payments = (lot.dyeingPayments?.length ?? 0) + (lot.combingPayments?.length ?? 0);
   const returns = lot.returns?.length ?? 0;
   return (
-    <article className="rounded-2xl border border-line bg-white p-3.5 shadow-card sm:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="rounded bg-slate-900 px-2.5 py-1 font-mono text-sm font-bold text-white">
-            {formatDcNo(lot.dcNo)}
-          </span>
-          <span className="text-xs font-medium text-slate-500">{formatDateIN(lot.dcDate)}</span>
-          <Badge tone={STATUS[stage].tone}>
-            {STATUS[stage].label}
+    <RecordRow
+      code={formatDcNo(lot.dcNo)}
+      meta={
+        <>
+          <span className="text-xs font-medium text-slate-500 tabular-nums">{formatDateIN(lot.dcDate)}</span>
+          <Badge status={STATUS[stage]}>
+            {STATUS[stage]}
             {stage !== 'completed' && days ? ` · ${days} day${days === 1 ? '' : 's'}` : ''}
           </Badge>
-          {due > 0 ? <Badge tone="danger">Due {rupees(due)}</Badge> : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+          {due > 0 ? <Badge status="Due">Due {rupees(due)}</Badge> : null}
+        </>
+      }
+      actions={
+        <>
           {next ? (
-            <Button size="sm" icon={next.icon} title={next.title} onClick={() => onNext(lot)}>
+            <Button
+              size="sm"
+              variant="success"
+              icon={next.icon}
+              title={next.title}
+              onClick={() => onNext(lot)}
+            >
               {next.label}
             </Button>
           ) : null}
           <Button size="sm" variant="outline" icon={Printer} onClick={() => onPrint(lot)} title="Print my DC">
             DC
           </Button>
-          <Button size="sm" variant="outline" icon={Wallet} onClick={() => onAction('pay', lot)}>
+          <Button size="sm" variant="outlineSuccess" icon={Wallet} onClick={() => onAction('pay', lot)}>
             + Pay
           </Button>
-          <Button size="sm" variant="outline" icon={History} onClick={() => onAction('payHistory', lot)}>
+          <Button size="sm" variant="outlineInfo" icon={History} onClick={() => onAction('payHistory', lot)}>
             Payments{payments ? ` (${payments})` : ''}
           </Button>
-          <Button size="sm" variant="outline" icon={RotateCcw} onClick={() => onAction('return', lot)}>
+          <Button size="sm" variant="outlineWarning" icon={RotateCcw} onClick={() => onAction('return', lot)}>
             + Return
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="outlineWarning"
             icon={ListRestart}
             onClick={() => onAction('returnHistory', lot)}
           >
             Returns{returns ? ` (${returns})` : ''}
           </Button>
-          <Button size="sm" variant="outline" icon={Pencil} onClick={() => onAction('edit', lot)}>
+          <Button size="sm" variant="edit" icon={Pencil} onClick={() => onAction('edit', lot)}>
             Edit
           </Button>
           {lot.status !== LOT_STATUS.AT_DYEING ? (
             <Button
               size="sm"
-              variant="ghost"
+              variant="outlineWarning"
               icon={Undo2}
               onClick={() => onAction('undo', lot)}
               title={lot.status === LOT_STATUS.RECEIVED ? 'Undo the receipt' : "Undo the dyeing unit's DC"}
@@ -219,18 +266,17 @@ export function LotRow({ lot, stage, onNext, onPrint, onAction }) {
           <Button size="sm" variant="outlineDanger" icon={Trash2} onClick={() => onAction('delete', lot)}>
             Delete
           </Button>
-        </div>
-      </div>
-      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stage === 'dyeing' ? (
-          <DyeingDetails lot={lot} t={t} />
-        ) : stage === 'combing' ? (
-          <CombingDetails lot={lot} t={t} />
-        ) : (
-          <CompletedDetails lot={lot} t={t} />
-        )}
-      </div>
-      {lot.notes ? <p className="mt-2 text-xs text-slate-500">Note: {lot.notes}</p> : null}
-    </article>
+        </>
+      }
+      footer={lot.notes ? `Note: ${lot.notes}` : null}
+    >
+      {stage === 'dyeing' ? (
+        <DyeingDetails lot={lot} t={t} />
+      ) : stage === 'combing' ? (
+        <CombingDetails lot={lot} t={t} />
+      ) : (
+        <CompletedDetails lot={lot} t={t} />
+      )}
+    </RecordRow>
   );
 }

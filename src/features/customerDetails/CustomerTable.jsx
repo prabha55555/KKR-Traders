@@ -42,7 +42,6 @@ export function CustomerTable({ rows, onRemind }) {
         key,
         header,
         align: 'right',
-        className: 'whitespace-nowrap tabular-nums',
         render: (c) => {
           const m = buildRowModel(c);
           return <span className={`font-semibold ${TONE_CLASS[m.tones[key]]}`}>{m[key]}</span>;

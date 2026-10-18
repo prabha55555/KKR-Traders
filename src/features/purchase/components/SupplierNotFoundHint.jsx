@@ -15,7 +15,7 @@ export function SupplierNotFoundHint({ phone }) {
         </p>
       </div>
       <Button
-        variant="warning"
+        variant="primary"
         icon={UserPlus}
         className="mt-2.5"
         onClick={() => nav.push(`/purchase/add-supplier?phone=${encodeURIComponent(typed)}`)}

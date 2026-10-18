@@ -8,10 +8,11 @@
  */
 import { FileText, RotateCcw, Save, Share2 } from 'lucide-react';
 import { Button } from '@/ui';
-import { cn } from '@/ui/cn';
 
-// Colour = purpose: Save green · Generate gold · Share purple (see Button.jsx)
-const barBtn = 'min-h-14! flex-col! gap-0.5! rounded-xl! px-1! text-xs!';
+// Colour = purpose (ACTION COLOURS in Button.jsx): Save green · Generate gold · Share purple · Clear amber · New gold.
+// Phone bar: equal columns that may shrink, a long label ("Update Bill") wraps instead of overflowing on a 360px phone.
+const barBtn =
+  'min-h-14! min-w-0! flex-1 flex-col! gap-0.5! rounded-xl! px-1! text-xs! leading-tight! whitespace-normal! text-center';
 
 export function BillActionBar({
   layout = 'bar',
@@ -23,6 +24,7 @@ export function BillActionBar({
   onReset,
 }) {
   const saveA11y = `${saveLabel.split(' ')[0]} BILL`;
+  const resetVariant = saved ? 'outlineGold' : 'outlineWarning';
   if (layout === 'panel') {
     return (
       <div className="space-y-2.5">
@@ -30,7 +32,7 @@ export function BillActionBar({
           {saveLabel}
         </Button>
         <div className="grid grid-cols-2 gap-2.5">
-          <Button icon={FileText} aria-label="Generate BILL" onClick={onGenerate}>
+          <Button variant="primary" icon={FileText} aria-label="Generate BILL" onClick={onGenerate}>
             Generate BILL
           </Button>
           <Button variant="purple" icon={Share2} aria-label="Share BILL" onClick={onShare}>
@@ -38,7 +40,7 @@ export function BillActionBar({
           </Button>
         </div>
         {onReset && (
-          <Button fullWidth variant="outline" icon={RotateCcw} onClick={onReset}>
+          <Button fullWidth variant={resetVariant} icon={RotateCcw} onClick={onReset}>
             {saved ? 'New Bill' : 'Clear Form'}
           </Button>
         )}
@@ -58,36 +60,25 @@ export function BillActionBar({
   }
   return (
     <div className="flex gap-2">
-      <Button
-        className={cn(barBtn, 'flex-1')}
-        variant="success"
-        icon={Save}
-        aria-label={saveA11y}
-        onClick={onSave}
-      >
+      <Button className={barBtn} variant="success" icon={Save} aria-label={saveA11y} onClick={onSave}>
         {saveLabel}
       </Button>
       <Button
-        className={cn(barBtn, 'flex-1')}
+        className={barBtn}
+        variant="primary"
         icon={FileText}
         aria-label="Generate BILL"
         onClick={onGenerate}
       >
         Generate
       </Button>
-      <Button
-        className={cn(barBtn, 'flex-1')}
-        variant="purple"
-        icon={Share2}
-        aria-label="Share BILL"
-        onClick={onShare}
-      >
+      <Button className={barBtn} variant="purple" icon={Share2} aria-label="Share BILL" onClick={onShare}>
         Share
       </Button>
       {onReset && (
         <Button
-          className={cn(barBtn, 'flex-1')}
-          variant="outline"
+          className={barBtn}
+          variant={resetVariant}
           icon={RotateCcw}
           aria-label={saved ? 'New Bill' : 'Clear Form'}
           onClick={onReset}

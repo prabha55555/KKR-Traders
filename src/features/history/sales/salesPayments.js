@@ -29,7 +29,8 @@ export function applyAdditionalPayment(invoice, amounts) {
       account: current.account + added.account,
     },
   };
-  if (amounts.bankAccountId) {
+  // the bill keeps the bank of the money taken at the sale; a later payment's bank is on its own payment record
+  if (amounts.bankAccountId && !invoice.bankAccountId) {
     updated.bankAccountId = amounts.bankAccountId;
   }
   return updated;

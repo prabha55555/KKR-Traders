@@ -16,8 +16,28 @@
  */
 import { useId, useMemo, useState } from 'react';
 import { lookupStock, stockLabel } from '@/features/overview/stocks/stocksLogic';
+import { Badge } from '@/ui';
 import { cn } from '@/ui/cn';
 import { isKnownProduct, matchShortcuts } from './productMatch';
+
+/** The app's Badge sized down for a hint under an input / inside a table cell. */
+export const CHIP_CLASS = 'px-1.5! text-[10px]! leading-4! tabular-nums';
+
+/**
+ * Stock pill in the app's status colours: green in stock, amber none left, red oversold (`value` decides the colour).
+ * `title` = optional tooltip.
+ */
+export function StockBadge({ value, title, className, children }) {
+  const badge = (
+    <Badge
+      tone={value > 0 ? 'success' : value === 0 ? 'warning' : 'danger'}
+      className={cn(CHIP_CLASS, className)}
+    >
+      {children}
+    </Badge>
+  );
+  return title ? <span title={title}>{badge}</span> : badge;
+}
 
 export function ProductDescriptionInput({
   value,
@@ -195,18 +215,9 @@ export function ProductDescriptionInput({
                     if (!stockInfo || typeof stockInfo.available !== 'number') return null;
                     const qty = stockInfo.available;
                     return (
-                      <span
-                        className={cn(
-                          'ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
-                          qty > 0
-                            ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200'
-                            : qty === 0
-                              ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200'
-                              : 'bg-red-100 text-red-800 ring-1 ring-red-200',
-                        )}
-                      >
+                      <StockBadge value={qty} className="ml-auto shrink-0">
                         Stock: {qty}
-                      </span>
+                      </StockBadge>
                     );
                   })()
                 : null}
@@ -223,21 +234,10 @@ export function ProductDescriptionInput({
         </p>
       ) : null}
       {isKnown ? (
-        <div className="mt-1 flex items-center justify-between gap-1 text-[11px] font-semibold">
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-semibold">
           <span className="flex items-center gap-1 text-emerald-600">✓ In catalogue</span>
           {typeof matchedStock?.available === 'number' && (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-bold tabular-nums ring-1',
-                matchedStock.available > 0
-                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                  : matchedStock.available === 0
-                    ? 'bg-amber-50 text-amber-700 ring-amber-200'
-                    : 'bg-red-50 text-red-700 ring-red-200',
-              )}
-            >
-              📦 In Stock: {stockLabel(matchedStock)}
-            </span>
+            <StockBadge value={matchedStock.available}>📦 In Stock: {stockLabel(matchedStock)}</StockBadge>
           )}
         </div>
       ) : null}

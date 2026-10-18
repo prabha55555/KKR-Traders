@@ -45,7 +45,7 @@ export function ErrorState({ message = 'Something went wrong while loading.', on
       </span>
       <p className="max-w-sm text-sm text-slate-600">{message}</p>
       {onRetry ? (
-        <Button variant="outline" icon={RefreshCw} onClick={onRetry}>
+        <Button variant="info" icon={RefreshCw} onClick={onRetry}>
           Try again
         </Button>
       ) : null}

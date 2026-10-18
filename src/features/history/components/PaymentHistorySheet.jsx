@@ -15,7 +15,7 @@ import { CASH_LABEL, accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { normalizeMethod } from '@/core/paymentMethods';
 import { formatCurrency, formatDateIN, invoiceNoLabel } from '@/core/format';
-import { Button, EmptyState } from '@/ui';
+import { Badge, Button, EmptyState } from '@/ui';
 import { sumPaymentAmounts } from '../lib/lookups';
 import { sortPaymentsByDate } from '../lib/payments';
 import { HistorySheet } from './HistorySheet';
@@ -25,18 +25,18 @@ function PaymentMethodBadge({ payment, bankMap, defaultBank }) {
   if (normalizeMethod(payment.paymentMethod) === 'account') {
     const bank = (payment.bankAccountId ? bankMap.get(payment.bankAccountId) : null) || defaultBank;
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 ring-1 ring-blue-200">
-        <Landmark className="size-3.5 text-blue-600" />
-        <span>Account: {accountLabel(bank)}</span>
-      </span>
+      <Badge tone="info">
+        <Landmark className="mr-1 inline size-3.5 align-[-3px]" aria-hidden />
+        Account: {accountLabel(bank)}
+      </Badge>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 ring-1 ring-emerald-200">
-      <Banknote className="size-3.5 text-emerald-600" />
-      <span>{CASH_LABEL}</span>
-    </span>
+    <Badge tone="success">
+      <Banknote className="mr-1 inline size-3.5 align-[-3px]" aria-hidden />
+      {CASH_LABEL}
+    </Badge>
   );
 }
 
@@ -84,7 +84,9 @@ export function PaymentHistorySheet({
       }
     >
       <div className="mb-4 rounded-2xl border border-white/10 surface-ink p-4 text-white shadow-lift">
-        <p className="truncate font-display text-lg font-bold">{partyName}</p>
+        <p className="truncate font-display text-lg font-bold" title={partyName}>
+          {partyName}
+        </p>
         <div className="mt-1 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
           <p className="text-sm text-brand-300">Total Payments: {payments.length}</p>
           <p className="text-sm text-brand-200">
@@ -114,9 +116,9 @@ export function PaymentHistorySheet({
               >
                 <div className="mb-2 flex items-center justify-between gap-2 border-b border-dashed border-slate-200 pb-2">
                   <span className="font-display font-bold text-brand-800">Payment #{index + 1}</span>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                  <Badge tone="neutral" className="tabular-nums">
                     {formatDateIN(payment.paymentDate)}
-                  </span>
+                  </Badge>
                 </div>
                 <div className="space-y-1.5">
                   <p>
@@ -125,7 +127,7 @@ export function PaymentHistorySheet({
                       ₹{formatCurrency(payment.amount)}
                     </span>
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="font-semibold text-slate-500">Method: </span>
                     <PaymentMethodBadge payment={payment} bankMap={bankMap} defaultBank={bankAccounts[0]} />
                   </div>
@@ -145,7 +147,7 @@ export function PaymentHistorySheet({
                   </p>
                 </div>
                 <div className="mt-2 flex justify-end">
-                  <Button variant="outlineDanger" size="sm" icon={Undo2} onClick={() => onUndo(id)}>
+                  <Button variant="outlineWarning" size="sm" icon={Undo2} onClick={() => onUndo(id)}>
                     Undo This Payment
                   </Button>
                 </div>

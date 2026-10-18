@@ -24,7 +24,13 @@ import {
   partySummary,
   returnsTotalsByInvoice,
 } from '@/core/ledger';
-import { buildAvgCostLookup, invoiceDiscount } from './revenueLogic';
+import {
+  buildAvgCostLookup,
+  invoiceDiscount,
+  returnValue,
+  returnsByBill,
+  salesReturnsOfBill,
+} from './revenueLogic';
 
 /**
  * Robust date parser: Handles pure YYYY-MM-DD dates at local noon, full timestamps, and numbers
@@ -153,24 +159,66 @@ export async function fetchDashboardData() {
     db.getAllCombingBatches ? db.getAllCombingBatches() : Promise.resolve([]),
     db.getAllProcessingLots ? db.getAllProcessingLots().catch(() => []) : Promise.resolve([]),
   ]);
+  return prepareDashboardData({
+    salesBills,
+    purchaseBills,
+    expenses,
+    customers,
+    suppliers,
+    salesReturns,
+    purchaseReturns,
+    dyeingBatches,
+    combingBatches,
+    processingLots,
+  });
+}
 
+/**
+ * The loaded collections as the Statistics page reads them: the average-cost lookup, every sales bill with its
+ * `computedProfit` (less what its sales returns took back) and `computedReturns` (value of the goods returned against
+ * it), and every purchase bill with `computedReturns` (value of the goods sent back to the supplier). Returned goods
+ * re-enter / leave stock, so Sales, Purchases and Profit are shown net of them (see netSalesValue / netPurchaseValue).
+ * Purchase returns stay out of the average cost, as they stay out of the Stocks average purchase rate.
+ */
+export function prepareDashboardData({
+  salesBills,
+  purchaseBills,
+  expenses,
+  customers,
+  suppliers,
+  salesReturns,
+  purchaseReturns,
+  dyeingBatches,
+  combingBatches,
+  processingLots,
+} = {}) {
   const pBills = purchaseBills || [];
   const batches = dyeingBatches || [];
   const cBatches = combingBatches || [];
   const avgCostLookup = buildAvgCostLookup(pBills, batches, cBatches, processingLots || []);
+  const salesReturnsOf = returnsByBill(salesReturns);
+  const purchaseReturnsOf = returnsByBill(purchaseReturns);
 
-  // Pre-calculate accurate profit for each bill using purchase cost history
+  // Pre-calculate accurate profit for each bill using purchase cost history, less its sales returns
   const enrichedSalesBills = (salesBills || []).map((bill) => {
-    const computedProfit = getBillProfit(bill, avgCostLookup);
+    const returned = salesReturnsOfBill(salesReturnsOf.get(String(bill.invoiceNo)), avgCostLookup);
     return {
       ...bill,
-      computedProfit,
+      computedProfit: getBillProfit(bill, avgCostLookup) - returned.profit,
+      computedReturns: returned.amount,
     };
   });
+  const enrichedPurchaseBills = pBills.map((bill) => ({
+    ...bill,
+    computedReturns: (purchaseReturnsOf.get(String(bill.invoiceNo)) || []).reduce(
+      (sum, r) => sum + returnValue(r),
+      0,
+    ),
+  }));
 
   return {
     salesBills: enrichedSalesBills,
-    purchaseBills: pBills,
+    purchaseBills: enrichedPurchaseBills,
     dyeingBatches: batches,
     combingBatches: cBatches,
     expenses: expenses || [],
@@ -182,10 +230,12 @@ export async function fetchDashboardData() {
   };
 }
 
-export function computeAnalytics(data, rangeKey) {
+/** `data` = prepareDashboardData's result (raw collections are prepared first). */
+export function computeAnalytics(rawData, rangeKey) {
+  const data = typeof rawData.avgCostLookup === 'function' ? rawData : prepareDashboardData(rawData);
   const range = dateRanges[rangeKey] ? dateRanges[rangeKey]() : null;
   const previousRange = getPreviousPeriod(rangeKey);
-  const avgCostLookup = data.avgCostLookup || buildAvgCostLookup(data.purchaseBills || []);
+  const { avgCostLookup } = data;
 
   const current = range
     ? aggregatePeriod(data, range, avgCostLookup)
@@ -259,6 +309,104 @@ export const salesBillValue = (bill) => billAmount(bill, SALES_LEDGER);
 export const purchaseBillValue = (bill) => billAmount(bill, PURCHASE_LEDGER);
 /** Amount paid on a purchase bill (nested `payment.totalPaid` or top-level `amountPaid`). */
 export const purchasePaid = (bill) => toNum(purchaseAmountPaid(bill));
+/** A sales invoice's own amount less the goods returned against it (`computedReturns`, see prepareDashboardData). */
+export const netSalesValue = (bill) => salesBillValue(bill) - toNum(bill.computedReturns);
+/** A purchase bill's own amount less the goods sent back against it (`computedReturns`, see prepareDashboardData). */
+export const netPurchaseValue = (bill) => purchaseBillValue(bill) - toNum(bill.computedReturns);
+
+/**
+ * The Statistics "top 5" tables of the bills dated in `range` (`data` = prepareDashboardData's result): customers by
+ * sales, suppliers by purchases (both net of the bill's returns) and products by quantity sold, each sales return taken
+ * off its product (qty, revenue and profit at the same average cost the sale was charged at).
+ */
+export function computeInsights(data, range) {
+  const custMap = new Map();
+  const supMap = new Map();
+  const prodMap = new Map();
+  const avgCost = data.avgCostLookup || (() => 0);
+  const salesReturnsOf = returnsByBill(data.salesReturns);
+  // parties as the ledger groups them (phone first), so two customers sharing a name are not merged
+  const customerOf = partyOfBill(SALES_LEDGER, data.salesBills);
+  const supplierOf = partyOfBill(PURCHASE_LEDGER, data.purchaseBills);
+  const addProduct = (description, qty, revenue, profit) => {
+    const name = String(description).trim();
+    const pd = prodMap.get(name) || { name, qty: 0, revenue: 0, profit: 0 };
+    pd.qty += qty;
+    pd.revenue += revenue;
+    pd.profit += profit;
+    prodMap.set(name, pd);
+  };
+
+  (data.salesBills || []).forEach((bill) => {
+    const d = bill.invoiceDate || bill.date || bill.timestamp;
+    if (isWithinRange(d, range)) {
+      // Customer aggregation
+      const party = customerOf.get(bill);
+      if (party) {
+        const c = custMap.get(party.key) || {
+          key: party.key,
+          name: party.name,
+          sales: 0,
+          paid: 0,
+          invoices: 0,
+        };
+        c.sales += netSalesValue(bill);
+        c.paid += toNum(bill.amountPaid);
+        c.invoices++;
+        custMap.set(party.key, c);
+      }
+
+      // Product aggregation
+      if (bill.products && Array.isArray(bill.products)) {
+        bill.products.forEach((p) => {
+          if (!p.description) return;
+          const qty = toNum(p.qty);
+          const rate = toNum(p.rate);
+          const cost = avgCost(p.description);
+          const itemProfit = (rate - cost) * qty;
+          addProduct(p.description, qty, toNum(p.amount) || rate * qty, toNum(p.totalProfit ?? itemProfit));
+        });
+      }
+      // the bill's sales returns: back into stock, so off the product's qty, revenue and profit
+      salesReturnsOfBill(salesReturnsOf.get(String(bill.invoiceNo)), avgCost).lines.forEach((l) =>
+        addProduct(l.description, l.qty, l.amount, l.totalProfit),
+      );
+    }
+  });
+
+  (data.purchaseBills || []).forEach((bill) => {
+    const d = bill.invoiceDate || bill.date || bill.timestamp;
+    if (isWithinRange(d, range)) {
+      // Supplier aggregation
+      const party = supplierOf.get(bill);
+      if (party) {
+        const s = supMap.get(party.key) || {
+          key: party.key,
+          name: party.name,
+          purchases: 0,
+          paid: 0,
+          bills: 0,
+        };
+        s.purchases += netPurchaseValue(bill);
+        s.paid += purchasePaid(bill);
+        s.bills++;
+        supMap.set(party.key, s);
+      }
+    }
+  });
+
+  return {
+    topCustomers: Array.from(custMap.values())
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 5),
+    topSuppliers: Array.from(supMap.values())
+      .sort((a, b) => b.purchases - a.purchases)
+      .slice(0, 5),
+    topProducts: Array.from(prodMap.values())
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5),
+  };
+}
 
 function aggregatePeriod(data, range, avgCostLookup) {
   let salesAmount = 0;
@@ -270,7 +418,7 @@ function aggregatePeriod(data, range, avgCostLookup) {
   for (const bill of data.salesBills || []) {
     const date = bill.invoiceDate || bill.date || bill.timestamp;
     if (isWithinRange(date, range)) {
-      salesAmount += salesBillValue(bill);
+      salesAmount += netSalesValue(bill);
       salesCount++;
       profitAmount += getBillProfit(bill, avgCostLookup);
     }
@@ -279,7 +427,7 @@ function aggregatePeriod(data, range, avgCostLookup) {
   for (const bill of data.purchaseBills || []) {
     const date = bill.invoiceDate || bill.date || bill.timestamp;
     if (isWithinRange(date, range)) {
-      purchasesAmount += purchaseBillValue(bill);
+      purchasesAmount += netPurchaseValue(bill);
     }
   }
 

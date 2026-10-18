@@ -17,10 +17,9 @@ import {
   LoadingState,
   Modal,
   Page,
-  RefreshButton,
   SearchBar,
   StatCard,
-  cn,
+  StatGrid,
   useFeedback,
 } from '@/ui';
 import { buildLotDcHtml } from './dcPrint';
@@ -62,12 +61,14 @@ function EditChooser({ lot, onPick, onClose }) {
             key={o.kind}
             type="button"
             onClick={() => onPick(o.kind)}
-            className="flex w-full items-center gap-3 rounded-xl p-3 text-left ring-1 ring-line transition hover:bg-gold-50 hover:ring-gold-300"
+            className="flex w-full items-center gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-left transition hover:border-blue-300 hover:bg-blue-100 focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:outline-none"
           >
-            <Pencil className="size-4 shrink-0 text-gold-600" aria-hidden />
+            <Pencil className="size-4 shrink-0 text-blue-600" aria-hidden />
             <span className="min-w-0">
-              <span className="block font-semibold text-brand-800">{o.title}</span>
-              <span className="block truncate text-xs text-slate-500">{o.text}</span>
+              <span className="block font-semibold text-blue-800">{o.title}</span>
+              <span className="block truncate text-xs text-slate-600" title={o.text}>
+                {o.text}
+              </span>
             </span>
           </button>
         ))}
@@ -87,7 +88,7 @@ export function LotsView({ mode }) {
   const [query, setQuery] = useState(() => searchParams.get('search') ?? '');
   const [modal, setModal] = useState(null); // { kind: 'issue'|'dyed'|'received'|'pay', lot }
   const load = useCallback(async () => setData(await loadProcessingData()), []);
-  const { loading, error, refreshing, refresh, reload } = useFocusLoad(load);
+  const { loading, error, refresh, reload } = useFocusLoad(load);
 
   // ongoing lots are looked at one stage at a time
   const [stageTab, setStageTab] = useState(() =>
@@ -121,20 +122,26 @@ export function LotsView({ mode }) {
   const kpis = useMemo(() => {
     const all = data.lots.map((l) => ({ lot: l, t: lotTotals(l) }));
     const due = all.reduce((s, { t }) => s + Math.max(0, t.dyeingDue) + Math.max(0, t.combingDue), 0);
+    const dueKpi = {
+      label: 'Due to units',
+      value: rupees(due),
+      icon: Wallet,
+      tone: due > 0 ? 'danger' : 'success',
+    };
     if (mode === 'completed') {
       const done = all.filter(({ lot }) => lot.status === LOT_STATUS.RECEIVED);
       const grey = done.reduce((s, { t }) => s + t.greyQty, 0);
       const fin = done.reduce((s, { t }) => s + t.finalQty, 0);
       return [
-        { label: 'Lots received', value: done.length, icon: CheckCircle2, tint: 'green' },
-        { label: 'Finished kg received', value: kg(fin), icon: Factory, tint: 'brand' },
+        { label: 'Lots received', value: done.length, icon: CheckCircle2, tone: 'success' },
+        { label: 'Finished kg received', value: kg(fin), icon: Factory, tone: 'brand' },
         {
           label: 'Average weight loss',
           value: grey > 0 ? `${Math.round(((grey - fin) / grey) * 10000) / 100}%` : '—',
           icon: Scale,
-          tint: 'red',
+          tone: 'danger',
         },
-        { label: 'Due to units', value: rupees(due), icon: Wallet, tint: 'amber' },
+        dueKpi,
       ];
     }
     const atDyeing = all.filter(({ lot }) => lot.status === LOT_STATUS.AT_DYEING);
@@ -144,15 +151,15 @@ export function LotsView({ mode }) {
         label: 'At dyeing',
         value: `${atDyeing.length} · ${kg(atDyeing.reduce((s, { t }) => s + t.greyQty, 0))}`,
         icon: Factory,
-        tint: 'sky',
+        tone: 'info',
       },
       {
         label: 'At combing',
         value: `${atCombing.length} · ${kg(atCombing.reduce((s, { t }) => s + t.dyedQty, 0))}`,
         icon: Truck,
-        tint: 'violet',
+        tone: 'info',
       },
-      { label: 'Due to units', value: rupees(due), icon: Wallet, tint: 'amber' },
+      dueKpi,
     ];
   }, [data.lots, mode]);
 
@@ -247,14 +254,11 @@ export function LotsView({ mode }) {
       title={title}
       icon={mode === 'completed' ? CheckCircle2 : Factory}
       actions={
-        <>
-          <RefreshButton onClick={refresh} loading={refreshing} />
-          {mode === 'ongoing' ? (
-            <Button icon={FilePlus2} onClick={() => setModal({ kind: 'issue', lot: null })}>
-              <span className="max-sm:sr-only">New lot</span>
-            </Button>
-          ) : null}
-        </>
+        mode === 'ongoing' ? (
+          <Button variant="primary" icon={FilePlus2} onClick={() => setModal({ kind: 'issue', lot: null })}>
+            <span className="max-sm:sr-only">New lot</span>
+          </Button>
+        ) : null
       }
     >
       {loading ? (
@@ -263,19 +267,15 @@ export function LotsView({ mode }) {
         <ErrorState message={error} onRetry={refresh} />
       ) : (
         <div className="space-y-4">
-          <div
-            className={cn(
-              'grid gap-3',
-              kpis.length === 4 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-3',
-            )}
-          >
+          <StatGrid cols={kpis.length}>
             {kpis.map((k) => (
-              <StatCard key={k.label} icon={k.icon} value={k.value} label={k.label} tint={k.tint} />
+              <StatCard key={k.label} icon={k.icon} value={k.value} label={k.label} tone={k.tone} />
             ))}
-          </div>
+          </StatGrid>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {mode === 'ongoing' ? (
               <ChoiceChips
+                className="shrink-0"
                 value={stageTab}
                 onChange={setStageTab}
                 options={[
@@ -312,7 +312,11 @@ export function LotsView({ mode }) {
               }
               action={
                 stage === 'dyeing' && !query ? (
-                  <Button icon={FilePlus2} onClick={() => setModal({ kind: 'issue', lot: null })}>
+                  <Button
+                    variant="primary"
+                    icon={FilePlus2}
+                    onClick={() => setModal({ kind: 'issue', lot: null })}
+                  >
                     New lot
                   </Button>
                 ) : null

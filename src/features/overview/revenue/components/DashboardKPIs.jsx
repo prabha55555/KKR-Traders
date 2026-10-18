@@ -1,6 +1,6 @@
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { HandCoins, PackagePlus, Receipt, TrendingDown, TrendingUp, Truck, Wallet } from 'lucide-react';
 import { formatCurrency } from '@/core/format';
-import { StatCard, cn } from '@/ui';
+import { StatCard, StatGrid, cn } from '@/ui';
 
 const rupees = (n) => {
   const num = typeof n === 'number' ? n : parseFloat(String(n || 0));
@@ -8,6 +8,7 @@ const rupees = (n) => {
   return `${safe < 0 ? '-' : ''}₹${formatCurrency(Math.abs(safe)).replace(/\.00$/, '')}`;
 };
 
+/** "↗ 12.5% vs prev" (green when the change is good, red when bad), shown inline in a card's hint line. */
 function KpiTrend({ current, previous, inverse = false }) {
   if (!previous || previous === 0) return null;
   const diff = current - previous;
@@ -16,20 +17,36 @@ function KpiTrend({ current, previous, inverse = false }) {
   const isPositive = percent > 0;
   // If inverse is true (like expenses), positive is bad.
   const isGood = inverse ? !isPositive : isPositive;
+  const Icon = isPositive ? TrendingUp : TrendingDown;
 
   return (
-    <div
-      className={cn(
-        'mt-1 flex items-center gap-1 text-xs font-semibold',
-        isGood ? 'text-emerald-600' : 'text-red-500',
-      )}
+    <span
+      className={cn('font-semibold', isGood ? 'text-emerald-600' : 'text-red-600')}
+      title={`${Math.abs(percent).toFixed(1)}% ${isPositive ? 'up' : 'down'} vs the previous period`}
     >
-      {isPositive ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-      <span>{Math.abs(percent).toFixed(1)}% vs previous</span>
-    </div>
+      <Icon className="mr-0.5 inline size-3 align-[-2px]" aria-hidden />
+      {Math.abs(percent).toFixed(1)}% vs prev
+    </span>
   );
 }
 
+/** "first · second" for a card's hint line (either part may be empty). */
+function Hint({ children }) {
+  const parts = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  if (!parts.length) return null;
+  return (
+    <>
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 ? ' · ' : null}
+          {p}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** The six headline figures of the Statistics page (same <StatCard> as every other KPI in the app). */
 export function DashboardKPIs({ data }) {
   const {
     current,
@@ -45,105 +62,64 @@ export function DashboardKPIs({ data }) {
   const netProfit = current.profitAmount - current.expensesAmount;
 
   return (
-    <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
-        <div>
-          <h3 className="truncate text-sm font-medium text-slate-500">Total Sales</h3>
-          <p
-            className="mt-1 truncate text-xl font-bold tracking-tight text-slate-800 sm:text-2xl"
-            title={rupees(current.salesAmount)}
-          >
-            {rupees(current.salesAmount)}
-          </p>
-        </div>
-        <div>
-          <p className="mt-2 text-xs text-slate-500">{current.salesCount} Invoices</p>
-          <KpiTrend current={current.salesAmount} previous={previous?.salesAmount} />
-        </div>
-      </div>
-
-      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
-        <div>
-          <h3 className="truncate text-sm font-medium text-slate-500">Total Purchases</h3>
-          <p
-            className="mt-1 truncate text-xl font-bold tracking-tight text-slate-800 sm:text-2xl"
-            title={rupees(current.purchasesAmount)}
-          >
-            {rupees(current.purchasesAmount)}
-          </p>
-        </div>
-        <div className="mt-2">
-          <KpiTrend current={current.purchasesAmount} previous={previous?.purchasesAmount} inverse />
-        </div>
-      </div>
-
-      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
-        <div>
-          <h3 className="truncate text-sm font-medium text-slate-500">Gross Profit</h3>
-          <p
-            className={cn(
-              'mt-1 truncate text-xl font-bold tracking-tight sm:text-2xl',
-              current.profitAmount >= 0 ? 'text-emerald-600' : 'text-red-600',
-            )}
-            title={rupees(current.profitAmount)}
-          >
-            {rupees(current.profitAmount)}
-          </p>
-        </div>
-        <div>
-          <div className="mt-2 flex items-center justify-between text-xs">
-            <span className="font-semibold text-emerald-700">{profitMargin}% Margin</span>
+    <StatGrid cols={3}>
+      <StatCard
+        icon={Receipt}
+        label="Total Sales"
+        value={rupees(current.salesAmount)}
+        tone="brand"
+        hint={
+          <Hint>
+            {`${current.salesCount} Invoices`}
+            <KpiTrend current={current.salesAmount} previous={previous?.salesAmount} />
+          </Hint>
+        }
+      />
+      <StatCard
+        icon={PackagePlus}
+        label="Total Purchases"
+        value={rupees(current.purchasesAmount)}
+        tone="neutral"
+        hint={<KpiTrend current={current.purchasesAmount} previous={previous?.purchasesAmount} inverse />}
+      />
+      <StatCard
+        icon={current.profitAmount >= 0 ? TrendingUp : TrendingDown}
+        label={`Gross Profit · ${profitMargin}% Margin`}
+        value={rupees(current.profitAmount)}
+        tone={current.profitAmount >= 0 ? 'success' : 'danger'}
+        hint={
+          <Hint>
             <span
-              className={cn('font-medium', netProfit >= 0 ? 'text-slate-600' : 'text-red-600')}
-              title={`Net Profit: Gross Profit minus Expenses`}
+              className={netProfit >= 0 ? 'text-slate-500' : 'text-red-600'}
+              title="Net Profit: Gross Profit minus Expenses"
             >
               Net: {rupees(netProfit)}
             </span>
-          </div>
-          <KpiTrend current={current.profitAmount} previous={previous?.profitAmount} />
-        </div>
-      </div>
-
-      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
-        <div>
-          <h3 className="truncate text-sm font-medium text-slate-500">Total Expenses</h3>
-          <p
-            className="mt-1 truncate text-xl font-bold tracking-tight text-slate-800 sm:text-2xl"
-            title={rupees(current.expensesAmount)}
-          >
-            {rupees(current.expensesAmount)}
-          </p>
-        </div>
-        <div className="mt-2">
-          <KpiTrend current={current.expensesAmount} previous={previous?.expensesAmount} inverse />
-        </div>
-      </div>
-
-      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
-        <div>
-          <h3 className="truncate text-sm font-medium text-slate-500">Customer Outstanding</h3>
-          <p
-            className="mt-1 truncate text-xl font-bold tracking-tight text-orange-600 sm:text-2xl"
-            title={rupees(customerOutstanding)}
-          >
-            {rupees(customerOutstanding)}
-          </p>
-        </div>
-        <p className="mt-2 truncate text-xs text-slate-500">From {customersWithDues} customers</p>
-      </div>
-
-      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
-        <div>
-          <h3 className="truncate text-sm font-medium text-slate-500">Supplier Outstanding</h3>
-          <p
-            className="mt-1 truncate text-xl font-bold tracking-tight text-red-600 sm:text-2xl"
-            title={rupees(suppliersOutstanding)}
-          >
-            {rupees(suppliersOutstanding)}
-          </p>
-        </div>
-        <p className="mt-2 truncate text-xs text-slate-500">To {suppliersWithDues} suppliers</p>
-      </div>
-    </div>
+            <KpiTrend current={current.profitAmount} previous={previous?.profitAmount} />
+          </Hint>
+        }
+      />
+      <StatCard
+        icon={Wallet}
+        label="Total Expenses"
+        value={rupees(current.expensesAmount)}
+        tone="danger"
+        hint={<KpiTrend current={current.expensesAmount} previous={previous?.expensesAmount} inverse />}
+      />
+      <StatCard
+        icon={HandCoins}
+        label="Customer Outstanding"
+        value={rupees(customerOutstanding)}
+        tone="warning"
+        hint={`From ${customersWithDues} customers`}
+      />
+      <StatCard
+        icon={Truck}
+        label="Supplier Outstanding"
+        value={rupees(suppliersOutstanding)}
+        tone="danger"
+        hint={`To ${suppliersWithDues} suppliers`}
+      />
+    </StatGrid>
   );
 }

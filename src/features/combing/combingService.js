@@ -133,6 +133,15 @@ export async function saveProcessorRecord(processor) {
     phone: processor.phone.trim(),
     address: (processor.address || '').trim(),
   };
+  // a NEW unit with the phone of an existing one would overwrite it (the id is built from the phone)
+  if (!processor.id) {
+    const taken = (await db.getAllProcessors()).find((p) => String(p.phone ?? '').trim() === clean.phone);
+    if (taken) {
+      throw new Error(
+        `Duplicate: ${taken.processorName || taken.name || 'Another combing unit'} already uses this phone number. Edit that unit instead.`,
+      );
+    }
+  }
   const id = await db.saveProcessor(clean);
   db.invalidate('processors');
   return { ...clean, id };

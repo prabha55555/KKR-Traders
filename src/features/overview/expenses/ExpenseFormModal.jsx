@@ -49,13 +49,13 @@ export default function ExpenseFormModal({ form, onChange, saving, onClose, onSa
       size="sm"
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving} className="max-sm:flex-1">
+          <Button variant="neutral" onClick={onClose} disabled={saving} className="max-sm:flex-1">
             Cancel
           </Button>
           <Button
             type="submit"
             form={FORM_ID}
-            variant="primary"
+            variant="success"
             icon={Save}
             loading={saving}
             className="max-sm:flex-1"

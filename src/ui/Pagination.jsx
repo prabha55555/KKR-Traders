@@ -109,7 +109,7 @@ export function Pagination({ pager, noun = 'items', className }) {
                     'min-h-9 min-w-9 rounded-lg px-2 text-[13px] font-semibold tabular-nums transition focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none',
                     n === page
                       ? 'bg-linear-to-b from-brand-600 to-brand-800 text-gold-200 shadow-sm'
-                      : 'text-slate-600 hover:bg-gold-50',
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-gold-300 hover:bg-gold-50',
                   )}
                 >
                   {n}

@@ -164,15 +164,16 @@ export function PartyNotFoundHint({ partyLabel = 'Customer', to, onAdd }) {
         No {lower} with this number yet. Add the {lower} first, then come back to bill them.
       </p>
       {to ? (
+        // a real link (navigation), drawn like <Button variant="primary"> — Add = gold in the app's action colours
         <Link
           to={to}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-linear-to-b from-amber-300 to-amber-400 px-4 text-sm font-semibold whitespace-nowrap text-slate-900 shadow-[inset_0_1px_0_rgb(255_255_255/0.4)] transition hover:from-amber-400 hover:to-amber-500 focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] sm:min-h-10"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gold-sheen px-4 text-sm font-semibold whitespace-nowrap text-brand-900 shadow-[inset_0_1px_0_rgb(255_255_255/0.55),0_1px_2px_rgb(120_80_0/0.35)] transition duration-150 hover:shadow-gold hover:brightness-105 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] sm:min-h-10"
         >
           <UserPlus className="size-4" aria-hidden />
           {label}
         </Link>
       ) : (
-        <Button variant="warning" icon={UserPlus} onClick={onAdd}>
+        <Button variant="primary" icon={UserPlus} onClick={onAdd}>
           {label}
         </Button>
       )}

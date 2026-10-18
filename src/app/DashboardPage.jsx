@@ -93,11 +93,11 @@ export default function DashboardPage() {
         <Sparkle className="absolute top-28 right-[14%] hidden size-6 animate-float text-gold-300 opacity-80 sm:block" />
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-3 py-5">
-            <BrandLockup />
-            <div className="flex items-center gap-2">
+            <BrandLockup className="min-w-0" />
+            <div className="flex shrink-0 items-center gap-2">
               <InstallButton className="hidden sm:inline-flex" />
               <Button variant="danger" size="sm" icon={LogOut} onClick={onLogout}>
-                <span className="hidden sm:inline">Logout</span>
+                <span className="max-sm:sr-only">Logout</span>
               </Button>
             </div>
           </div>
@@ -128,20 +128,20 @@ export default function DashboardPage() {
               key={to}
               to={to}
               style={{ animationDelay: `${120 + i * 90}ms` }}
-              className="group relative flex animate-rise flex-col overflow-hidden rounded-3xl border border-line bg-white p-6 shadow-card transition duration-300 hover:-translate-y-1.5 hover:border-gold-300 hover:shadow-lift focus-visible:ring-4 focus-visible:ring-gold-200 focus-visible:outline-none"
+              className="group relative flex min-w-0 animate-rise flex-col overflow-hidden rounded-2xl border border-line bg-white p-4 shadow-card transition duration-300 hover:-translate-y-1 hover:border-gold-300 hover:shadow-lift focus-visible:ring-4 focus-visible:ring-gold-200 focus-visible:outline-none sm:p-5"
             >
               <span className="absolute inset-x-0 top-0 h-[2px] hairline-gold opacity-0 transition group-hover:opacity-100" />
               <div className="flex items-start justify-between">
-                <span className="flex size-14 items-center justify-center rounded-2xl bg-gold-sheen text-brand-900 shadow-gold">
-                  <Icon className="size-7" aria-hidden />
+                <span className="flex size-12 items-center justify-center rounded-2xl bg-gold-sheen text-brand-900 shadow-gold">
+                  <Icon className="size-6" aria-hidden />
                 </span>
-                <span className="flex size-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition group-hover:bg-brand-800 group-hover:text-gold-300">
+                <span className="flex size-9 items-center justify-center rounded-full bg-gold-50 text-gold-700 ring-1 ring-gold-200 transition ring-inset group-hover:bg-brand-800 group-hover:text-gold-300">
                   <ArrowUpRight className="size-[18px]" aria-hidden />
                 </span>
               </div>
-              <h2 className="mt-5 font-display text-xl font-extrabold text-brand-800">{title}</h2>
+              <h2 className="mt-4 font-display text-xl font-extrabold text-brand-800">{title}</h2>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{text}</p>
-              <ul className="mt-5 hidden space-y-1.5 border-t border-line pt-4 md:block">
+              <ul className="mt-4 hidden space-y-1.5 border-t border-line pt-4 md:block">
                 {points.map((p) => (
                   <li key={p} className="flex items-center gap-2 text-[13px] font-medium text-slate-600">
                     <span className="size-1.5 rounded-full bg-gold-400" /> {p}

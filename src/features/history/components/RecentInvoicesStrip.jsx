@@ -7,13 +7,13 @@
  */
 import { Clock } from 'lucide-react';
 import { formatCurrency, formatDateIN } from '@/core/format';
-import { SectionHeader } from '@/ui';
+import { Card, SectionHeader } from '@/ui';
 import { displayInvoiceNo } from '../lib/types';
 import { SkeletonBlock } from './Skeleton';
 
 export function RecentInvoicesStrip({ invoices, loading, labels, onSelect, title = 'Recent Invoices' }) {
   return (
-    <section aria-label={title} className="rounded-2xl border border-line bg-white p-3.5 shadow-card sm:p-4">
+    <Card as="section" aria-label={title}>
       <SectionHeader title={title} icon={Clock} className="mb-3" />
       {loading ? (
         <div className="flex gap-3 overflow-hidden">
@@ -40,7 +40,7 @@ export function RecentInvoicesStrip({ invoices, loading, labels, onSelect, title
                   className="absolute inset-x-0 top-0 h-px hairline-gold opacity-0 transition group-hover:opacity-100"
                   aria-hidden
                 />
-                <div className="font-display text-base font-extrabold text-gold-700">
+                <div className="truncate font-display text-base font-extrabold text-gold-700">
                   {displayInvoiceNo(labels, invoice.invoiceNo)}
                 </div>
                 <div className="truncate text-sm font-medium text-slate-700">{invoice.partyName}</div>
@@ -55,6 +55,6 @@ export function RecentInvoicesStrip({ invoices, loading, labels, onSelect, title
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

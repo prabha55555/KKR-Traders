@@ -2,13 +2,13 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { cn } from './cn';
 import { EmptyState } from './States';
 
-const ALIGN = { left: 'text-left', center: 'text-center', right: 'text-right' };
-
 /**
  * Table on tablets/desktops, card list on phones.
  *
- * columns: [{ key, header, align?, className?, value?: (row, i) => text, render?: (row, i) => node,
- *             mobile?: 'title' | 'hide' }]
+ * columns: [{ key, header, align?, nowrap?, className?, headerClassName?, value?: (row, i) => text,
+ *             render?: (row, i) => node, mobile?: 'title' | 'hide' }]
+ * Desktop uses the app's one bordered table style (.erp-table in styles/index.css): every cell outlined, right-aligned
+ * columns stay on one line, text wraps, and a table wider than the screen scrolls inside its own frame.
  * On phones every column becomes a "label: value" line of a card (the `mobile: 'title'` column is the card heading,
  * `mobile: 'hide'` skips a column). Pass `renderCard(row, i)` to draw the phone card yourself.
  * rowKey(row, i) -> unique key · onRowClick(row) makes rows tappable · footer = totals row.
@@ -80,31 +80,31 @@ export function DataTable({
     );
   }
 
-  const pad = dense ? 'px-3 py-2' : 'px-4 py-3';
   return (
-    <div className={cn('overflow-x-auto rounded-2xl border border-line bg-white shadow-card', className)}>
-      <table className="w-full min-w-max text-sm">
+    <div className={cn('erp-table-wrap', className)}>
+      <table className={cn('erp-table', dense && 'erp-table-dense')}>
         <thead>
-          <tr className="border-b border-line bg-linear-to-b from-slate-50 to-slate-100/70 text-[11px] tracking-[0.08em] text-slate-500 uppercase">
+          <tr>
             {columns.map((c) => (
-              <th key={c.key} className={cn(pad, 'font-bold whitespace-nowrap', ALIGN[c.align ?? 'left'])}>
+              <th key={c.key} data-align={c.align ?? 'left'} className={c.headerClassName}>
                 {c.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {rows.map((row, i) => (
             <tr
               key={rowKey(row, i)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={cn(
-                'transition-colors',
-                onRowClick ? 'cursor-pointer hover:bg-gold-50/70' : 'hover:bg-slate-50/70',
-              )}
+              className={onRowClick ? 'cursor-pointer' : undefined}
             >
               {columns.map((c) => (
-                <td key={c.key} className={cn(pad, 'text-slate-800', ALIGN[c.align ?? 'left'], c.className)}>
+                <td
+                  key={c.key}
+                  data-align={c.align ?? 'left'}
+                  className={cn(c.nowrap && 'nowrap', c.className)}
+                >
                   {cellContent(c, row, i)}
                 </td>
               ))}
@@ -112,11 +112,9 @@ export function DataTable({
           ))}
         </tbody>
         {footer ? (
-          <tfoot className="border-t border-gold-200 bg-gold-50/60">
+          <tfoot>
             <tr>
-              <td colSpan={columns.length} className={pad}>
-                {footer}
-              </td>
+              <td colSpan={columns.length}>{footer}</td>
             </tr>
           </tfoot>
         ) : null}

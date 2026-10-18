@@ -126,13 +126,18 @@ function ToastHost({ toasts, onDismiss }) {
 function ConfirmDialog({ state, onAnswer }) {
   const opts = state?.opts;
   const danger = opts?.tone === 'danger';
+  const warning = opts?.tone === 'warning';
   return (
     <Modal open={!!state} onClose={() => onAnswer(false)} size="sm" layer="z-[60]">
       <div className="flex flex-col items-center text-center">
         <span
           className={cn(
             'mb-3 flex size-16 items-center justify-center rounded-2xl ring-1 ring-inset',
-            danger ? 'bg-red-50 text-red-600 ring-red-200' : 'bg-gold-50 text-gold-600 ring-gold-200',
+            danger
+              ? 'bg-red-50 text-red-600 ring-red-200'
+              : warning
+                ? 'bg-amber-50 text-amber-600 ring-amber-200'
+                : 'bg-gold-50 text-gold-600 ring-gold-200',
           )}
         >
           {danger ? <XCircle className="size-8" /> : <AlertTriangle className="size-8" />}
@@ -142,10 +147,14 @@ function ConfirmDialog({ state, onAnswer }) {
           <p className="mt-1.5 text-sm whitespace-pre-line text-slate-600">{opts.message}</p>
         ) : null}
         <div className="mt-5 flex w-full gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => onAnswer(false)}>
+          <Button variant="neutral" className="flex-1" onClick={() => onAnswer(false)}>
             {opts?.cancelText ?? 'Cancel'}
           </Button>
-          <Button variant={danger ? 'danger' : 'primary'} className="flex-1" onClick={() => onAnswer(true)}>
+          <Button
+            variant={danger ? 'danger' : warning ? 'warning' : 'success'}
+            className="flex-1"
+            onClick={() => onAnswer(true)}
+          >
             {opts?.confirmText ?? 'OK'}
           </Button>
         </div>

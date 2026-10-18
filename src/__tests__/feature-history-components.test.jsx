@@ -9,6 +9,8 @@ import { DeleteInvoiceSheet } from '@/features/history/components/DeleteInvoiceS
 import { HistoryFilterBar } from '@/features/history/components/HistoryFilterBar';
 import { HistoryInvoiceCard } from '@/features/history/components/HistoryInvoiceCard';
 import { HistoryInvoiceTable } from '@/features/history/components/HistoryInvoiceTable';
+import { InvoiceProducts, InvoiceStatusBadge } from '@/features/history/components/InvoiceParts';
+import { PaymentHistorySheet } from '@/features/history/components/PaymentHistorySheet';
 import { EMPTY_FILTERS, SALES_LABELS } from '@/features/history/lib/types';
 
 vi.mock('@/features/finance/accountsLogic', () => ({ loadLiveAccountBalances: vi.fn() }));
@@ -261,5 +263,71 @@ describe('HistoryFilterBar', () => {
     expect(onSearch).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Clear Filters' }));
     expect(onClear).toHaveBeenCalled();
+  });
+});
+
+describe('history uses the app design system', () => {
+  it('status pills share the app-wide colours: Paid green, Partially Paid amber, Unpaid red', () => {
+    render(
+      <>
+        <InvoiceStatusBadge invoice={invoice({ amountPaid: 1000, balanceDue: 0, adjustedBalanceDue: 0 })} />
+        <InvoiceStatusBadge invoice={invoice()} />
+        <InvoiceStatusBadge invoice={invoice({ amountPaid: 0, payments: [] })} />
+      </>,
+    );
+    expect(screen.getByText('Paid').parentElement).toHaveClass('bg-emerald-50');
+    expect(screen.getByText('Partially Paid').parentElement).toHaveClass('bg-amber-50');
+    expect(screen.getByText('Unpaid').parentElement).toHaveClass('bg-red-50');
+  });
+
+  it('the desktop list is the bordered app table with coloured row actions and the status badge', () => {
+    render(<HistoryInvoiceTable invoices={[invoice()]} labels={SALES_LABELS} actions={makeActions()} />);
+    const table = screen.getByRole('table');
+    expect(table).toHaveClass('erp-table');
+    expect(table.parentElement).toHaveClass('erp-table-wrap');
+    expect(screen.getByText('₹1,000.00').closest('td')).toHaveAttribute('data-align', 'right');
+    expect(screen.getByLabelText('Edit Invoice No 101')).toHaveClass('bg-blue-50');
+    expect(screen.getByLabelText('Delete Invoice No 101')).toHaveClass('bg-red-50');
+    expect(screen.getByText('Partially Paid')).toBeInTheDocument();
+  });
+
+  it('the products of an invoice are an app table too', () => {
+    render(<InvoiceProducts invoice={invoice()} />);
+    expect(screen.getByRole('table')).toHaveClass('erp-table');
+    expect(screen.getByRole('columnheader', { name: 'Rate' })).toBeInTheDocument();
+  });
+
+  it('buttons take their colour from the action: Clear = amber, Cancel = grey, Undo = amber', () => {
+    const { unmount } = render(
+      <HistoryFilterBar
+        value={EMPTY_FILTERS}
+        onChange={() => {}}
+        onSearch={() => {}}
+        onClear={() => {}}
+        labels={SALES_LABELS}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Clear Filters' })).toHaveClass('bg-amber-50');
+    unmount();
+    render(<DeleteInvoiceSheet open invoiceNo="101" onClose={() => {}} onConfirm={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('bg-slate-100');
+  });
+
+  it('undoing a payment is an amber (undo) action', () => {
+    vi.spyOn(db, 'getAllBankAccounts').mockResolvedValue([]);
+    render(
+      <PaymentHistorySheet
+        open
+        invoiceNo="101"
+        partyName="Ravi Stores"
+        balanceDue={600}
+        payments={invoice().payments}
+        onClose={() => {}}
+        onUndo={() => {}}
+        onUndoAll={() => {}}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Undo This Payment' })).toHaveClass('bg-amber-50');
+    vi.restoreAllMocks();
   });
 });

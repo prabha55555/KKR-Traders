@@ -4,7 +4,7 @@ import { accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { Button, Modal, NumberField, DateField, SelectField, useFeedback } from '@/ui';
 import { formatCurrency, todayISO } from '@/core/format';
-import { calculateFinanceStats } from './financeLogic';
+import { addLoanPayment, calculateFinanceStats } from './financeLogic';
 import { loadLiveAccountBalances } from './accountsLogic';
 
 const FORM_ID = 'finance-payment-form';
@@ -87,10 +87,8 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
         sourceAccount: source,
       };
 
-      const updatedRecord = {
-        ...record,
-        payments: [...(record.payments || []), newPayment],
-      };
+      // a payment that pays the loan off also ends it on its date (see addLoanPayment)
+      const updatedRecord = addLoanPayment(record, newPayment);
 
       await db.saveFinanceRecord(updatedRecord);
       onSave(updatedRecord);
@@ -118,7 +116,7 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
       size="sm"
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving} className="max-sm:flex-1">
+          <Button variant="neutral" onClick={onClose} disabled={saving} className="max-sm:flex-1">
             Cancel
           </Button>
           <Button
@@ -135,27 +133,27 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
       }
     >
       <form id={FORM_ID} className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3.5">
-          <div className="flex items-center justify-between">
-            <div>
+        <div className="space-y-2 rounded-2xl border border-line bg-slate-50/80 p-3.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">Lender</span>
-              <div className="text-base font-bold text-slate-900">{record.lenderName}</div>
+              <div className="text-base font-bold break-words text-brand-800">{record.lenderName}</div>
               {record.phone && <div className="mt-0.5 font-mono text-xs text-slate-500">{record.phone}</div>}
             </div>
-            <div className="text-right">
+            <div className="shrink-0 text-right">
               <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">
                 Balance Due
               </span>
-              <div className="font-display text-lg font-black text-rose-700 tabular-nums">
+              <div className="font-display text-lg font-black text-red-600 tabular-nums">
                 ₹{formatCurrency(balancePayable)}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 border-t border-slate-200/70 pt-2 text-xs">
+          <div className="grid grid-cols-1 gap-1 border-t border-line pt-2 text-xs tabular-nums sm:grid-cols-3 sm:gap-2">
             <div>
               <span className="text-slate-500">Principal:</span>{' '}
-              <span className="font-bold text-slate-800">₹{formatCurrency(record.principal)}</span>
+              <span className="font-bold text-brand-800">₹{formatCurrency(record.principal)}</span>
             </div>
             <div>
               <span className="text-slate-500">Accrued Int:</span>{' '}
@@ -163,9 +161,9 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
                 ₹{formatCurrency(stats?.totalInterestAccrued || 0)}
               </span>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right">
               <span className="text-slate-500">Paid:</span>{' '}
-              <span className="font-bold text-blue-700">₹{formatCurrency(stats?.totalPaid || 0)}</span>
+              <span className="font-bold text-emerald-700">₹{formatCurrency(stats?.totalPaid || 0)}</span>
             </div>
           </div>
         </div>
@@ -187,15 +185,15 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
           </div>
           {balancePayable > 0 && (
             <div className="mt-1 flex justify-end">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   setForm((f) => ({ ...f, amount: String(Math.round(balancePayable * 100) / 100) }))
                 }
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-800 hover:underline"
               >
                 Pay Full Due (₹{formatCurrency(balancePayable)})
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -227,13 +225,13 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
         {/* Live balance indicator */}
         {liveBalances && (
           <div
-            className={`flex items-center justify-between rounded-xl border px-3.5 py-2.5 text-xs transition ${
+            className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-xs transition ${
               isOverdrawn
                 ? 'border-amber-300 bg-amber-50 text-amber-900 shadow-xs'
                 : 'border-emerald-200/80 bg-emerald-50/70 text-emerald-900 shadow-xs'
             }`}
           >
-            <span className="flex items-center gap-2 text-xs font-semibold">
+            <span className="flex min-w-0 items-center gap-2 text-xs font-semibold">
               <span
                 className={`size-2 rounded-full ${
                   isOverdrawn ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'
@@ -246,12 +244,14 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
                 </>
               ) : (
                 <>
-                  <Building2 className="size-4 text-brand-700" />
-                  <span>Available in {selectedBank ? accountLabel(selectedBank) : 'Bank Account'}:</span>
+                  <Building2 className="size-4 shrink-0 text-sky-700" />
+                  <span className="min-w-0 break-words">
+                    Available in {selectedBank ? accountLabel(selectedBank) : 'Bank Account'}:
+                  </span>
                 </>
               )}
             </span>
-            <span className="font-display text-sm font-extrabold tabular-nums">
+            <span className="shrink-0 font-display text-sm font-extrabold tabular-nums">
               ₹{formatCurrency(availableBalance)}
             </span>
           </div>

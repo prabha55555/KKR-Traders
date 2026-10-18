@@ -40,7 +40,7 @@ export function CustomerFormCard({ mode, initial, onCancel, onSubmit }) {
         />
         <div className="mt-5 flex gap-3">
           {adding ? null : (
-            <Button variant="outline" onClick={onCancel} disabled={form.busy} className="flex-1">
+            <Button variant="neutral" onClick={onCancel} disabled={form.busy} className="flex-1">
               Cancel
             </Button>
           )}

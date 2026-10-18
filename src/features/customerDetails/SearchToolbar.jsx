@@ -2,7 +2,7 @@ import { Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useDebounced } from '@/hooks/useDebounced';
-import { Button, SearchBar } from '@/ui';
+import { Button, Card, SearchBar } from '@/ui';
 
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -22,9 +22,10 @@ export function SearchToolbar({ onTermChange }) {
   };
 
   return (
-    <form
+    <Card
+      as="form"
       role="search"
-      className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-white p-2.5 shadow-card"
+      className="mb-4 flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         onTermChange(query);
@@ -37,12 +38,12 @@ export function SearchToolbar({ onTermChange }) {
         aria-label="Search customers"
         className="min-w-0 basis-full sm:flex-1 sm:basis-64"
       />
-      <Button type="submit" icon={Search} className="flex-1 sm:flex-none">
+      <Button type="submit" variant="primary" icon={Search} className="flex-1 sm:flex-none">
         Search
       </Button>
-      <Button variant="outline" icon={X} onClick={clear} className="flex-1 sm:flex-none">
+      <Button variant="outlineWarning" icon={X} onClick={clear} className="flex-1 sm:flex-none">
         Clear
       </Button>
-    </form>
+    </Card>
   );
 }

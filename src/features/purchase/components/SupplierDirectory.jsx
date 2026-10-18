@@ -13,14 +13,15 @@ export function SupplierDirectory({ suppliers, empty, onEdit, onDelete }) {
       render: (s) => (
         <div className="flex items-center gap-3">
           <InitialAvatar name={s.name} size="sm" />
-          <span className="min-w-0 font-semibold text-brand-800">{s.name}</span>
+          <span className="min-w-0 font-semibold break-words text-brand-800">{s.name}</span>
         </div>
       ),
     },
     {
       key: 'phone',
       header: 'Phone',
-      className: 'whitespace-nowrap text-slate-600 tabular-nums',
+      nowrap: true,
+      className: 'text-slate-600 tabular-nums',
       value: (s) => s.phone || 'N/A',
     },
     {

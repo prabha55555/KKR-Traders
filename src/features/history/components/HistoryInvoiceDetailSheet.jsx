@@ -6,9 +6,10 @@
  *        actions (HistoryInvoiceActions) · onClose().
  * The page should pass actions that close the sheet first (a stacked dialog would hide toasts / confirms).
  */
-import { Camera, ZoomIn, X } from 'lucide-react';
+import { Camera, ZoomIn } from 'lucide-react';
 import { useState } from 'react';
 import { formatCurrency, formatDateIN } from '@/core/format';
+import { Button, Modal } from '@/ui';
 import { displayInvoiceNo } from '../lib/types';
 import { HistorySheet } from './HistorySheet';
 import {
@@ -40,10 +41,12 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
                   <p className="text-[11px] font-bold tracking-[0.08em] text-brand-300 uppercase">
                     {labels.party}
                   </p>
-                  <p className="truncate font-display text-lg font-bold">{invoice.partyName}</p>
+                  <p className="truncate font-display text-lg font-bold" title={invoice.partyName}>
+                    {invoice.partyName}
+                  </p>
                   <p className="text-xs text-brand-300">{formatDateIN(invoice.invoiceDate)}</p>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   <InvoiceSlipBadge invoice={invoice} />
                   <InvoiceStatusBadge invoice={invoice} />
                 </div>
@@ -64,21 +67,19 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
 
             {invoice.manualBillImage ? (
               <div className="my-3 overflow-hidden rounded-xl border border-line bg-slate-50/70">
-                <div className="flex items-center justify-between border-b border-line bg-slate-100/80 px-3 py-2 text-xs font-semibold text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-slate-100/80 px-3 py-2 text-xs font-semibold text-slate-700">
                   <div className="flex items-center gap-1.5 text-emerald-700">
-                    <Camera className="size-3.5" />
+                    <Camera className="size-3.5" aria-hidden />
                     <span>Manual Bill Slip Attached</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setZoomOpen(true)}
-                    className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-200/60 hover:text-brand-800"
-                  >
-                    <ZoomIn className="size-3" /> Full View
-                  </button>
+                  <Button variant="outlineInfo" size="sm" icon={ZoomIn} onClick={() => setZoomOpen(true)}>
+                    Full View
+                  </Button>
                 </div>
-                <div
-                  className="group relative cursor-pointer p-2 text-center"
+                <button
+                  type="button"
+                  aria-label="View the full bill slip image"
+                  className="group relative block w-full cursor-pointer p-2 text-center focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none focus-visible:ring-inset"
                   onClick={() => setZoomOpen(true)}
                 >
                   <img
@@ -86,12 +87,12 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
                     alt={`Attached manual bill slip for Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)}`}
                     className="mx-auto max-h-48 rounded-lg object-contain shadow-2xs transition duration-200 group-hover:scale-[1.01]"
                   />
-                  <div className="absolute inset-0 flex items-center justify-center rounded-b-xl bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="absolute inset-0 flex items-center justify-center rounded-b-xl bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
                     <span className="flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-bold text-slate-900 shadow">
-                      <ZoomIn className="size-3.5" /> Click to view full image
+                      <ZoomIn className="size-3.5" aria-hidden /> Click to view full image
                     </span>
-                  </div>
-                </div>
+                  </span>
+                </button>
               </div>
             ) : null}
 
@@ -108,43 +109,34 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
         ) : null}
       </HistorySheet>
 
-      {/* Modal Preview for Full Size Slip */}
-      {zoomOpen && invoice?.manualBillImage && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"
-          onClick={() => setZoomOpen(false)}
-        >
-          <div
-            className="relative max-h-[90vh] max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  Manual Bill Slip - Invoice No {displayInvoiceNo(labels, invoice.invoiceNo)}
-                </h3>
-                <p className="text-xs text-slate-500">{invoice.partyName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setZoomOpen(false)}
-                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            <div className="max-h-[75vh] overflow-auto bg-slate-100 p-4">
+      {/* Full-size slip, above the detail sheet */}
+      <Modal
+        open={zoomOpen && !!invoice?.manualBillImage}
+        onClose={() => setZoomOpen(false)}
+        title={invoice ? `Manual Bill Slip - Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)}` : ''}
+        size="lg"
+        layer="z-[60]"
+        footer={
+          <Button variant="neutral" onClick={() => setZoomOpen(false)} className="flex-1 sm:flex-none">
+            Close
+          </Button>
+        }
+      >
+        {invoice?.manualBillImage ? (
+          <>
+            <p className="mb-3 truncate text-sm text-slate-500" title={invoice.partyName}>
+              {invoice.partyName}
+            </p>
+            <div className="rounded-xl bg-slate-100 p-3">
               <img
                 src={invoice.manualBillImage}
                 alt={`Full size manual bill slip for Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)}`}
-                className="mx-auto max-h-full rounded-lg object-contain shadow-md"
+                className="mx-auto max-h-[65dvh] max-w-full rounded-lg object-contain shadow-md"
               />
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        ) : null}
+      </Modal>
     </>
   );
 }

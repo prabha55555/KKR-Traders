@@ -7,7 +7,7 @@
  */
 import { X } from 'lucide-react';
 import { formatCurrency } from '@/core/format';
-import { NumberField, SelectField, TextField } from '@/ui';
+import { IconButton, NumberField, SelectField, TextField } from '@/ui';
 import { chooseReturnProduct, returnItemAmount } from '../lib/returns';
 
 const rs = (n) => `₹${formatCurrency(n)}`;
@@ -26,21 +26,19 @@ export function ReturnItemEditor({ index, item, products, returnedQty, onChange,
   return (
     <fieldset className="mb-3 space-y-2.5 rounded-2xl border border-line bg-slate-50/70 p-3 sm:p-3.5">
       <legend className="sr-only">Return item {index + 1}</legend>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h4 className="flex items-center gap-2 font-display text-sm font-bold text-brand-800">
           <span className="flex size-6 items-center justify-center rounded-md bg-gold-100 text-xs font-extrabold text-gold-700 ring-1 ring-gold-200">
             {index + 1}
           </span>
           Return Item {index + 1}
         </h4>
-        <button
-          type="button"
+        <IconButton
+          icon={X}
+          variant="outlineDanger"
+          label={`Remove return item ${index + 1}`}
           onClick={onRemove}
-          aria-label={`Remove return item ${index + 1}`}
-          className="flex size-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:outline-none"
-        >
-          <X className="size-4" aria-hidden />
-        </button>
+        />
       </div>
 
       <SelectField

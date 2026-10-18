@@ -10,9 +10,10 @@
  *  - onPhoneChange(phone) · onSelect(party)
  *  - summary: { totalPreviousBills, balanceCarriedForward } | null
  */
-import { Wallet } from 'lucide-react';
+import { FileText, Wallet } from 'lucide-react';
 import { PartyNotFoundHint, PartyPicker } from '@/components/bill';
 import { formatCurrency } from '@/core/format';
+import { StatCard, StatGrid } from '@/ui';
 
 const rupees = (n) => `₹${formatCurrency(n)}`;
 
@@ -47,29 +48,29 @@ export function CustomerSection({
         }
       />
       {summary ? (
-        <div
-          className="grid gap-px overflow-hidden rounded-xl border border-gold-200 bg-gold-200/60 sm:grid-cols-2"
+        <section
           aria-label="Customer Account Summary"
+          className="space-y-2.5 rounded-xl bg-gold-50/60 p-3 ring-1 ring-gold-200"
         >
-          <div className="col-span-full bg-gold-50 px-3.5 py-2">
-            <h3 className="flex items-center gap-2 text-[13px] font-bold text-gold-800">
-              <Wallet className="size-4" aria-hidden />
-              Customer Account Summary
-            </h3>
-          </div>
-          <div className="bg-white px-3.5 py-3">
-            <div className="text-xs font-medium text-slate-500">Total Previous Bills:</div>
-            <div className="mt-0.5 font-display text-lg font-extrabold text-brand-800 tabular-nums">
-              {rupees(summary.totalPreviousBills)}
-            </div>
-          </div>
-          <div className="bg-white px-3.5 py-3">
-            <div className="text-xs font-medium text-slate-500">Balance Carried Forward:</div>
-            <div className="mt-0.5 font-display text-lg font-extrabold text-red-600 tabular-nums">
-              {rupees(summary.balanceCarriedForward)}
-            </div>
-          </div>
-        </div>
+          <h3 className="flex items-center gap-2 text-[13px] font-bold text-gold-800">
+            <Wallet className="size-4" aria-hidden />
+            Customer Account Summary
+          </h3>
+          <StatGrid cols={2}>
+            <StatCard
+              icon={FileText}
+              tone="brand"
+              value={rupees(summary.totalPreviousBills)}
+              label="Total Previous Bills"
+            />
+            <StatCard
+              icon={Wallet}
+              tone={summary.balanceCarriedForward > 0 ? 'danger' : 'success'}
+              value={rupees(summary.balanceCarriedForward)}
+              label="Balance Carried Forward"
+            />
+          </StatGrid>
+        </section>
       ) : null}
     </div>
   );

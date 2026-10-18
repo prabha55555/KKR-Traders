@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Receipt, X, Banknote, Landmark, CheckCircle2 } from 'lucide-react';
+import { Receipt, Trash2, Banknote, Landmark } from 'lucide-react';
 import { accountLabelWithBank, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { modeLabel } from '@/core/paymentMethods';
-import { Modal, Button, EmptyState, IconButton, useFeedback } from '@/ui';
+import { Badge, Modal, Button, EmptyState, IconButton, useFeedback } from '@/ui';
 import { formatCurrency, formatDateShort } from '@/core/format';
-import { calculateFinanceStats } from './financeLogic';
+import { calculateFinanceStats, findLoanPaymentIndex, removeLoanPayment } from './financeLogic';
 
 // Loan payments are Cash or Account; older ones stored as 'UPI' are shown as Account (modeLabel)
 const ICONS = {
@@ -34,7 +34,8 @@ export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }
   const stats = calculateFinanceStats(record);
   const payments = [...(record.payments || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const handleDelete = async (paymentId) => {
+  // `payment` is the listed object itself: older payments have no id, so only its own position is removed
+  const handleDelete = async (payment) => {
     const ok = await confirm({
       title: 'Delete Payment?',
       message: 'Are you sure you want to remove this payment?',
@@ -44,11 +45,12 @@ export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }
 
     if (!ok) return;
 
+    const updatedRecord = removeLoanPayment(record, findLoanPaymentIndex(record, payment));
+    if (!updatedRecord) {
+      toast('Error', 'This payment could not be found. Please reopen the history and try again.', 'error');
+      return;
+    }
     try {
-      const updatedRecord = {
-        ...record,
-        payments: record.payments.filter((p) => p.id !== paymentId),
-      };
       await db.saveFinanceRecord(updatedRecord);
       toast('Deleted', 'Payment record has been deleted', 'success');
       onUpdate(updatedRecord);
@@ -64,44 +66,41 @@ export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }
       title="Payment History"
       size="md"
       footer={
-        <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
+        <Button variant="neutral" onClick={onClose} className="w-full sm:w-auto">
           Close
         </Button>
       }
     >
-      <div className="mb-4 rounded-xl border border-line bg-slate-50/80 p-3.5">
-        <div className="flex items-start justify-between">
-          <div>
+      <div className="mb-4 rounded-2xl border border-line bg-slate-50/80 p-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <div className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">Lender</div>
-            <div className="font-bold text-slate-900">{record.lenderName}</div>
+            <div className="font-bold break-words text-brand-800">{record.lenderName}</div>
             {record.phone && <div className="mt-0.5 font-mono text-xs text-slate-600">{record.phone}</div>}
           </div>
           {stats.isSettled ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
-              <CheckCircle2 className="size-3.5 text-emerald-600" />
-              Settled
-            </span>
+            <Badge status="Settled" />
           ) : (
-            <div className="text-right">
+            <div className="shrink-0 text-right">
               <div className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">Balance Due</div>
-              <div className="text-sm font-extrabold text-emerald-800">
+              <div className="text-sm font-extrabold text-red-600 tabular-nums">
                 ₹{formatCurrency(stats.balancePayable)}
               </div>
             </div>
           )}
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-200/70 pt-2.5 text-xs">
+        <div className="mt-3 grid grid-cols-1 gap-1 border-t border-line pt-2.5 text-xs tabular-nums sm:grid-cols-3 sm:gap-2">
           <div>
             <span className="text-slate-500">Principal:</span>{' '}
-            <span className="font-bold text-indigo-950">₹{formatCurrency(record.principal)}</span>
+            <span className="font-bold text-brand-800">₹{formatCurrency(record.principal)}</span>
           </div>
           <div>
             <span className="text-slate-500">Total Due:</span>{' '}
-            <span className="font-bold text-amber-800">₹{formatCurrency(stats.totalPayable)}</span>
+            <span className="font-bold text-amber-700">₹{formatCurrency(stats.totalPayable)}</span>
           </div>
-          <div className="text-right">
+          <div className="sm:text-right">
             <span className="text-slate-500">Paid:</span>{' '}
-            <span className="font-bold text-blue-700">₹{formatCurrency(stats.totalPaid)}</span>
+            <span className="font-bold text-emerald-700">₹{formatCurrency(stats.totalPaid)}</span>
           </div>
         </div>
       </div>
@@ -114,7 +113,7 @@ export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }
         />
       ) : (
         <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
-          {payments.map((p) => {
+          {payments.map((p, i) => {
             // the account the money actually left decides the label (as in the balances)
             const mode = p.sourceAccount
               ? p.sourceAccount === 'cash'
@@ -124,41 +123,41 @@ export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }
             const Icon = ICONS[mode] || Receipt;
             return (
               <div
-                key={p.id}
-                className="flex items-center justify-between rounded-xl border border-line bg-white p-3 shadow-sm"
+                key={p.id ?? `${p.date}-${p.amount}-${i}`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-line bg-white p-3 shadow-card"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <div
                     className={`flex size-10 shrink-0 items-center justify-center rounded-xl ring-1 ${
                       mode === 'Cash'
-                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                        : 'bg-blue-50 text-blue-700 ring-blue-200'
+                        ? 'bg-emerald-50 text-emerald-600 ring-emerald-200'
+                        : 'bg-sky-50 text-sky-600 ring-sky-200'
                     }`}
                   >
-                    <Icon className="size-5" />
+                    <Icon className="size-5" aria-hidden />
                   </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-1.5 font-bold text-slate-900">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5 font-bold text-brand-800">
                       <span>{mode} Payment</span>
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                      <Badge tone={mode === 'Cash' ? 'success' : 'info'}>
                         {!p.sourceAccount || p.sourceAccount === 'cash'
                           ? CASH_LABEL
                           : bankMap[p.sourceAccount]
                             ? accountLabelWithBank(bankMap[p.sourceAccount])
                             : 'Bank Account'}
-                      </span>
+                      </Badge>
                     </div>
                     <div className="mt-0.5 text-xs font-medium text-slate-500">{formatDateShort(p.date)}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="font-display text-lg font-extrabold text-blue-700 tabular-nums">
+                <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+                  <div className="font-display text-base font-extrabold whitespace-nowrap text-emerald-700 tabular-nums sm:text-lg">
                     ₹{formatCurrency(p.amount)}
                   </div>
                   <IconButton
-                    icon={X}
-                    onClick={() => handleDelete(p.id)}
-                    className="text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    icon={Trash2}
+                    onClick={() => handleDelete(p)}
+                    variant="outlineDanger"
                     label="Delete Payment"
                   />
                 </div>

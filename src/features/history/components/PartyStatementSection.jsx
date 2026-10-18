@@ -14,7 +14,10 @@
  *   onGenerate() · onClear() · onChooseParty(key) · onDownloadPdf() · onDownloadEasyPdf() · onShareWhatsApp()
  */
 import {
+  Banknote,
+  CheckCircle2,
   ChevronDown,
+  Clock,
   Download,
   FileSearch,
   FileText,
@@ -22,42 +25,21 @@ import {
   Phone,
   ReceiptText,
   RotateCcw,
+  Tag,
+  Undo2,
   User,
+  Wallet,
+  X,
 } from 'lucide-react';
 import { useState } from 'react';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { Badge, Button, EmptyState, TextField, cn } from '@/ui';
+import { Badge, Button, Card, EmptyState, SearchBar, StatCard, StatGrid, cn } from '@/ui';
 import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from '../lib/statement';
 import { displayInvoiceNo } from '../lib/types';
 import { SkeletonBlock } from './Skeleton';
 
 const rs = (n) => `₹${formatCurrency(n)}`;
-
-function Tile({ label, value, tone, highlight }) {
-  return (
-    <div
-      className={cn(
-        'min-w-36 flex-1 basis-36 rounded-xl p-3 text-center',
-        highlight
-          ? 'border border-white/10 surface-ink text-white shadow-lift'
-          : 'border border-line bg-slate-50/70',
-      )}
-    >
-      <div
-        className={cn(
-          'font-display text-xl font-extrabold tabular-nums',
-          tone ?? (highlight ? 'text-gold-300' : 'text-brand-800'),
-        )}
-      >
-        {value}
-      </div>
-      <div className={cn('mt-1 text-xs font-medium', highlight ? 'text-brand-200' : 'text-slate-500')}>
-        {label}
-      </div>
-    </div>
-  );
-}
 
 function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, onShareWhatsApp }) {
   const { totals } = statement;
@@ -72,27 +54,40 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
           {labels.party}: {statement.partyName}
         </span>
       </h3>
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Tile label="Total Invoices" value={String(totals.totalInvoices)} />
-        {totals.opening ? <Tile label="Opening Balance" value={rs(totals.opening)} /> : null}
-        <Tile label="Total Bill Amount" value={rs(totals.totalBilled)} />
-        <Tile label="Total Paid" value={rs(totals.totalPaid)} />
+      {/* the results pane is narrow next to the search form, so 2 cards per row (3 on wide screens) */}
+      <StatGrid cols={2} className="mb-4 xl:grid-cols-3">
+        <StatCard icon={FileText} tone="info" label="Total Invoices" value={String(totals.totalInvoices)} />
+        {totals.opening ? (
+          <StatCard icon={Wallet} tone="neutral" label="Opening Balance" value={rs(totals.opening)} />
+        ) : null}
+        <StatCard icon={Banknote} tone="brand" label="Total Bill Amount" value={rs(totals.totalBilled)} />
+        <StatCard icon={CheckCircle2} tone="success" label="Total Paid" value={rs(totals.totalPaid)} />
         {totals.totalDiscount > 0 ? (
-          <Tile label="Discount (included)" value={rs(totals.totalDiscount)} />
+          <StatCard icon={Tag} tone="neutral" label="Discount (included)" value={rs(totals.totalDiscount)} />
         ) : null}
         {totals.balanceReturns > 0 ? (
-          <Tile label="Returns Deducted" value={`-${rs(totals.balanceReturns)}`} tone="text-amber-600" />
+          <StatCard
+            icon={RotateCcw}
+            tone="warning"
+            label="Returns Deducted"
+            value={`-${rs(totals.balanceReturns)}`}
+          />
         ) : null}
         {totals.refundedReturns > 0 ? (
-          <Tile label="Returns (refunded)" value={rs(totals.refundedReturns)} tone="text-amber-600" />
+          <StatCard
+            icon={Undo2}
+            tone="warning"
+            label="Returns (refunded)"
+            value={rs(totals.refundedReturns)}
+          />
         ) : null}
-        <Tile
+        <StatCard
+          icon={Clock}
+          tone={balance > 0 ? 'danger' : balance < 0 ? 'success' : 'neutral'}
           label="Outstanding Balance"
           value={rs(balance)}
-          tone={balance > 0 ? 'text-red-300' : balance < 0 ? 'text-emerald-300' : undefined}
-          highlight
         />
-      </div>
+      </StatGrid>
 
       <ul className="max-h-96 space-y-2 overflow-y-auto pr-1">
         {statement.invoices.map((invoice) => {
@@ -104,10 +99,9 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
               key={invoice.invoiceNo}
               className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-l-[3px] border-line border-l-gold-400 bg-white px-3 py-2.5 text-sm shadow-sm transition hover:bg-gold-50/40"
             >
-              <div className="min-w-48 flex-1">
+              <div className="min-w-0 flex-1 basis-48">
                 <p className="font-display font-bold text-brand-800">
-                  Invoice No {displayInvoiceNo(labels, invoice.invoiceNo)} -
-                  {formatDateIN(invoice.invoiceDate)}
+                  {`Invoice No ${displayInvoiceNo(labels, invoice.invoiceNo)} - ${formatDateIN(invoice.invoiceDate)}`}
                 </p>
                 <p className="text-[13px] text-slate-600 tabular-nums">
                   {`Current: ${rs(invoice.subtotal)}`}
@@ -121,8 +115,8 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
                 </p>
               </div>
               {hasReturns ? (
-                <Badge tone="warning" className="gap-1">
-                  <RotateCcw className="size-3" aria-hidden />
+                <Badge tone="warning">
+                  <RotateCcw className="mr-1 inline size-3 align-[-2px]" aria-hidden />
                   Returns: {rs(invoice.totalReturns)}
                 </Badge>
               ) : null}
@@ -221,8 +215,7 @@ export function PartyStatementSection(props) {
         isExpanded && 'w-96 shrink-0 self-start rounded-2xl border border-line bg-slate-50/70 p-4',
       )}
     >
-      <TextField
-        type="search"
+      <SearchBar
         placeholder={`Enter ${party} name or phone`}
         aria-label={`${labels.party} name`}
         leftIcon={User}
@@ -231,10 +224,10 @@ export function PartyStatementSection(props) {
         onChange={onQueryChange}
       />
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" icon={FileText} className="grow">
+        <Button type="submit" variant="primary" icon={FileText} className="grow">
           Generate Combined Statement
         </Button>
-        <Button variant="outlineDanger" onClick={onClear}>
+        <Button variant="outlineWarning" icon={X} onClick={onClear} className="grow sm:grow-0">
           Clear
         </Button>
       </div>
@@ -274,17 +267,17 @@ export function PartyStatementSection(props) {
     ) : null;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-line bg-white p-3.5 shadow-card sm:p-4">
+    <Card as="section" className="relative overflow-hidden">
       <span className="absolute inset-x-0 top-0 h-[2px] hairline-gold" aria-hidden />
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={isExpanded}
         aria-expanded={showBody}
-        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none disabled:cursor-default"
+        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-1.5 text-left transition focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none enabled:hover:bg-gold-50 disabled:cursor-default"
       >
-        <h2 className="flex items-center gap-2.5 text-[15px] font-bold text-brand-800">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-gold-100 text-gold-700 ring-1 ring-gold-200">
+        <h2 className="flex min-w-0 items-center gap-2.5 text-[clamp(0.9375rem,0.85rem+0.3vw,1.0625rem)] font-bold text-brand-800">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gold-100 text-gold-700 ring-1 ring-gold-200">
             <ReceiptText className="size-[18px]" aria-hidden />
           </span>
           {labels.party} Statement
@@ -311,6 +304,6 @@ export function PartyStatementSection(props) {
           </div>
         )
       ) : null}
-    </section>
+    </Card>
   );
 }

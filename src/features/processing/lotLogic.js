@@ -374,7 +374,8 @@ export function unitLotAccount(lots = [], unitId, role) {
 
 /**
  * Where a lot stands for ONE unit ('dyeing' | 'combing'), so each unit's page shows its own process only:
- * `active` = the fabric is at this unit now.
+ * `active` = the fabric is at this unit now. `tone` is display-only and follows the app-wide status colours
+ * (ui/status.js: in dyeing / in combing = info, coming = warning, done = success).
  */
 export function unitLotStatus(lot, role) {
   if (role === 'dyeing') {
@@ -386,7 +387,7 @@ export function unitLotStatus(lot, role) {
     };
   }
   if (lot.status === LOT_STATUS.AT_DYEING)
-    return { label: 'Coming from dyeing', tone: 'neutral', active: false };
-  if (lot.status === LOT_STATUS.AT_COMBING) return { label: 'In combing', tone: 'warning', active: true };
+    return { label: 'Coming from dyeing', tone: 'warning', active: false };
+  if (lot.status === LOT_STATUS.AT_COMBING) return { label: 'In combing', tone: 'info', active: true };
   return { label: 'Done · received back', tone: 'success', active: false };
 }

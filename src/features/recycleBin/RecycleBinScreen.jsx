@@ -10,15 +10,17 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
 import {
   Button,
+  Card,
   ChoiceChips,
   DataTable,
   EmptyState,
   ErrorState,
   Page,
   Pagination,
-  RefreshButton,
   SearchBar,
   Skeleton,
+  StatCard,
+  StatGrid,
   useFeedback,
   usePagination,
 } from '@/ui';
@@ -37,21 +39,6 @@ import { emptyBin, loadBinItems, permanentlyDeleteBinItem, restoreBinItem } from
 const LOAD_ERROR = 'Failed to load recycle bin items. Please try again.';
 const PAGE_SIZE = 10;
 
-function StatTile({ icon: Icon, value, label }) {
-  return (
-    <div className="group relative flex min-w-0 flex-col items-center gap-1 overflow-hidden rounded-2xl border border-line bg-white px-2 py-3.5 shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-lift">
-      <span className="absolute inset-x-0 top-0 h-px hairline-gold opacity-0 transition group-hover:opacity-100" />
-      <span className="flex size-9 items-center justify-center rounded-xl bg-gold-100 text-gold-700 ring-1 ring-gold-200">
-        <Icon className="size-[18px]" aria-hidden />
-      </span>
-      <div className="mt-0.5 max-w-full text-center font-display text-base font-extrabold [overflow-wrap:anywhere] text-brand-800 tabular-nums sm:text-lg">
-        {value}
-      </div>
-      <div className="max-w-full text-center text-xs leading-snug font-medium text-slate-500">{label}</div>
-    </div>
-  );
-}
-
 export default function RecycleBinScreen({ kind, title }) {
   const config = BIN_CONFIG[kind];
   const { toast, confirm, loading: overlay } = useFeedback();
@@ -62,7 +49,7 @@ export default function RecycleBinScreen({ kind, title }) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [viewItem, setViewItem] = useState(null);
 
-  const { loading, refreshing, error, refresh, reload } = useFocusLoad(async () => {
+  const { loading, error, reload } = useFocusLoad(async () => {
     try {
       setItems(await loadBinItems(kind));
       setNow(new Date());
@@ -166,18 +153,23 @@ export default function RecycleBinScreen({ kind, title }) {
       header: 'Invoice No',
       render: (i) => (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-display font-bold text-brand-800">{displayBillNo(i)}</span>
+          <span className="font-display font-bold whitespace-nowrap text-brand-800">{displayBillNo(i)}</span>
           <BinTypeBadge item={i} />
         </div>
       ),
     },
     { key: 'party', header: config.partyLabel, value: (i) => partyName(i) || '-' },
-    { key: 'date', header: 'Date', value: (i) => (i.invoiceDate ? formatDateIN(i.invoiceDate) : '-') },
+    {
+      key: 'date',
+      header: 'Date',
+      nowrap: true,
+      value: (i) => (i.invoiceDate ? formatDateIN(i.invoiceDate) : '-'),
+    },
     {
       key: 'total',
       header: 'Total',
       align: 'right',
-      className: 'whitespace-nowrap tabular-nums',
+      className: 'font-semibold text-brand-800',
       value: (i) => `₹${formatCurrency(i.grandTotal)}`,
     },
     {
@@ -208,7 +200,7 @@ export default function RecycleBinScreen({ kind, title }) {
   } else if (error) {
     body = <ErrorState message={error} onRetry={() => void reload()} />;
   } else if (visible.length === 0) {
-    body = <div className="rounded-2xl border border-line bg-white shadow-card">{empty}</div>;
+    body = <Card>{empty}</Card>;
   } else {
     body = (
       <>
@@ -229,22 +221,19 @@ export default function RecycleBinScreen({ kind, title }) {
   }
 
   return (
-    <Page
-      title={title}
-      icon={Trash2}
-      actions={<RefreshButton loading={refreshing} onClick={() => void refresh()} />}
-    >
-      <div className="mb-5 grid grid-cols-3 gap-2.5 sm:gap-3.5">
-        <StatTile icon={FileText} value={String(stats.totalItems)} label="Total Items" />
-        <StatTile
+    <Page title={title} icon={Trash2}>
+      <StatGrid cols={3} className="mb-5">
+        <StatCard icon={FileText} tone="info" value={String(stats.totalItems)} label="Total Items" />
+        <StatCard
           icon={Clock}
+          tone="warning"
           value={stats.oldestDays === null ? '-' : `${stats.oldestDays} days`}
           label="Oldest Item"
         />
-        <StatTile icon={Database} value={String(stats.invoiceItems)} label={config.countLabel} />
-      </div>
+        <StatCard icon={Database} tone="info" value={String(stats.invoiceItems)} label={config.countLabel} />
+      </StatGrid>
 
-      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-line bg-white p-3 shadow-card lg:flex-row lg:items-center">
+      <Card className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <SearchBar
           value={search}
           onChange={setSearch}
@@ -269,7 +258,7 @@ export default function RecycleBinScreen({ kind, title }) {
         >
           {config.emptyButton}
         </Button>
-      </div>
+      </Card>
 
       <div ref={pager.anchorRef} className="scroll-mt-32" />
       {body}

@@ -23,7 +23,6 @@ import {
   LoadingState,
   Modal,
   Page,
-  RefreshButton,
   SearchBar,
   TextArea,
   TextField,
@@ -121,10 +120,10 @@ function UnitForm({ open, onClose, kind, unit, onSaved }) {
       title={unit ? `Edit ${cfg.singular}` : `Add ${cfg.singular}`}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="neutral" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form={formId} loading={saving}>
+          <Button type="submit" form={formId} variant="success" loading={saving}>
             Save
           </Button>
         </>
@@ -198,52 +197,51 @@ function UnitOrders({ kind, lots, oldBatches }) {
           finished and settled.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
+        <div className="erp-table-wrap erp-table-flat">
+          <table className="erp-table">
             <thead>
-              <tr className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
-                <th className="py-1.5 pr-3">Lot / DC</th>
+              <tr>
+                <th>Lot / DC</th>
                 {kind === 'dyeing' ? (
                   <>
-                    <th className="py-1.5 pr-3">Received (my DC)</th>
-                    <th className="py-1.5 pr-3">Sent to combing (its DC)</th>
-                    <th className="py-1.5 pr-3">Dyeing loss</th>
+                    <th className="num">Received (my DC)</th>
+                    <th className="num">Sent to combing (its DC)</th>
+                    <th className="num">Dyeing loss</th>
                   </>
                 ) : (
                   <>
-                    <th className="py-1.5 pr-3">Received from dyer (dyer DC)</th>
-                    <th className="py-1.5 pr-3">Delivered back (its DC)</th>
-                    <th className="py-1.5 pr-3">Combing loss</th>
+                    <th className="num">Received from dyer (dyer DC)</th>
+                    <th className="num">Delivered back (its DC)</th>
+                    <th className="num">Combing loss</th>
                   </>
                 )}
-                <th className="py-1.5 pr-3 text-right">Charge / due</th>
-                <th className="py-1.5">Status</th>
+                <th className="num">Charge / due</th>
+                <th>Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {shown.map(({ lot, st, t }) => {
                 const charge = kind === 'dyeing' ? t.dyeingCharge : t.combingCharge;
                 const due = kind === 'dyeing' ? t.dyeingDue : t.combingDue;
+                const product = kind === 'dyeing' ? lot.grey?.description : lot.finishedDescription;
                 return (
-                  <tr key={lot.id} className="align-top">
-                    <td className="py-2 pr-3">
+                  <tr key={lot.id}>
+                    <td>
                       <Link
                         to={link(lot)}
-                        className="font-mono font-bold text-brand-700 underline-offset-2 hover:underline"
+                        className="font-mono font-bold whitespace-nowrap text-brand-700 underline-offset-2 hover:underline"
                       >
                         {formatDcNo(lot.dcNo)}
                       </Link>
-                      <div className="text-xs text-slate-500">
-                        {kind === 'dyeing' ? lot.grey?.description : lot.finishedDescription}
-                      </div>
+                      {product ? <div className="text-xs text-slate-500">{product}</div> : null}
                     </td>
                     {kind === 'dyeing' ? (
                       <>
-                        <td className="py-2 pr-3 tabular-nums">
+                        <td className="num">
                           {toNum(lot.grey?.rolls)} rolls · {kg(lot.grey?.qty)}
                           <div className="text-xs text-slate-500">{formatDateIN(lot.dcDate)}</div>
                         </td>
-                        <td className="py-2 pr-3 tabular-nums">
+                        <td className="num">
                           {lot.dyeing ? (
                             <>
                               {toNum(lot.dyeing.rolls)} rolls · {kg(lot.dyeing.qty)}
@@ -255,7 +253,7 @@ function UnitOrders({ kind, lots, oldBatches }) {
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="py-2 pr-3 tabular-nums">
+                        <td className="num">
                           {lot.dyeing ? `${kg(t.dyeingLossQty)} (${t.dyeingLossPct}%)` : '—'}
                           {t.dyeingReturnedQty > 0 ? (
                             <div className="text-xs text-slate-500">returned {kg(t.dyeingReturnedQty)}</div>
@@ -264,7 +262,7 @@ function UnitOrders({ kind, lots, oldBatches }) {
                       </>
                     ) : (
                       <>
-                        <td className="py-2 pr-3 tabular-nums">
+                        <td className="num">
                           {lot.dyeing ? (
                             <>
                               {toNum(lot.dyeing.rolls)} rolls · {kg(lot.dyeing.qty)}
@@ -277,7 +275,7 @@ function UnitOrders({ kind, lots, oldBatches }) {
                             <span className="text-slate-400">Still at {lot.dyer?.name ?? 'the dyer'}</span>
                           )}
                         </td>
-                        <td className="py-2 pr-3 tabular-nums">
+                        <td className="num">
                           {lot.received ? (
                             <>
                               {toNum(lot.received.rolls)} rolls · {kg(lot.received.qty)}
@@ -289,7 +287,7 @@ function UnitOrders({ kind, lots, oldBatches }) {
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="py-2 pr-3 tabular-nums">
+                        <td className="num">
                           {lot.received ? `${kg(t.combingLossQty)} (${t.combingLossPct}%)` : '—'}
                           {t.combingReturnedQty > 0 ? (
                             <div className="text-xs text-slate-500">returned {kg(t.combingReturnedQty)}</div>
@@ -297,7 +295,7 @@ function UnitOrders({ kind, lots, oldBatches }) {
                         </td>
                       </>
                     )}
-                    <td className="py-2 pr-3 text-right tabular-nums">
+                    <td className="num">
                       {rupees(charge)}
                       <div
                         className={cn('text-xs font-semibold', due > 0 ? 'text-red-600' : 'text-emerald-700')}
@@ -305,8 +303,8 @@ function UnitOrders({ kind, lots, oldBatches }) {
                         {due > 0 ? `Due ${rupees(due)}` : 'Settled'}
                       </div>
                     </td>
-                    <td className="py-2">
-                      <Badge tone={st.tone}>{st.label}</Badge>
+                    <td className="nowrap">
+                      <Badge status={st.label} />
                     </td>
                   </tr>
                 );
@@ -316,15 +314,11 @@ function UnitOrders({ kind, lots, oldBatches }) {
         </div>
       )}
       {done.length ? (
-        <button
-          type="button"
-          onClick={() => setShowDone((v) => !v)}
-          className="mt-2 min-h-9 text-xs font-semibold text-brand-700 hover:underline"
-        >
+        <Button variant="ghost" size="sm" className="mt-2 -ml-3" onClick={() => setShowDone((v) => !v)}>
           {showDone
             ? 'Hide finished lots'
             : `Show ${done.length} finished lot${done.length === 1 ? '' : 's'}`}
-        </button>
+        </Button>
       ) : null}
       {oldBatches ? (
         <p className="mt-1 text-xs text-slate-500">
@@ -353,7 +347,7 @@ function UnitsScreen({ kind }) {
     const [units, lots, old] = await Promise.all([cfg.loadUnits(), db.getAllProcessingLots(), cfg.loadOld()]);
     setState({ units: units || [], lots: lots || [], old: old || [] });
   }, [cfg]);
-  const { loading, error, refreshing, refresh, reload } = useFocusLoad(load);
+  const { loading, error, refresh, reload } = useFocusLoad(load);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -408,18 +402,18 @@ function UnitsScreen({ kind }) {
   };
 
   const Icon = cfg.icon;
+  // "2 lots in dyeing": coloured as processing (blue) by the app-wide status map
+  const activeText = (n) => `${n} lot${n === 1 ? '' : 's'} ${kind === 'dyeing' ? 'in dyeing' : 'in combing'}`;
+  const contact = (u) => [u.ownerName, u.address].filter(Boolean).join(' · ');
   return (
     <Page
       title={cfg.title}
       icon={Icon}
       max="5xl"
       actions={
-        <>
-          <RefreshButton onClick={refresh} loading={refreshing} />
-          <Button icon={Plus} onClick={() => setEditing({ unit: null })}>
-            <span className="max-sm:sr-only">Add unit</span>
-          </Button>
-        </>
+        <Button variant="primary" icon={Plus} onClick={() => setEditing({ unit: null })}>
+          <span className="max-sm:sr-only">Add unit</span>
+        </Button>
       }
     >
       {loading ? (
@@ -436,7 +430,7 @@ function UnitsScreen({ kind }) {
               message={`Add the ${cfg.singular}s you send fabric to; they are picked on the lot forms.`}
               action={
                 query ? null : (
-                  <Button icon={Plus} onClick={() => setEditing({ unit: null })}>
+                  <Button variant="primary" icon={Plus} onClick={() => setEditing({ unit: null })}>
                     Add {cfg.singular}
                   </Button>
                 )
@@ -446,31 +440,28 @@ function UnitsScreen({ kind }) {
             <div className="space-y-3">
               {rows.map((r) => (
                 <Card key={r.unit.id} className="p-3.5 sm:p-4">
-                  <div className="flex flex-wrap items-start gap-3">
+                  <div className="flex items-start gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate font-semibold text-brand-800">{r.name}</span>
-                        {r.active ? (
-                          <Badge tone={kind === 'dyeing' ? 'info' : 'warning'}>
-                            {r.active} lot{r.active === 1 ? '' : 's'}{' '}
-                            {kind === 'dyeing' ? 'in dyeing' : 'in combing'}
-                          </Badge>
-                        ) : null}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="min-w-0 truncate font-semibold text-brand-800" title={r.name}>
+                          {r.name}
+                        </span>
+                        {r.active ? <Badge status={activeText(r.active)} /> : null}
                       </div>
-                      <div className="truncate text-xs text-slate-500">
-                        {[r.unit.ownerName, r.unit.address].filter(Boolean).join(' · ') || '—'}
+                      <div className="truncate text-xs text-slate-500" title={contact(r.unit) || undefined}>
+                        {contact(r.unit) || '—'}
                       </div>
                       {r.unit.phone ? (
                         <a
                           href={`tel:${r.unit.phone}`}
-                          className="mt-1 inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-brand-700"
+                          className="mt-1 inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-sky-700 tabular-nums hover:text-sky-800 hover:underline"
                         >
                           <Phone className="size-4" aria-hidden />
                           {r.unit.phone}
                         </a>
                       ) : null}
                     </div>
-                    <div className="text-right">
+                    <div className="shrink-0 text-right">
                       <div className="text-[11px] font-semibold text-slate-500 uppercase">Due</div>
                       <div
                         className={cn(
@@ -483,10 +474,16 @@ function UnitsScreen({ kind }) {
                       <div className="mt-1 flex justify-end gap-1">
                         <IconButton
                           icon={Pencil}
+                          variant="edit"
                           label={`Edit ${r.name}`}
                           onClick={() => setEditing({ unit: r.unit })}
                         />
-                        <IconButton icon={Trash2} label={`Delete ${r.name}`} onClick={() => remove(r)} />
+                        <IconButton
+                          icon={Trash2}
+                          variant="outlineDanger"
+                          label={`Delete ${r.name}`}
+                          onClick={() => remove(r)}
+                        />
                       </div>
                     </div>
                   </div>

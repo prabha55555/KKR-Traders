@@ -1,10 +1,10 @@
-import { AlertCircle, Banknote, CheckCircle2, Clock, Landmark, Plus, Receipt, Trash2 } from 'lucide-react';
+import { Banknote, Landmark, Plus, Receipt, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { CASH_LABEL } from '@/core/accountLabel';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { modeLabel } from '@/core/paymentMethods';
-import { Button, EmptyState, Modal, useFeedback } from '@/ui';
+import { Badge, Button, EmptyState, Modal, useFeedback } from '@/ui';
 
 import { calcBatchPaymentStats } from './dyeingLogic';
 import { deleteDyeingBatchPayment } from './dyeingService';
@@ -85,7 +85,7 @@ export function DyeingPaymentHistoryModal({ open, batch, onClose, onPaymentDelet
       size="md"
       footer={
         <div className="flex w-full items-center justify-between gap-2">
-          <Button variant="outline" onClick={onClose} className="max-sm:flex-1">
+          <Button variant="neutral" onClick={onClose} className="max-sm:flex-1">
             Close
           </Button>
           {onOpenAddPayment && (
@@ -108,50 +108,40 @@ export function DyeingPaymentHistoryModal({ open, batch, onClose, onPaymentDelet
         {/* Dyer & Balance Header Card */}
         <div className="space-y-3 rounded-xl border border-slate-200/90 bg-slate-50/80 p-3.5">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
+            <div className="min-w-0">
               <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                 Dye House / Mill
               </div>
-              <div className="text-sm font-bold text-slate-900">{batch.processorName}</div>
+              <div className="text-sm font-bold wrap-anywhere text-slate-900">{batch.processorName}</div>
               {batch.processorPhone && (
                 <div className="mt-0.5 font-mono text-xs text-slate-500">{batch.processorPhone}</div>
               )}
             </div>
 
-            <div>
-              {stats.isPaid ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
-                  <CheckCircle2 className="size-3.5 text-emerald-600" />
-                  Fully Paid
-                </span>
-              ) : stats.isPartial ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
-                  <Clock className="size-3.5 text-amber-600" />
-                  Partially Paid
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-800">
-                  <AlertCircle className="size-3.5 text-rose-600" />
-                  Payment Due
-                </span>
-              )}
-            </div>
+            {/* colour from the app-wide status map: paid green, partial yellow, due red */}
+            <Badge
+              status={stats.isPaid ? 'Fully Paid' : stats.isPartial ? 'Partially Paid' : 'Payment Due'}
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-2 border-t border-slate-200/70 pt-2.5 text-xs">
             <div>
               <div className="text-[10px] tracking-wider text-slate-500 uppercase">Total Charges</div>
-              <div className="mt-0.5 font-bold text-slate-900">₹{formatCurrency(stats.totalCharges)}</div>
+              <div className="mt-0.5 font-bold text-slate-900 tabular-nums">
+                ₹{formatCurrency(stats.totalCharges)}
+              </div>
             </div>
             <div>
               <div className="text-[10px] tracking-wider text-slate-500 uppercase">Total Paid</div>
-              <div className="mt-0.5 font-bold text-emerald-700">₹{formatCurrency(stats.totalPaid)}</div>
+              <div className="mt-0.5 font-bold text-emerald-700 tabular-nums">
+                ₹{formatCurrency(stats.totalPaid)}
+              </div>
             </div>
             <div className="text-right">
               <div className="text-[10px] tracking-wider text-slate-500 uppercase">Balance Due</div>
               <div
-                className={`mt-0.5 font-display font-extrabold ${
-                  stats.balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700'
+                className={`mt-0.5 font-display font-extrabold tabular-nums ${
+                  stats.balanceDue > 0 ? 'text-red-600' : 'text-emerald-700'
                 }`}
               >
                 ₹{formatCurrency(stats.balanceDue)}
@@ -176,7 +166,7 @@ export function DyeingPaymentHistoryModal({ open, batch, onClose, onPaymentDelet
               action={
                 onOpenAddPayment ? (
                   <Button
-                    variant="primary"
+                    variant="success"
                     icon={Plus}
                     onClick={() => {
                       onClose();
@@ -195,8 +185,8 @@ export function DyeingPaymentHistoryModal({ open, batch, onClose, onPaymentDelet
                   key={p.id}
                   className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs transition hover:border-slate-300 sm:flex-row sm:items-center"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-display text-base font-extrabold text-emerald-700 tabular-nums">
                         ₹{formatCurrency(p.amount)}
                       </span>
@@ -215,16 +205,16 @@ export function DyeingPaymentHistoryModal({ open, batch, onClose, onPaymentDelet
                   </div>
 
                   <div className="flex shrink-0 items-center justify-end">
-                    <button
-                      type="button"
-                      disabled={deletingId === p.id}
+                    <Button
+                      size="sm"
+                      variant="outlineDanger"
+                      icon={Trash2}
+                      loading={deletingId === p.id}
                       onClick={() => handleDeletePayment(p)}
                       title="Delete payment"
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 shadow-2xs transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 active:scale-95 disabled:opacity-50"
                     >
-                      <Trash2 className="size-3.5" />
-                      <span>{deletingId === p.id ? 'Deleting…' : 'Delete'}</span>
-                    </button>
+                      {deletingId === p.id ? 'Deleting…' : 'Delete'}
+                    </Button>
                   </div>
                 </div>
               ))}

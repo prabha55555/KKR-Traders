@@ -11,7 +11,7 @@ import { saveAndShareExport } from './exportFile';
 export function useCustomerDetails() {
   const { toast } = useFeedback();
   const [customers, setCustomers] = useState([]);
-  const { loading, refreshing, error, refresh } = useFocusLoad(async () => {
+  const { loading, error, refresh } = useFocusLoad(async () => {
     setCustomers(await loadCustomerSummaries(true));
   });
   const [term, setTerm] = useState('');
@@ -48,7 +48,6 @@ export function useCustomerDetails() {
     visible,
     stats,
     loading,
-    refreshing,
     error,
     refresh,
     setTerm,

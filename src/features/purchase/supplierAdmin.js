@@ -1,6 +1,7 @@
 /** Add Supplier page — port of js/manage-suppliers.js (validation, duplicate checks, rename side-effects). */
 import { db } from '@/core/db';
 import { digitsOnly } from '@/core/format';
+import { normalizePhone } from '@/core/ledger';
 const trimmed = (i) => ({ phone: i.phone.trim(), name: i.name.trim(), address: i.address.trim() });
 /** addSupplier(): phone first, then name. Returns the message to show, or null when valid. */
 export function validateNewSupplier(input) {
@@ -29,22 +30,35 @@ export function filterSupplierDirectory(suppliers, query) {
   );
 }
 /**
- * Which purchase bills a supplier edit rewrites: every bill whose trimmed supplierName equals the supplier's OLD name
- * (matched by name, not phone — the web did the same). A blank new address keeps the bill's own address.
+ * Which purchase bills a supplier edit rewrites: the bills with the supplier's OLD name that are really this
+ * supplier's — those with its phone, and phone-less ones stamped into its ledger chain or (unstamped) while no other
+ * phone uses that name. (The web matched by name only, which rewrote a namesake's bills with this phone.) `suppliers`
+ * = the directory, to spot a namesake that has no bills yet. A blank new address keeps the bill's own address.
  */
-export function planSupplierEdit(original, input, bills) {
+export function planSupplierEdit(original, input, bills, suppliers = []) {
   const next = trimmed(input);
   const oldName = (original.name || '').trim();
-  const billUpdates = bills
-    .filter((b) => (b.supplierName || '').trim() === oldName)
-    .map((b) => ({
-      invoiceNo: b.invoiceNo,
-      fields: {
-        supplierName: next.name,
-        supplierPhone: next.phone,
-        supplierAddress: next.address || b.supplierAddress || '',
-      },
-    }));
+  const own = normalizePhone(original.phone);
+  const named = bills.filter((b) => (b.supplierName || '').trim() === oldName);
+  const otherPhone = (p) => p && p !== own;
+  const namesake =
+    named.some((b) => otherPhone(normalizePhone(b.supplierPhone))) ||
+    suppliers.some((x) => (x.name || '').trim() === oldName && otherPhone(normalizePhone(x.phone)));
+  const isOwn = (b) => {
+    if (!own) return true;
+    const p = normalizePhone(b.supplierPhone);
+    if (p) return p === own;
+    if (b.ledgerParty !== undefined && b.ledgerParty !== null) return normalizePhone(b.ledgerParty) === own;
+    return !namesake;
+  };
+  const billUpdates = named.filter(isOwn).map((b) => ({
+    invoiceNo: b.invoiceNo,
+    fields: {
+      supplierName: next.name,
+      supplierPhone: next.phone,
+      supplierAddress: next.address || b.supplierAddress || '',
+    },
+  }));
   return { phoneChanged: next.phone !== original.phone, billUpdates };
 }
 export async function addSupplier(input) {
@@ -65,8 +79,11 @@ export async function updateSupplier(original, input) {
   const phoneChanged = next.phone !== original.phone;
   if (phoneChanged && (await db.getSupplier(next.phone))) return { status: 'duplicate' };
   db.invalidate('purchaseInvoices');
-  const bills = await db.getAllPurchaseBills();
-  const { billUpdates } = planSupplierEdit(original, next, bills);
+  const [bills, suppliers] = await Promise.all([
+    db.getAllPurchaseBills(),
+    db.getAllSuppliers().catch(() => []),
+  ]);
+  const { billUpdates } = planSupplierEdit(original, next, bills, suppliers);
   await Promise.all(billUpdates.map((u) => db.updatePurchaseBillFields(u.invoiceNo, u.fields)));
   await db.saveSupplier({ name: next.name, phone: next.phone, address: next.address }, { merge: true });
   // the rewritten bills may now form one chain (or have left another): keep the stored balances in step

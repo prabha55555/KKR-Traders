@@ -1,6 +1,8 @@
 import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { invoiceNoLabel, toNum } from '@/core/format';
+import { foldBreakdown, normalizeMethod, PAYMENT_METHODS, sumByMethod } from '@/core/paymentMethods';
+import { withUntrackedInitialPayment } from '@/features/history/purchase/purchasePayments';
 
 /** `type` of the account_transactions doc written by the cash "Edit Balance" action. */
 export const BALANCE_ADJUSTMENT = 'Balance Adjustment';
@@ -20,6 +22,20 @@ export function txDirection(tx) {
   if (toOutside && !fromOutside) return 'out';
   return 'transfer';
 }
+
+/** Ids of the account_transactions copies of processing-lot payments and of old dyeing / combing batch payments. */
+const LOT_PAYMENT_PREFIXES = ['lot_pay_', 'dye_pay_', 'cb_pay_', 'comb_pay_'];
+
+/**
+ * True for the finance copy of a lot (or old batch) payment. The lot keeps its own record of the payment, so deleting
+ * only this copy would leave the lot showing it as paid: these are undone from Dyeing & Combing (the lot's Payment
+ * History removes both).
+ */
+export const isLotPaymentEntry = (tx) =>
+  LOT_PAYMENT_PREFIXES.some((prefix) => String(tx?.id ?? '').startsWith(prefix));
+
+/** Where a lot payment is undone (shown instead of the Undo button on its finance copy). */
+export const LOT_PAYMENT_UNDO_HINT = 'Undo from Dyeing & Combing';
 
 const round2 = (n) => Math.round(toNum(n) * 100) / 100;
 
@@ -46,6 +62,76 @@ export function buildCashBalanceEdit({ cashBalance, target, date, notes = '' }) 
     newBalance,
     notes: String(notes || '').trim(),
   };
+}
+
+// ------------------------------------------------------------------ untracked first payment of older bills
+/**
+ * One synthetic payment record per method (`paymentType: 'initial'`, dated the bill date, into the bill's bank) for the
+ * money paid WITH an older bill. Marked `untracked` so the activity list can point at the bill itself.
+ */
+function untrackedInitialRecords(bill, split, paymentDate, bankAccountId) {
+  return PAYMENT_METHODS.filter((m) => toNum(split?.[m]) > 0).map((m) => ({
+    id: `untracked_initial_${bill.invoiceNo}_${m}`,
+    invoiceNo: bill.invoiceNo,
+    paymentDate,
+    amount: toNum(split[m]),
+    paymentMethod: m,
+    paymentType: 'initial',
+    ...(bankAccountId ? { bankAccountId } : {}),
+    untracked: true,
+  }));
+}
+
+/**
+ * What was paid when an older sales invoice was written, for an invoice whose payment records have no 'initial' one
+ * (as loadSalesBillForEditing in core/services/salesBill.js): the paid total minus the later payments, split like the
+ * stored (cumulative) breakdown minus theirs when that adds up, else under the invoice's single payment method.
+ * Null when there is nothing untracked.
+ */
+export function untrackedSalesInitialSplit(inv, records = []) {
+  if (records.some((p) => p.paymentType === 'initial')) return null;
+  const later = sumByMethod(records);
+  const total = Math.max(0, toNum(inv.amountPaid) - later.cash - later.account);
+  if (total < 0.005) return null;
+  const pb = foldBreakdown(inv.paymentBreakdown);
+  if (pb) {
+    const split = {
+      cash: Math.max(0, pb.cash - later.cash),
+      account: Math.max(0, pb.account - later.account),
+    };
+    if (Math.abs(split.cash + split.account - total) < 0.005) return split;
+  }
+  return normalizeMethod(inv.paymentMethod) === 'account'
+    ? { cash: 0, account: total }
+    : { cash: total, account: 0 };
+}
+
+/**
+ * A sales invoice's payment records plus, when none of them is its 'initial' payment (older invoices), the money paid
+ * with the invoice as synthetic records — counting only the records dropped it from the balances.
+ */
+export function withUntrackedSalesInitial(inv, records = []) {
+  const split = untrackedSalesInitialSplit(inv, records);
+  if (!split) return records;
+  return [...untrackedInitialRecords(inv, split, inv.invoiceDate || inv.date, inv.bankAccountId), ...records];
+}
+
+/**
+ * A purchase bill's payment records plus, when none of them is its 'initial' payment (older bills), the money paid with
+ * the bill — the same untracked first payment Purchase History shows (withUntrackedInitialPayment). History books it
+ * under one method; a nested cash + account split is kept apart here so each side's balance gets its own share.
+ */
+export function withUntrackedPurchaseInitial(bill, records = []) {
+  const all = withUntrackedInitialPayment(bill, records);
+  if (all.length === records.length) return records;
+  const [first] = all;
+  const nested = foldBreakdown(bill.payment);
+  // the nested split only when it accounts for exactly the untracked amount; otherwise all of it under its method
+  const split =
+    nested && Math.abs(nested.cash + nested.account - toNum(first.amount)) < 0.005
+      ? nested
+      : { [normalizeMethod(first.paymentMethod)]: toNum(first.amount) };
+  return [...untrackedInitialRecords(bill, split, first.paymentDate, first.bankAccountId), ...records];
 }
 
 /**
@@ -144,7 +230,8 @@ export function computeAccountBalances({
     const paymentsForInv = sPaymentsByInv.get(invNo);
 
     if (paymentsForInv && paymentsForInv.length > 0) {
-      paymentsForInv.forEach((p) => {
+      // an older invoice's first payment has no record: it counts too
+      withUntrackedSalesInitial(inv, paymentsForInv).forEach((p) => {
         const amt = toNum(p.amount);
         if (p.paymentMethod === 'cash') {
           cashBalance += amt;
@@ -194,7 +281,8 @@ export function computeAccountBalances({
     const paymentsForBill = pPaymentsByInv.get(billNo);
 
     if (paymentsForBill && paymentsForBill.length > 0) {
-      paymentsForBill.forEach((p) => {
+      // an older bill's first payment has no record: it counts too
+      withUntrackedPurchaseInitial(bill, paymentsForBill).forEach((p) => {
         const amt = toNum(p.amount);
         if (p.paymentMethod === 'cash') {
           cashBalance -= amt;
@@ -359,6 +447,96 @@ export async function loadLiveAccountBalances() {
 }
 
 /**
+ * How many records use bank account `account`: everything its balance is built from (getAccountActivity, including
+ * older records without a bank that fall back to the first account) plus every record that names it (bills, payment
+ * records, returns, entries, expenses, loans and their repayments, lot / batch payments). Deleting a used account
+ * would move or drop those amounts, so it must stay. `data` = the getAccountActivity collections plus optional
+ * `processingLots`, `dyeingBatches`, `combingBatches`.
+ */
+export function countAccountReferences(account, data = {}) {
+  const id = account?.id;
+  if (!id || id === 'cash') return 0;
+  const refs = new Set();
+  getAccountActivity({ account, ...data }).items.forEach((item) => refs.add(item.sourceRef ?? item.id));
+  const names = (...values) => values.includes(id);
+  const scan = (list, test) => (list || []).forEach((r) => r && test(r) && refs.add(r));
+  scan(data.salesInvoices, (r) => names(r.bankAccountId));
+  scan(data.purchaseBills, (r) => names(r.bankAccountId, r.payment?.bankAccountId));
+  scan(data.salesPayments, (r) => names(r.bankAccountId));
+  scan(data.purchasePayments, (r) => names(r.bankAccountId));
+  scan(data.salesReturns, (r) => names(r.bankAccountId));
+  scan(data.purchaseReturns, (r) => names(r.bankAccountId));
+  scan(data.accountTransactions, (r) => names(r.fromAccount, r.toAccount, r.bankAccountId));
+  scan(data.expenses, (r) => names(r.paymentSource));
+  (data.financeRecords || []).forEach((rec) => {
+    if (names(rec.depositAccount)) refs.add(rec);
+    scan(rec.payments, (p) => names(p.sourceAccount));
+  });
+  // a lot / batch payment and its account_transactions copy (same id) are one payment
+  const mirrored = new Set((data.accountTransactions || []).map((t) => t.id));
+  const lotPayment = (p) => names(p.bankAccountId) && !mirrored.has(p.id);
+  (data.processingLots || []).forEach((lot) => {
+    scan(lot.dyeingPayments, lotPayment);
+    scan(lot.combingPayments, lotPayment);
+  });
+  [...(data.dyeingBatches || []), ...(data.combingBatches || [])].forEach((batch) =>
+    scan(batch.payments, lotPayment),
+  );
+  return refs.size;
+}
+
+/**
+ * Every collection that can name a bank account, for countAccountReferences. No `.catch(() => [])` here (returns read
+ * strictly too): a failed read throws, so an account is not deleted on a partial picture.
+ */
+export async function loadAccountReferenceData() {
+  const [
+    bankAccounts,
+    salesInvoices,
+    purchaseBills,
+    expenses,
+    financeRecords,
+    accountTransactions,
+    salesPayments,
+    purchasePayments,
+    salesReturns,
+    purchaseReturns,
+    processingLots,
+    dyeingBatches,
+    combingBatches,
+  ] = await Promise.all([
+    db.getAllBankAccounts(),
+    db.getAllInvoices(),
+    db.getAllPurchaseBills(),
+    db.getAllExpenses(),
+    db.getAllFinanceRecords(),
+    db.getAllAccountTransactions(),
+    db.getAllPayments(),
+    db.getAllPurchasePayments(),
+    db.getAllReturns({ strict: true }),
+    db.getAllPurchaseReturns(),
+    db.getAllProcessingLots(),
+    db.getAllDyeingBatches(),
+    db.getAllCombingBatches(),
+  ]);
+  return {
+    bankAccounts: bankAccounts || [],
+    salesInvoices: salesInvoices || [],
+    purchaseBills: purchaseBills || [],
+    expenses: expenses || [],
+    financeRecords: financeRecords || [],
+    accountTransactions: accountTransactions || [],
+    salesPayments: salesPayments || [],
+    purchasePayments: purchasePayments || [],
+    salesReturns: salesReturns || [],
+    purchaseReturns: purchaseReturns || [],
+    processingLots: processingLots || [],
+    dyeingBatches: dyeingBatches || [],
+    combingBatches: combingBatches || [],
+  };
+}
+
+/**
  * Extracts a reliable epoch millisecond timestamp from an item or record.
  */
 export function getRecordTimestamp(ref, fallbackDateStr) {
@@ -478,7 +656,8 @@ export function getAccountActivity({
     const invTs = getRecordTimestamp(inv, invDate);
 
     if (paymentsForInv && paymentsForInv.length > 0) {
-      paymentsForInv.forEach((p) => {
+      // an older invoice's first payment has no record: it is listed too (dated the invoice date)
+      withUntrackedSalesInitial(inv, paymentsForInv).forEach((p) => {
         const amt = toNum(p.amount);
         const pDate = p.paymentDate || invDate;
         const pTs = getRecordTimestamp(p, pDate) || invTs;
@@ -494,7 +673,7 @@ export function getAccountActivity({
               amount: amt,
               title: `Sales ${invoiceNoLabel(invNo)}`,
               subtitle: `Customer: ${customer} • ${p.paymentType === 'additional' ? 'Additional Payment' : 'Initial Payment'}`,
-              sourceRef: p,
+              sourceRef: p.untracked ? inv : p,
             });
           }
         } else if (!isCash) {
@@ -511,7 +690,7 @@ export function getAccountActivity({
                 amount: amt,
                 title: `Sales ${invoiceNoLabel(invNo)}`,
                 subtitle: `Customer: ${customer} • Account`,
-                sourceRef: p,
+                sourceRef: p.untracked ? inv : p,
               });
             }
           }
@@ -577,14 +756,16 @@ export function getAccountActivity({
   });
 
   purchaseBills.forEach((bill) => {
-    const billDate = bill.billDate || bill.date || bill.createdAt;
+    // purchase bills store `invoiceDate`; `createdAt` is stamped again on every save
+    const billDate = bill.invoiceDate || bill.billDate || bill.date || bill.createdAt;
     const billNo = bill.billNumber || bill.invoiceNo || 'Bill';
     const supplier = bill.supplierName || bill.partyName || 'Supplier';
     const paymentsForBill = pPaymentsByInv.get(String(billNo));
     const billTs = getRecordTimestamp(bill, billDate);
 
     if (paymentsForBill && paymentsForBill.length > 0) {
-      paymentsForBill.forEach((p) => {
+      // an older bill's first payment has no record: it is listed too (dated the bill date)
+      withUntrackedPurchaseInitial(bill, paymentsForBill).forEach((p) => {
         const amt = toNum(p.amount);
         const pDate = p.paymentDate || billDate;
         const pTs = getRecordTimestamp(p, pDate) || billTs;
@@ -600,7 +781,7 @@ export function getAccountActivity({
               amount: amt,
               title: `Purchase ${invoiceNoLabel(billNo)}`,
               subtitle: `Supplier: ${supplier} • ${p.paymentType === 'additional' ? 'Additional Payment' : 'Initial Payment'}`,
-              sourceRef: p,
+              sourceRef: p.untracked ? bill : p,
             });
           }
         } else if (!isCash) {
@@ -617,7 +798,7 @@ export function getAccountActivity({
                 amount: amt,
                 title: `Purchase ${invoiceNoLabel(billNo)}`,
                 subtitle: `Supplier: ${supplier} • Account`,
-                sourceRef: p,
+                sourceRef: p.untracked ? bill : p,
               });
             }
           }
@@ -731,6 +912,9 @@ export function getAccountActivity({
           // legacy 'UPI' loan payments read as Account (the money left `source` either way)
           subtitle: p.notes || `Mode: ${source === 'cash' ? 'Cash' : 'Account'}`,
           sourceRef: p,
+          // older loan payments have no id: Undo finds them by their loan and position
+          recordId: rec.id,
+          paymentIndex: idx,
         });
       }
     });

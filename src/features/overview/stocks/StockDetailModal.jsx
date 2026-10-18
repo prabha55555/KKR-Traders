@@ -2,7 +2,7 @@ import { PackageMinus, PackagePlus } from 'lucide-react';
 import { useRef } from 'react';
 
 import { formatRupees } from '@/core/format';
-import { Button, DataTable, Modal, cn } from '@/ui';
+import { Badge, Button, DataTable, Modal, SectionHeader } from '@/ui';
 
 import { useAppNavigate } from '@/hooks/useRouteParams';
 import { AvailableValue, OpeningValue, RollsLine } from './StockRowParts';
@@ -13,6 +13,7 @@ import {
   historyQty,
   historyRolls,
   historyTotal,
+  processingLotLink,
   rollsText,
 } from './stocksLogic';
 
@@ -22,8 +23,6 @@ const PURCHASE = {
   party: 'Supplier',
   empty: 'No purchases found.',
   Icon: PackagePlus,
-  tile: 'bg-emerald-50 text-emerald-600 ring-emerald-200',
-  heading: 'text-emerald-800',
 };
 const SALES = {
   key: 'sales',
@@ -31,8 +30,6 @@ const SALES = {
   party: 'Customer',
   empty: 'No sales found.',
   Icon: PackageMinus,
-  tile: 'bg-sky-50 text-sky-600 ring-sky-200',
-  heading: 'text-sky-800',
 };
 
 function SummaryItem({ label, children }) {
@@ -47,7 +44,7 @@ function SummaryItem({ label, children }) {
 /** `showRolls`: the product is counted in rolls (a Rolls column + total; entries without rolls show '-'). */
 function HistorySection({ kind, entries, onSelectBill, showRolls }) {
   const columns = [
-    { key: 'date', header: 'Date', className: 'whitespace-nowrap', value: (e) => historyDate(e.date) },
+    { key: 'date', header: 'Date', nowrap: true, value: (e) => historyDate(e.date) },
     {
       key: 'invoice',
       header: 'Invoice No',
@@ -65,47 +62,41 @@ function HistorySection({ kind, entries, onSelectBill, showRolls }) {
             key: 'rolls',
             header: 'Rolls',
             align: 'right',
-            className: 'tabular-nums',
             value: (e) => (e.rolls ? e.rolls : '-'),
           },
         ]
       : []),
-    { key: 'qty', header: 'Qty', align: 'right', className: 'tabular-nums', value: (e) => e.qty },
-    {
-      key: 'rate',
-      header: 'Rate',
-      align: 'right',
-      className: 'tabular-nums',
-      value: (e) => formatRupees(e.rate),
-    },
+    { key: 'qty', header: 'Qty', align: 'right', value: (e) => e.qty },
+    { key: 'rate', header: 'Rate', align: 'right', value: (e) => formatRupees(e.rate) },
     {
       key: 'amount',
       header: 'Amount',
       align: 'right',
-      className: 'font-semibold tabular-nums',
+      className: 'font-semibold',
       value: (e) => formatRupees(e.amount),
     },
   ];
   return (
     <section className="mb-6 last:mb-0">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className={cn('flex items-center gap-2.5 text-base font-bold', kind.heading)}>
-          <span
-            className={cn('flex size-8 items-center justify-center rounded-lg ring-1 ring-inset', kind.tile)}
-          >
-            <kind.Icon className="size-[18px]" aria-hidden />
-          </span>
-          {kind.title}
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 tabular-nums">
-            {entries.length}
-          </span>
-        </h3>
-        {entries.length > 0 ? (
-          <span className="hidden text-[11px] font-medium text-slate-400 sm:inline">
-            Click row to view bill →
-          </span>
-        ) : null}
-      </div>
+      <SectionHeader
+        title={
+          <>
+            {kind.title}
+            <Badge tone="neutral" className="tabular-nums">
+              {entries.length}
+            </Badge>
+          </>
+        }
+        icon={kind.Icon}
+        className="mb-3"
+        right={
+          entries.length > 0 ? (
+            <span className="hidden text-[11px] font-medium text-slate-400 sm:inline">
+              Click row to view bill →
+            </span>
+          ) : null
+        }
+      />
       <DataTable
         columns={columns}
         rows={entries}
@@ -117,16 +108,16 @@ function HistorySection({ kind, entries, onSelectBill, showRolls }) {
           const display = historyInvoiceNo(e.invoiceNo);
           return (
             <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-x-3">
                 <span className="text-slate-500">{historyDate(e.date)}</span>
                 <span className="font-display font-bold text-brand-800 underline decoration-brand-300 underline-offset-2">
                   {display}
                 </span>
               </div>
-              <div className="text-slate-800">
+              <div className="break-words text-slate-800">
                 {kind.party}: {e.party}
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-3">
                 <span className="text-slate-500 tabular-nums">
                   {e.qty} × {formatRupees(e.rate)}
                   {showRolls && e.rolls ? ` · ${rollsText(e.rolls)}` : ''}
@@ -182,8 +173,8 @@ export default function StockDetailModal({ row, onClose }) {
     if (!rawNo) return;
     onClose();
     if (entry.isProcessingIssue || entry.isProcessingReceipt || entry.isProcessingReturn) {
-      const where = entry.isProcessingReceipt ? '/processing/completed' : '/processing/lots';
-      nav.push(`${where}?search=${encodeURIComponent(rawNo)}`);
+      // the lot where it is now: Completed Lots once received, else Processing Lots at its current stage
+      nav.push(processingLotLink(entry));
       return;
     }
     if (entry.isCombingReceipt || entry.isCombingIssue || String(rawNo).startsWith('CB-')) {
@@ -217,7 +208,7 @@ export default function StockDetailModal({ row, onClose }) {
       title={shown?.description ?? 'Product Details'}
       size="lg"
       footer={
-        <Button variant="secondary" onClick={onClose} className="max-sm:w-full">
+        <Button variant="neutral" onClick={onClose} className="max-sm:w-full">
           Close
         </Button>
       }

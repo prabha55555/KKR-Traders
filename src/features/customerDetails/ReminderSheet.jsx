@@ -80,13 +80,15 @@ export function ReminderSheet({ customer, onClose }) {
         </Button>
       }
     >
-      <div className="mb-5 flex items-center gap-3.5 rounded-2xl border border-line bg-slate-50/70 p-3.5">
+      <div className="mb-5 flex flex-wrap items-center gap-3.5 rounded-2xl border border-line bg-slate-50/70 p-3.5">
         <InitialAvatar name={shown.name} size="lg" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-base font-bold text-brand-800">Customer: {shown.name}</p>
+        <div className="min-w-0 flex-1 basis-40">
+          <p className="truncate font-display text-base font-bold text-brand-800" title={shown.name}>
+            Customer: {shown.name}
+          </p>
           <p className="text-sm text-slate-500 tabular-nums">Phone: {shown.phone || 'Not provided'}</p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="ml-auto shrink-0 text-right">
           <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Balance Due</p>
           <p className="font-display text-lg font-extrabold text-red-600 tabular-nums">
             {formatRupees(reminderBalance(shown))}

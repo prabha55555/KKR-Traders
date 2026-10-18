@@ -10,7 +10,7 @@
  *                                                      – "Payment History (₹x)" / "Return History (₹x)" rows.
  * InvoiceActionButtons({ invoice, actions, compact })  – wrapped button grid (see HistoryInvoiceActions in ./types.js);
  *                                                        `compact` (phone/tablet card) folds the rare actions behind "More actions".
- * InvoiceStatusBadge({ invoice })                      – Paid / Part paid / Unpaid pill (presentational).
+ * InvoiceStatusBadge({ invoice })                      – Paid / Partially Paid / Unpaid <Badge status> (presentational).
  * PaidProgress({ invoice })                            – slim gold -> emerald bar: paid share of the invoice total.
  *
  * `invoice` is a HistoryInvoice view model, so the same parts serve sales and purchase.
@@ -37,43 +37,25 @@ import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from '../lib/statemen
 
 const rs = (amount) => `₹${formatCurrency(amount)}`;
 
-/** Paid / Part paid / Unpaid – purely a visual reading of the invoice figures. */
+/** 'Paid' | 'Partially Paid' | 'Unpaid' – purely a visual reading of the invoice figures. */
+export function invoiceStatusText(invoice) {
+  if (invoiceDue(invoice) <= 0) return 'Paid';
+  return invoice.amountPaid > 0 ? 'Partially Paid' : 'Unpaid';
+}
+
+/** Paid / Partially Paid / Unpaid pill, coloured by the app-wide status map (same colours as every other module). */
 export function InvoiceStatusBadge({ invoice, className }) {
-  const due = invoiceDue(invoice);
-  if (due <= 0) {
-    return (
-      <Badge tone="success" className={className}>
-        Paid
-      </Badge>
-    );
-  }
-  return invoice.amountPaid > 0 ? (
-    <Badge tone="warning" className={className}>
-      Part paid
-    </Badge>
-  ) : (
-    <Badge tone="danger" className={className}>
-      Unpaid
-    </Badge>
-  );
+  return <Badge status={invoiceStatusText(invoice)} className={className} />;
 }
 
 /** Visual indicator badge when an invoice has a manual bill / physical slip attached. */
-export function InvoiceSlipBadge({ invoice, className, onClick }) {
+export function InvoiceSlipBadge({ invoice, className }) {
   if (!invoice?.manualBillImage && !invoice?.hasManualBillImage) return null;
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 shadow-2xs ring-1 ring-emerald-600/20',
-        onClick && 'cursor-pointer transition-colors hover:bg-emerald-100',
-        className,
-      )}
-      onClick={onClick}
-      title="Manual bill slip attached"
-    >
-      <Camera className="size-3 shrink-0 text-emerald-600" aria-hidden />
-      <span>Slip Attached</span>
-    </span>
+    <Badge tone="success" className={className}>
+      <Camera className="mr-1 inline size-3 align-[-2px]" aria-hidden />
+      Slip Attached
+    </Badge>
   );
 }
 
@@ -166,9 +148,9 @@ export function InvoiceSummaryBox({ invoice }) {
             <span className="flex items-center gap-1.5 font-bold tabular-nums">
               {rs(invoice.amountPaid)}
               {invoice.legacyPaymentMethod && payments.length === 0 ? (
-                <span className="rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                <Badge tone="success" className="text-[10px]">
                   {methodLabel(invoice.legacyPaymentMethod).toUpperCase()}
-                </span>
+                </Badge>
               ) : null}
             </span>
           </div>
@@ -197,32 +179,43 @@ export function InvoiceSummaryBox({ invoice }) {
 export function InvoiceProducts({ invoice }) {
   const showRolls = invoice.products.some((p) => toNum(p?.rolls) > 0);
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white text-sm">
-      <div className="flex gap-2 bg-linear-to-b from-slate-50 to-slate-100/70 px-3 py-2 text-[11px] font-bold tracking-[0.08em] text-slate-500 uppercase">
-        <span className="flex-1">Product</span>
-        {showRolls ? <span className="w-12 text-right">Rolls</span> : null}
-        <span className="w-16 text-right">Qty</span>
-        <span className="w-20 text-right">Rate</span>
-      </div>
-      {invoice.products.length > 0 ? (
-        invoice.products.map((p, i) => (
-          <div
-            key={`${i}-${p.description}`}
-            className="flex gap-2 border-t border-slate-100 px-3 py-2 text-slate-800"
-          >
-            <span className="min-w-0 flex-1 break-words">{p.description}</span>
+    <div className="erp-table-wrap erp-table-flat">
+      <table className="erp-table erp-table-dense">
+        <thead>
+          <tr>
+            <th scope="col">Product</th>
             {showRolls ? (
-              <span className="w-12 text-right tabular-nums">
-                {toNum(p.rolls) > 0 ? toNum(p.rolls) : '-'}
-              </span>
+              <th scope="col" className="num">
+                Rolls
+              </th>
             ) : null}
-            <span className="w-16 text-right tabular-nums">{p.qty}</span>
-            <span className="w-20 text-right tabular-nums">{rs(p.rate)}</span>
-          </div>
-        ))
-      ) : (
-        <p className="p-3 text-center text-slate-500">No products found</p>
-      )}
+            <th scope="col" className="num">
+              Qty
+            </th>
+            <th scope="col" className="num">
+              Rate
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoice.products.length > 0 ? (
+            invoice.products.map((p, i) => (
+              <tr key={`${i}-${p.description}`}>
+                <td className="w-full">{p.description}</td>
+                {showRolls ? <td className="num">{toNum(p.rolls) > 0 ? toNum(p.rolls) : '-'}</td> : null}
+                <td className="num">{p.qty}</td>
+                <td className="num">{rs(p.rate)}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={showRolls ? 4 : 3} className="text-center text-slate-500">
+                No products found
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -268,8 +261,8 @@ export function InvoiceHistoryLinks({ invoice, onViewPayments, onViewReturns }) 
       {invoice.totalReturns > 0 ? (
         <HistoryLink
           label={`Return History (${rs(invoice.totalReturns)})`}
-          tone="text-red-700"
-          tile="bg-red-50 text-red-600 ring-red-200"
+          tone="text-amber-800"
+          tile="bg-amber-50 text-amber-600 ring-amber-200"
           icon={RotateCcw}
           onClick={onViewReturns}
         />
@@ -285,7 +278,7 @@ export function InvoiceActionButtons({ invoice, actions, compact = false }) {
     <>
       {actions.whatsAppMessage ? (
         <Button
-          variant="outline"
+          variant="whatsapp"
           icon={MessageCircle}
           className={cell}
           onClick={() => actions.whatsAppMessage(no)}
@@ -300,7 +293,7 @@ export function InvoiceActionButtons({ invoice, actions, compact = false }) {
       ) : null}
       {actions.shareInvoicePdf ? (
         <Button
-          variant="outline"
+          variant="outlinePurple"
           icon={FileText}
           className={cell}
           onClick={() => actions.shareInvoicePdf(no)}

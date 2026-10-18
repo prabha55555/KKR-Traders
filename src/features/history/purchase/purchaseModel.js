@@ -2,10 +2,28 @@
 import { purchaseAmountPaid, purchaseBalanceDue } from '@/core/billing';
 import { formatInvoiceNo, toNum } from '@/core/format';
 import { PURCHASE_LEDGER, balanceReturnsTotal, billAmount } from '@/core/ledger';
-import { foldBreakdown, normalizeMethod } from '@/core/paymentMethods';
+import { foldBreakdown, foldPurchasePayment, normalizeMethod, sumByMethod } from '@/core/paymentMethods';
 import { compareNewestFirst } from '../lib/filters';
 import { indexByInvoiceNo, latestInvoiceNoPerParty, sumReturnAmounts } from '../lib/lookups';
 import { toHistoryPayment, toHistoryReturn } from '../sales/salesModel';
+import { withUntrackedInitialPayment } from './purchasePayments';
+
+/**
+ * Cash / Account paid on a purchase bill IN TOTAL. The stored top-level breakdown of a purchase bill only holds the
+ * payments added later (the payment made with the bill sits in the nested `payment` split, and an edit drops the
+ * top-level one), so it is rebuilt from the payment records (+ the untracked first payment of an older bill); a bill
+ * without records keeps its stored breakdown, else its nested split.
+ */
+function purchasePaidSplit(bill, payments) {
+  if (payments.length > 0) return sumByMethod(withUntrackedInitialPayment(bill, payments));
+  const stored = foldBreakdown(bill.paymentBreakdown);
+  if (stored) return stored;
+  if (bill.payment && typeof bill.payment === 'object') {
+    const { cash, account } = foldPurchasePayment(bill.payment);
+    if (cash || account) return { cash, account };
+  }
+  return undefined;
+}
 /** Wording of the Purchase History screen: "Supplier", and the "P-" prefix of old bill numbers is never shown. */
 export const PURCHASE_LABELS = {
   party: 'Supplier',
@@ -47,7 +65,7 @@ export function toHistoryPurchase(bill, payments, returns, canAddPayment) {
     billAmount: ownAmount,
     amountPaid: purchaseAmountPaid(bill),
     balanceDue,
-    paymentBreakdown: foldBreakdown(bill.paymentBreakdown) ?? undefined,
+    paymentBreakdown: purchasePaidSplit(bill, payments),
     legacyPaymentMethod: bill.paymentMethod ? normalizeMethod(bill.paymentMethod) : undefined,
     bankAccountId: bill.bankAccountId || bill.payment?.bankAccountId,
     payments: payments.map((p) => toHistoryPayment(p, bill.bankAccountId || bill.payment?.bankAccountId)),

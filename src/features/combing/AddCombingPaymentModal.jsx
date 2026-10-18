@@ -1,5 +1,5 @@
 import { AlertTriangle, Banknote, Landmark, Save } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 
 import { accountLabel } from '@/core/accountLabel';
 import { formatCurrency, todayISO } from '@/core/format';
@@ -13,6 +13,7 @@ const FORM_ID = 'combing-payment-form';
 
 export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded }) {
   const { toast } = useFeedback();
+  const amountId = useId();
   const [saving, setSaving] = useState(false);
   const [liveBalances, setLiveBalances] = useState(null);
 
@@ -135,7 +136,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
       size="sm"
       footer={
         <div className="flex w-full items-center justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving} className="max-sm:flex-1">
+          <Button variant="neutral" onClick={onClose} disabled={saving} className="max-sm:flex-1">
             Cancel
           </Button>
           <Button
@@ -155,18 +156,18 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
         {/* Processor & Balance Summary Banner */}
         <div className="space-y-2.5 rounded-xl border border-slate-200/90 bg-slate-50/80 p-3.5">
           <div className="flex items-start justify-between gap-2">
-            <div>
+            <div className="min-w-0">
               <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                 Mill / Processing Unit
               </div>
-              <div className="text-sm font-bold text-slate-900">{batch.processorName}</div>
+              <div className="text-sm font-bold wrap-anywhere text-slate-900">{batch.processorName}</div>
               {batch.processorPhone && (
                 <div className="mt-0.5 font-mono text-xs text-slate-500">{batch.processorPhone}</div>
               )}
             </div>
-            <div className="text-right">
+            <div className="shrink-0 text-right">
               <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Balance Due</div>
-              <div className="font-display text-base font-extrabold text-rose-700 tabular-nums">
+              <div className="font-display text-base font-extrabold text-red-600 tabular-nums">
                 ₹{formatCurrency(stats.balanceDue)}
               </div>
             </div>
@@ -175,11 +176,15 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
           <div className="grid grid-cols-2 gap-2 border-t border-slate-200/70 pt-2 text-xs">
             <div>
               <span className="text-slate-500">Processing Charges:</span>{' '}
-              <span className="font-bold text-slate-800">₹{formatCurrency(stats.totalCharges)}</span>
+              <span className="font-bold text-slate-800 tabular-nums">
+                ₹{formatCurrency(stats.totalCharges)}
+              </span>
             </div>
             <div className="text-right">
               <span className="text-slate-500">Already Paid:</span>{' '}
-              <span className="font-bold text-emerald-700">₹{formatCurrency(stats.totalPaid)}</span>
+              <span className="font-bold text-emerald-700 tabular-nums">
+                ₹{formatCurrency(stats.totalPaid)}
+              </span>
             </div>
           </div>
         </div>
@@ -194,8 +199,13 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
 
         {/* Amount Field + Fill Balance shortcut */}
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-slate-700">Amount to Pay (₹) *</label>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <label
+              htmlFor={amountId}
+              className="block text-[13px] font-semibold tracking-wide text-slate-600"
+            >
+              Amount to Pay (₹) *
+            </label>
             {stats.balanceDue > 0 && amountNum !== stats.balanceDue && (
               <button
                 type="button"
@@ -207,6 +217,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
             )}
           </div>
           <NumberField
+            id={amountId}
             value={form.amount}
             onChange={(v) => setForm((p) => ({ ...p, amount: v }))}
             placeholder={`Enter amount (Due: ₹${formatCurrency(stats.balanceDue)})`}
@@ -218,7 +229,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
 
         {/* Payment Mode Selector */}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-700">Payment Mode *</label>
+          <span className="block text-[13px] font-semibold tracking-wide text-slate-600">Payment Mode *</span>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"

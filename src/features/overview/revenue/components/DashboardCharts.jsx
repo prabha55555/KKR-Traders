@@ -11,14 +11,16 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { BarChart3, LineChart } from 'lucide-react';
 import { formatCurrency, toNum } from '@/core/format';
+import { Card, SectionHeader } from '@/ui';
 import { format, eachDayOfInterval, eachMonthOfInterval } from 'date-fns';
 import {
   dateRanges,
   isWithinRange,
+  netPurchaseValue,
+  netSalesValue,
   parseAnyDate,
-  purchaseBillValue,
-  salesBillValue,
 } from '../dashboardAnalytics';
 
 const rupees = (n) => {
@@ -48,7 +50,7 @@ const RANGE_LABELS = {
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+      <div className="rounded-xl border border-line bg-white p-3 shadow-pop">
         <p className="mb-2 text-xs font-bold text-slate-800 sm:text-sm">{label}</p>
         <div className="space-y-1">
           {payload.map((entry, index) => (
@@ -166,23 +168,23 @@ export function DashboardCharts({ data, rangeKey }) {
       return buckets[0];
     };
 
-    // 1. Accumulate Sales & Profit strictly within the active date range
+    // 1. Accumulate Sales & Profit (net of the bill's sales returns) strictly within the active date range
     (data.salesBills || []).forEach((bill) => {
       const dVal = bill.invoiceDate || bill.date || bill.timestamp;
       const b = findBucket(dVal);
       if (b) {
-        b.Sales += salesBillValue(bill);
+        b.Sales += netSalesValue(bill);
         const p = bill.computedProfit !== undefined ? toNum(bill.computedProfit) : toNum(bill.profit || 0);
         b.Profit += p;
       }
     });
 
-    // 2. Accumulate Purchases strictly within the active date range
+    // 2. Accumulate Purchases (net of the bill's purchase returns) strictly within the active date range
     (data.purchaseBills || []).forEach((bill) => {
       const dVal = bill.invoiceDate || bill.date || bill.timestamp;
       const b = findBucket(dVal);
       if (b) {
-        b.Purchases += purchaseBillValue(bill);
+        b.Purchases += netPurchaseValue(bill);
       }
     });
 
@@ -201,18 +203,12 @@ export function DashboardCharts({ data, rangeKey }) {
   const rangeTitle = RANGE_LABELS[rangeKey] || rangeKey;
 
   return (
-    <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Area Chart: Sales vs Purchases vs Profit */}
-      <div className="rounded-xl border border-line bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold tracking-tight text-slate-800 sm:text-lg">
-              Sales Performance
-            </h3>
-            <p className="text-xs text-slate-500">Sales, purchases & gross profit for {rangeTitle}</p>
-          </div>
-        </div>
-        <div className="h-80 w-full">
+      <Card className="min-w-0">
+        <SectionHeader title="Sales Performance" icon={LineChart} className="mb-1" />
+        <p className="mb-4 text-xs text-slate-500">Sales, purchases & gross profit for {rangeTitle}</p>
+        <div className="h-72 w-full sm:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
@@ -261,19 +257,13 @@ export function DashboardCharts({ data, rangeKey }) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </Card>
 
       {/* Bar Chart: Revenue vs Expenses */}
-      <div className="rounded-xl border border-line bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold tracking-tight text-slate-800 sm:text-lg">
-              Revenue vs Expenses
-            </h3>
-            <p className="text-xs text-slate-500">Operating income, expenses & profit for {rangeTitle}</p>
-          </div>
-        </div>
-        <div className="h-80 w-full">
+      <Card className="min-w-0">
+        <SectionHeader title="Revenue vs Expenses" icon={BarChart3} className="mb-1" />
+        <p className="mb-4 text-xs text-slate-500">Operating income, expenses & profit for {rangeTitle}</p>
+        <div className="h-72 w-full sm:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -287,7 +277,7 @@ export function DashboardCharts({ data, rangeKey }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

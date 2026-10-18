@@ -9,12 +9,13 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   Badge,
   Button,
+  Card,
   EmptyState,
   ErrorState,
   LoadingState,
   Page,
   Pagination,
-  RefreshButton,
+  SectionHeader,
   usePagination,
 } from '@/ui';
 import { CustomerCard } from './CustomerCard';
@@ -28,17 +29,14 @@ import { useCustomerDetails } from './useCustomerDetails';
 export default function CustomerDetailsPage() {
   const model = useCustomerDetails();
   const { isExpanded, isMedium } = useBreakpoint();
-  const { visible, stats, refreshing, refresh, setTerm, setReminderFor, openExport } = model;
+  const { visible, stats, refresh, setTerm, setReminderFor, openExport } = model;
   // a new search / refreshed data starts again from page 1
   const pager = usePagination(visible, { resetKey: visible });
 
   const actions = (
-    <>
-      <Button variant="secondary" icon={Download} onClick={openExport}>
-        Export
-      </Button>
-      <RefreshButton loading={refreshing} onClick={() => void refresh()} />
-    </>
+    <Button variant="secondary" icon={Download} onClick={openExport}>
+      Export
+    </Button>
   );
   const head = {
     title: 'Sales Customer Details',
@@ -65,13 +63,13 @@ export default function CustomerDetailsPage() {
     list = <CustomerTable rows={pager.rows} onRemind={setReminderFor} />;
   } else if (visible.length === 0) {
     list = (
-      <div className="rounded-2xl border border-line bg-white shadow-card">
+      <Card>
         <EmptyState
           icon={Users}
           title="No Customers Found"
           message="Add customers or create invoices to see customer data here"
         />
-      </div>
+      </Card>
     );
   } else {
     list = (
@@ -89,17 +87,16 @@ export default function CustomerDetailsPage() {
     <Page {...head} max="7xl" actions={actions}>
       <SearchToolbar onTermChange={setTerm} />
       <StatsGrid stats={stats} />
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2.5 text-[15px] font-bold text-brand-800">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-gold-100 text-gold-700 ring-1 ring-gold-200">
-            <ListChecks className="size-[18px]" aria-hidden />
-          </span>
-          Customer List
-        </h2>
-        <Badge tone="brand" className="tabular-nums">
-          {visible.length}
-        </Badge>
-      </div>
+      <SectionHeader
+        title="Customer List"
+        icon={ListChecks}
+        className="mb-3"
+        right={
+          <Badge tone="info" className="tabular-nums">
+            {visible.length}
+          </Badge>
+        }
+      />
       <div ref={pager.anchorRef} className="scroll-mt-32" />
       {list}
       <Pagination pager={pager} noun="customers" />

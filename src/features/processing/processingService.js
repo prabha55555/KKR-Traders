@@ -234,7 +234,23 @@ export async function deleteLot(lot) {
  * back into stock under `description` (grey fabric from the dyeing unit by default), and that unit's charge and the
  * lot's loss follow what it actually processed.
  */
-export async function addLotReturn(lot, form) {
+/**
+ * The lot as stored NOW: payments / returns are added to and removed from the latest version, never from the copy a
+ * screen loaded earlier (that copy may predate another payment or delete and would bring it back). Falls back to the
+ * given lot when it cannot be read (offline / not saved yet).
+ */
+async function freshLot(lot) {
+  if (!lot?.id) return lot;
+  try {
+    const stored = await db.getProcessingLot(lot.id);
+    return stored ? { ...stored, id: lot.id } : lot;
+  } catch {
+    return lot;
+  }
+}
+
+export async function addLotReturn(given, form) {
+  const lot = await freshLot(given);
   const problem = validateReturn(form, lot);
   if (problem) throw err(problem);
   const record = {
@@ -258,7 +274,8 @@ export async function addLotReturn(lot, form) {
  * Deletes a return (a wrong entry): that fabric leaves stock again and the unit is charged for it as processed.
  * Always possible — it only gives the unit more fabric than before.
  */
-export async function deleteLotReturn(lot, returnId) {
+export async function deleteLotReturn(given, returnId) {
+  const lot = await freshLot(given);
   if (!(lot.returns ?? []).some((r) => r.id === returnId)) return lot;
   const updated = { ...lot, returns: lot.returns.filter((r) => r.id !== returnId) };
   await db.saveProcessingLot(updated);
@@ -273,12 +290,13 @@ const PAYMENT_CATEGORY = { dyeing: 'Dyeing Payment', combing: 'Combing Payment' 
  * Pays the dyeing (`role: 'dyeing'`) or combing (`role: 'combing'`) unit of a lot. `payment` = { amount, date,
  * method: 'cash'|'account', bankAccountId, bankAccountName, reference }.
  */
-export async function addLotPayment(lot, role, payment) {
+export async function addLotPayment(given, role, payment) {
   const amount = Math.round(toNum(payment.amount) * 100) / 100;
   if (!(amount > 0)) throw new Error('Please enter a payment amount greater than zero.');
   const account = payment.method === 'account';
   if (account && !payment.bankAccountId)
     throw new Error('Please select the bank account the payment is made from.');
+  const lot = await freshLot(given);
   const unit = role === 'dyeing' ? lot.dyer : lot.combingUnit;
   if (!unit) throw new Error('This lot has no combing unit yet.');
   const id = `lot_pay_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -310,7 +328,8 @@ export async function addLotPayment(lot, role, payment) {
 }
 
 /** Removes a lot payment and its finance entry. */
-export async function deleteLotPayment(lot, role, paymentId) {
+export async function deleteLotPayment(given, role, paymentId) {
+  const lot = await freshLot(given);
   const key = PAYMENT_KEY[role];
   const updated = { ...lot, [key]: (lot[key] ?? []).filter((p) => p.id !== paymentId) };
   await db.saveProcessingLot(updated);

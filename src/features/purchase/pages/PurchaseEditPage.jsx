@@ -46,7 +46,7 @@ export default function PurchaseEditPage() {
           title="Purchase bill not found"
           message={invoiceNo ? `There is no purchase bill with ${invoiceNoLabel(invoiceNo)}.` : undefined}
           action={
-            <Button variant="outline" onClick={goBack}>
+            <Button variant="neutral" onClick={goBack}>
               Go Back
             </Button>
           }

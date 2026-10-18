@@ -19,7 +19,7 @@ export function CustomerFormSheet({ visible, mode, initial, onClose, onSubmit })
       title={adding ? 'Add New Customer' : 'Edit Customer'}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={form.busy} className="flex-1 sm:flex-none">
+          <Button variant="neutral" onClick={onClose} disabled={form.busy} className="flex-1 sm:flex-none">
             Cancel
           </Button>
           <Button

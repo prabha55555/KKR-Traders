@@ -14,7 +14,7 @@
  */
 import { Calculator } from 'lucide-react';
 import { formatCurrency } from '@/core/format';
-import { Badge, NumberField } from '@/ui';
+import { Badge, Grid, NumberField } from '@/ui';
 import { cn } from '@/ui/cn';
 import { PaymentMethodsEditor } from './PaymentMethodsEditor';
 
@@ -24,6 +24,7 @@ export function BillTotalsPanel({ title, form, totals, onChange, balanceLabel, n
   const effectiveMode = mode || (title === 'Bill Summary' ? 'purchase' : 'sales');
   const due = totals.balanceDue > 0;
   const credit = totals.balanceDue < 0;
+  const status = due ? 'Payment pending' : credit ? 'Credit' : 'Settled';
   return (
     <section
       aria-label={title}
@@ -59,7 +60,7 @@ export function BillTotalsPanel({ title, form, totals, onChange, balanceLabel, n
       </div>
 
       <div className="space-y-4 p-4 sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <Grid cols={{ base: 1, sm: 2 }} gap="gap-3">
           <NumberField
             label="Opening Balance"
             allowNegative
@@ -71,7 +72,7 @@ export function BillTotalsPanel({ title, form, totals, onChange, balanceLabel, n
             value={String(form.discountAmount)}
             onChange={(discountAmount) => onChange({ discountAmount })}
           />
-        </div>
+        </Grid>
 
         <div>
           <h3 className="mb-2 text-[13px] font-bold tracking-wide text-slate-600 uppercase">
@@ -99,9 +100,7 @@ export function BillTotalsPanel({ title, form, totals, onChange, balanceLabel, n
         >
           <div className="min-w-0">
             <div className="text-sm font-bold text-slate-700">{balanceLabel}</div>
-            <Badge tone={due ? 'danger' : 'success'} className="mt-1">
-              {due ? 'Payment pending' : credit ? 'Credit' : 'Settled'}
-            </Badge>
+            <Badge status={status} className="mt-1" />
           </div>
           <div
             className={cn(

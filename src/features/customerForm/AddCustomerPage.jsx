@@ -8,17 +8,18 @@ import { Search, UserPlus, Users } from 'lucide-react';
 import {
   Badge,
   Button,
+  Card,
   EmptyState,
   ErrorState,
   LoadingState,
   Page,
   Pagination,
-  RefreshButton,
   SearchBar,
   TwoPane,
   usePagination,
 } from '@/ui';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import FloatingAddButton from '@/features/overview/components/FloatingAddButton';
 import { CustomerFormCard } from './CustomerFormCard';
 import { CustomerFormSheet } from './CustomerFormSheet';
 import { CustomerTable } from './CustomerTable';
@@ -30,7 +31,6 @@ export default function AddCustomerPage() {
   const { customers, visible, query } = manager;
   const pager = usePagination(visible, { resetKey: query });
 
-  const refreshButton = <RefreshButton onClick={() => void manager.refresh()} loading={manager.refreshing} />;
   const pageProps = { title: 'Manage Customers', icon: Users };
 
   if (manager.loading) {
@@ -67,7 +67,7 @@ export default function AddCustomerPage() {
 
   if (isExpanded) {
     return (
-      <Page {...pageProps} actions={refreshButton}>
+      <Page {...pageProps}>
         <TwoPane
           main={
             <>
@@ -96,24 +96,32 @@ export default function AddCustomerPage() {
   }
 
   return (
-    <Page {...pageProps} actions={refreshButton}>
+    <Page
+      {...pageProps}
+      actions={
+        // tablets: the add sheet opens from here (the floating button is phone-only)
+        <Button variant="primary" icon={UserPlus} onClick={() => manager.openAdd()} className="max-sm:hidden">
+          Add Customer
+        </Button>
+      }
+    >
       {toolbar}
       {customers.length === 0 ? (
-        <div className="rounded-2xl border border-line bg-white shadow-card">
+        <Card className="p-0!">
           <EmptyState
             icon={Users}
             title="No customers found."
             message="Add your first customer to start billing."
           />
-        </div>
+        </Card>
       ) : visible.length === 0 ? (
-        <div className="rounded-2xl border border-line bg-white shadow-card">
+        <Card className="p-0!">
           <EmptyState
             icon={Search}
             title="No matching customers"
             message="Try a different name, phone number or address."
           />
-        </div>
+        </Card>
       ) : (
         <>
           <div ref={pager.anchorRef} className="scroll-mt-32" />
@@ -127,16 +135,8 @@ export default function AddCustomerPage() {
         </>
       )}
 
-      {/* floating Add button: fixed bottom-right above the tab bar (Page leaves room below the list) */}
-      <button
-        type="button"
-        onClick={() => manager.openAdd()}
-        aria-label="Add Customer"
-        title="Add Customer"
-        className="no-print fixed right-4 bottom-[calc(4.6rem+env(safe-area-inset-bottom))] z-30 flex size-14 items-center justify-center rounded-full bg-gold-sheen text-brand-900 shadow-gold ring-4 ring-white/80 transition hover:brightness-105 focus-visible:ring-gold-300 focus-visible:outline-none active:scale-95 sm:right-6"
-      >
-        <UserPlus className="size-6" aria-hidden />
-      </button>
+      {/* phones: the shared floating Add button above the tab bar opens the add sheet */}
+      <FloatingAddButton label="Add Customer" onClick={() => manager.openAdd()} />
 
       <CustomerFormSheet
         visible={manager.form.open}

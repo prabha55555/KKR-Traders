@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ErrorState, LoadingState, Page, RefreshButton, SelectField } from '@/ui';
+import { ErrorState, LoadingState, Page, SelectField } from '@/ui';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
 import { TrendingUp } from 'lucide-react';
 import { fetchDashboardData, computeAnalytics, dateRanges } from './dashboardAnalytics';
@@ -22,7 +22,7 @@ export default function StatisticsPage() {
   const [data, setData] = useState(null);
   const [rangeKey, setRangeKey] = useState('thisMonth');
 
-  const { loading, refreshing, error, refresh, reload } = useFocusLoad(async () => {
+  const { loading, error, reload } = useFocusLoad(async () => {
     try {
       const res = await fetchDashboardData();
       setData(res);
@@ -42,19 +42,16 @@ export default function StatisticsPage() {
       title="Business Statistics"
       icon={TrendingUp}
       actions={
-        <div className="flex items-center gap-2">
-          <SelectField
-            aria-label="Period"
-            value={rangeKey}
-            onChange={setRangeKey}
-            options={RANGE_OPTIONS}
-            className="w-36"
-          />
-          <RefreshButton onClick={refresh} loading={refreshing} />
-        </div>
+        <SelectField
+          aria-label="Period"
+          value={rangeKey}
+          onChange={setRangeKey}
+          options={RANGE_OPTIONS}
+          className="w-36"
+        />
       }
     >
-      <p className="mt-[-10px] mb-6 text-sm text-slate-500">
+      <p className="-mt-1 mb-5 text-sm text-slate-500">
         Monitor sales, purchases, profit, inventory and cash flow from one place.
       </p>
 
@@ -63,7 +60,7 @@ export default function StatisticsPage() {
       {error && !data && <ErrorState message={error} onRetry={() => void reload()} />}
 
       {data && analytics && (
-        <div className="animate-fade-in">
+        <div className="animate-fade-in space-y-6">
           <DashboardKPIs data={analytics} />
           <DashboardCharts data={data} rangeKey={rangeKey} />
           <DashboardInsights data={data} rangeKey={rangeKey} dateRanges={dateRanges} />

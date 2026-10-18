@@ -1,3 +1,4 @@
+import { Home, RotateCcw } from 'lucide-react';
 import { Component } from 'react';
 import { Button, ErrorState } from '@/ui';
 
@@ -18,11 +19,13 @@ export class ErrorBoundary extends Component {
     return (
       <div className="mx-auto max-w-md p-6">
         <ErrorState message={this.state.error.message || 'This page hit an unexpected error.'} />
-        <div className="flex justify-center gap-2">
-          <Button variant="outline" onClick={() => this.setState({ error: null })}>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button variant="outlineWarning" icon={RotateCcw} onClick={() => this.setState({ error: null })}>
             Try again
           </Button>
-          <Button onClick={() => window.location.assign('/')}>Go to dashboard</Button>
+          <Button variant="neutral" icon={Home} onClick={() => window.location.assign('/')}>
+            Go to dashboard
+          </Button>
         </div>
       </div>
     );

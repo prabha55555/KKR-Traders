@@ -64,7 +64,7 @@ function HeroPanel() {
         </ul>
       </div>
 
-      <div className="relative flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-brand-300">
+      <div className="relative flex min-w-0 flex-wrap items-center gap-x-6 gap-y-2 text-sm text-brand-300">
         <a href="tel:+917845081278" className="inline-flex items-center gap-2 transition hover:text-gold-300">
           <Phone className="size-4 text-gold-400" /> +91 7845081278
         </a>
@@ -170,9 +170,14 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  aria-pressed={showPassword}
+                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-gold-50 hover:text-brand-800 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none"
                 >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  {showPassword ? (
+                    <EyeOff className="size-4" aria-hidden />
+                  ) : (
+                    <Eye className="size-4" aria-hidden />
+                  )}
                 </button>
               }
             />
@@ -187,7 +192,7 @@ export default function LoginPage() {
             </p>
           ) : null}
 
-          <Button type="submit" size="lg" fullWidth loading={busy} className="mt-6">
+          <Button type="submit" variant="success" size="lg" fullWidth loading={busy} className="mt-6">
             Sign In
           </Button>
 

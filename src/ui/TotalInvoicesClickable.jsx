@@ -26,7 +26,7 @@ export function TotalInvoicesClickable({ count, invoiceNumbers, entityName, modu
           {invoiceNumbers.map((inv) => (
             <Button
               key={inv}
-              variant="outline"
+              variant="outlineInfo"
               onClick={() => {
                 setIsOpen(false);
                 nav.push(`/${module}/history?search=${inv}`);

@@ -42,7 +42,12 @@ export function withUntrackedInitialPayment(bill, payments) {
   const amount = initialPaidAmount(bill, payments);
   if (amount <= 0 || payments.some((p) => p.paymentType === 'initial')) return [...payments];
   const nested = foldBreakdown(bill.payment);
-  const paymentMethod = nested && nested.account > 0 ? 'account' : 'cash';
+  // no split stored: an older bill paid by one method (legacy 'upi' / 'account' = Account)
+  const paymentMethod = nested
+    ? nested.account > 0
+      ? 'account'
+      : 'cash'
+    : normalizeMethod(bill.paymentMethod);
   const synthetic = {
     id: fakeInitialPaymentId(bill.invoiceNo),
     paymentDate: bill.invoiceDate || todayISO(),
@@ -71,8 +76,10 @@ export function applyAdditionalPurchasePayment(bill, amounts) {
   const added = foldBreakdown(amounts);
   const newAmountPaid = (bill.amountPaid || bill.payment?.totalPaid || 0) + totalOf(amounts);
   const balanceDue = bill.grandTotal - newAmountPaid;
+  // the bill keeps the bank of the money paid WITH it; the new payment's bank goes on its own payment record (taking it
+  // here made the next edit move the first payment to the later bank)
   const bankAccountId =
-    amounts.bankAccountId || bill.bankAccountId || bill.payment?.bankAccountId || undefined;
+    bill.bankAccountId || bill.payment?.bankAccountId || amounts.bankAccountId || undefined;
   const updated = {
     ...bill,
     amountPaid: newAmountPaid,

@@ -1,67 +1,49 @@
 /**
  * HistoryInvoiceGroupBody – the invoices of ONE date group.
- *   desktop (>= 1024px): dense table (Invoice, Date, party, Total, Paid, Returns, Balance, icon actions);
- *                        clicking a row calls `actions.open(invoiceNo)` (the detail sheet).
+ *   desktop (>= 1024px): the app table (.erp-table: Invoice No, Date, party, Total, Paid, Returns, Balance with its
+ *                        Paid / Partially Paid / Unpaid badge, icon actions); clicking a row calls `actions.open(invoiceNo)`
+ *                        (the detail sheet). A table wider than the screen scrolls inside its own frame.
  *   phone / tablet:      HistoryInvoiceCards, 1 column on phones and 2 columns on tablets.
  *
  * Props: invoices (HistoryInvoice[]) · labels ({ party, formatInvoiceNo? }) · actions (HistoryInvoiceActions, stable).
  * Also exports `HistoryInvoiceTable` (just the table) and `buildInvoiceColumns(labels, actions)`.
  */
-import { Banknote, MessageCircle, RotateCcw, SquarePen, Trash2, FileDown } from 'lucide-react';
+import { SquarePen, Trash2 } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { cn } from '@/ui';
+import { IconButton, cn } from '@/ui';
 import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from '../lib/statement';
 import { displayInvoiceNo } from '../lib/types';
 import { HistoryInvoiceCard } from './HistoryInvoiceCard';
-import { InvoiceSlipBadge } from './InvoiceParts';
+import { InvoiceSlipBadge, InvoiceStatusBadge } from './InvoiceParts';
 
 const money = (n) => `₹${formatCurrency(n)}`;
 /** What the bill still owes: balanceDue minus the returns settled against it (refunds leave it unchanged). */
 const balanceOf = invoiceDue;
 
-function IconAction({ icon: Icon, label, tone, onClick }) {
+/** Row-level icon action: the row click (open the detail) must not fire as well. */
+function RowAction({ onClick, ...rest }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
+    <IconButton
+      {...rest}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
-      className={cn(
-        'flex size-8 items-center justify-center rounded-lg transition hover:bg-gold-100/70 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none active:scale-90',
-        tone,
-      )}
-    >
-      <Icon className="size-[18px]" aria-hidden />
-    </button>
+    />
   );
 }
 
-/** Table columns of the wide layout. `align`: 'left' | 'right'. */
+/** Table columns of the wide layout. `align`: 'left' | 'right' | 'center' (right = one-line tabular figures). */
 export function buildInvoiceColumns(labels, actions) {
   return [
     {
       key: 'no',
       header: 'Invoice No',
       render: (i) => (
-        <span className="inline-flex items-center gap-2 font-display font-bold text-brand-800">
-          <span
-            className={cn(
-              'size-2 shrink-0 rounded-full ring-2',
-              balanceOf(i) > 0
-                ? i.amountPaid > 0
-                  ? 'bg-amber-400 ring-amber-100'
-                  : 'bg-red-500 ring-red-100'
-                : 'bg-emerald-500 ring-emerald-100',
-            )}
-            title={balanceOf(i) > 0 ? (i.amountPaid > 0 ? 'Part paid' : 'Unpaid') : 'Paid'}
-            aria-hidden
-          />
-          {displayInvoiceNo(labels, i.invoiceNo)}
+        <span className="flex flex-wrap items-center gap-1.5 font-display font-bold text-brand-800">
+          <span className="whitespace-nowrap">{displayInvoiceNo(labels, i.invoiceNo)}</span>
           <InvoiceSlipBadge invoice={i} />
         </span>
       ),
@@ -69,13 +51,14 @@ export function buildInvoiceColumns(labels, actions) {
     {
       key: 'date',
       header: 'Date',
+      nowrap: true,
       render: (i) => <span className="text-slate-500">{formatDateIN(i.invoiceDate)}</span>,
     },
     {
       key: 'party',
       header: labels.party,
       render: (i) => i.partyName,
-      className: 'w-full max-w-0 truncate font-medium text-slate-800',
+      className: 'w-full font-medium text-slate-800',
     },
     {
       key: 'total',
@@ -87,7 +70,7 @@ export function buildInvoiceColumns(labels, actions) {
       key: 'paid',
       header: 'Paid',
       align: 'right',
-      render: (i) => <span className="text-emerald-600">{money(i.amountPaid)}</span>,
+      render: (i) => <span className="text-emerald-700">{money(i.amountPaid)}</span>,
     },
     {
       key: 'returns',
@@ -114,8 +97,11 @@ export function buildInvoiceColumns(labels, actions) {
       header: 'Balance',
       align: 'right',
       render: (i) => (
-        <span className={cn('font-bold', balanceOf(i) > 0 ? 'text-red-600' : 'text-emerald-600')}>
-          {money(balanceOf(i))}
+        <span className="flex flex-col items-end gap-1">
+          <span className={cn('font-bold', balanceOf(i) > 0 ? 'text-red-600' : 'text-emerald-700')}>
+            {money(balanceOf(i))}
+          </span>
+          <InvoiceStatusBadge invoice={i} />
         </span>
       ),
     },
@@ -123,23 +109,23 @@ export function buildInvoiceColumns(labels, actions) {
       ? [
           {
             key: 'actions',
-            header: '',
-            align: 'right',
+            header: <span className="sr-only">Actions</span>,
+            align: 'center',
             render: (i) => (
-              <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                 {actions.edit ? (
-                  <IconAction
+                  <RowAction
                     icon={SquarePen}
+                    variant="edit"
                     label={`Edit Invoice No ${displayInvoiceNo(labels, i.invoiceNo)}`}
-                    tone="text-slate-600 hover:text-brand-800"
                     onClick={() => actions.edit(i.invoiceNo)}
                   />
                 ) : null}
                 {actions.remove ? (
-                  <IconAction
+                  <RowAction
                     icon={Trash2}
+                    variant="outlineDanger"
                     label={`Delete Invoice No ${displayInvoiceNo(labels, i.invoiceNo)}`}
-                    tone="text-red-500 hover:text-red-700"
                     onClick={() => actions.remove(i.invoiceNo)}
                   />
                 ) : null}
@@ -155,49 +141,38 @@ export function HistoryInvoiceTable({ invoices, labels, actions }) {
   const columns = useMemo(() => buildInvoiceColumns(labels, actions), [labels, actions]);
   const { open } = actions;
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-line bg-linear-to-b from-slate-50 to-slate-100/70 text-[11px] tracking-[0.08em] text-slate-500 uppercase">
-          {columns.map((c) => (
-            <th
-              key={c.key}
-              scope="col"
-              className={cn(
-                'px-3 py-2.5 font-bold whitespace-nowrap',
-                c.align === 'right' ? 'text-right' : 'text-left',
-              )}
-            >
-              {c.header}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">
-        {invoices.map((invoice) => (
-          <tr
-            key={invoice.invoiceNo}
-            onClick={open ? () => open(invoice.invoiceNo) : undefined}
-            className={cn(
-              'tabular-nums transition-colors',
-              open ? 'cursor-pointer hover:bg-gold-50/70' : 'hover:bg-slate-50/70',
-            )}
-          >
+    <div className="erp-table-wrap">
+      <table className="erp-table erp-table-dense">
+        <thead>
+          <tr>
             {columns.map((c) => (
-              <td
-                key={c.key}
-                className={cn(
-                  'px-3 py-2 whitespace-nowrap',
-                  c.align === 'right' && 'text-right',
-                  c.className,
-                )}
-              >
-                {c.render(invoice)}
-              </td>
+              <th key={c.key} scope="col" data-align={c.align ?? 'left'}>
+                {c.header}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {invoices.map((invoice) => (
+            <tr
+              key={invoice.invoiceNo}
+              onClick={open ? () => open(invoice.invoiceNo) : undefined}
+              className={open ? 'cursor-pointer' : undefined}
+            >
+              {columns.map((c) => (
+                <td
+                  key={c.key}
+                  data-align={c.align ?? 'left'}
+                  className={cn(c.nowrap && 'nowrap', c.className)}
+                >
+                  {c.render(invoice)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -33,7 +33,7 @@ export function DeleteInvoiceSheet({
       size="sm"
       actions={
         <>
-          <Button variant="outline" icon={X} onClick={onClose} className="flex-1 sm:flex-none">
+          <Button variant="neutral" icon={X} onClick={onClose} className="flex-1 sm:flex-none">
             Cancel
           </Button>
           <Button

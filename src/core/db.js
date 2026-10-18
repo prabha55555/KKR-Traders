@@ -73,11 +73,21 @@ const deleteDoc = async (...args) => {
 };
 
 const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+/**
+ * Lists read from Firestore are kept in memory for a short while only: after this the next read goes to Firestore
+ * again, so changes made on another device / tab show up by themselves (there is no Refresh button).
+ */
+export const CACHE_MAX_AGE_MS = 60_000;
+
 export class Database {
   initialized = false;
   firestore;
-  // In-memory cache to improve loading performance
+  // In-memory cache to improve loading performance (entries expire after CACHE_MAX_AGE_MS — see _cached)
   _cache = {};
+  _cacheAt = {};
+  /** bumped by invalidate(): a read that started before a save never stores its (older) result */
+  _gen = {};
+  _epoch = 0;
   // Promise cache to prevent duplicate simultaneous network requests
   _promises = {};
   // ------------------------------------------------------------------ init / helpers
@@ -108,6 +118,7 @@ export class Database {
   invalidateAll() {
     this._cache = {};
     this._promises = {};
+    this._epoch += 1;
     this._listeners.forEach((fn) => {
       try {
         fn([]);
@@ -116,9 +127,21 @@ export class Database {
       }
     });
   }
+  /** A cached list while it is fresh; null (and dropped) once older than CACHE_MAX_AGE_MS. */
+  _cached(key) {
+    const value = this._cache[key];
+    if (!value) return null;
+    if (Date.now() - (this._cacheAt[key] ?? 0) > CACHE_MAX_AGE_MS) {
+      this._cache[key] = null;
+      return null;
+    }
+    return value;
+  }
   invalidate(...keys) {
     keys.forEach((k) => {
       this._cache[k] = null;
+      this._promises[k] = null;
+      this._gen[k] = (this._gen[k] ?? 0) + 1;
     });
     this._listeners.forEach((fn) => {
       try {
@@ -142,9 +165,10 @@ export class Database {
   async _load(key, fetcher, opts = {}) {
     const { memory = true, onError = 'throw' } = opts;
     this._checkInit();
-    if (memory && this._cache[key]) {
+    const cached = memory ? this._cached(key) : null;
+    if (cached) {
       recordFirestoreOperation('cacheHit', 1);
-      return this._cache[key];
+      return cached;
     }
     // the shared in-flight request always rejects on failure; each caller applies its own fallback, so a strict caller
     // that joins a lenient request still sees the error
@@ -156,15 +180,20 @@ export class Database {
           })
         : promise;
     if (memory && this._promises[key]) return withFallback(this._promises[key]);
-    const run = (async () => {
-      try {
-        const result = await fetcher();
-        if (memory) this._cache[key] = result;
+    const gen = `${this._epoch}:${this._gen[key] ?? 0}`;
+    const run = Promise.resolve()
+      .then(fetcher)
+      .then((result) => {
+        // invalidated while reading (a save happened): hand the result to this caller but do not cache it
+        if (memory && `${this._epoch}:${this._gen[key] ?? 0}` === gen) {
+          this._cache[key] = result;
+          this._cacheAt[key] = Date.now();
+        }
         return result;
-      } finally {
-        this._promises[key] = null;
-      }
-    })();
+      })
+      .finally(() => {
+        if (this._promises[key] === run) this._promises[key] = null;
+      });
     if (memory) this._promises[key] = run;
     return withFallback(run);
   }
@@ -188,7 +217,7 @@ export class Database {
       ...invoiceData,
       updatedAt: serverTimestamp(),
     });
-    this._cache.invoices = null;
+    this.invalidate('invoices');
     return invoiceData.invoiceNo;
   }
   async getAllInvoices() {
@@ -203,7 +232,7 @@ export class Database {
     });
   }
   async getInvoice(invoiceNo) {
-    const cached = this._cache.invoices?.find((i) => i.invoiceNo === invoiceNo);
+    const cached = this._cached('invoices')?.find((i) => i.invoiceNo === invoiceNo);
     if (cached) return cached;
     const snap = await getDoc(this.ref('invoices', invoiceNo));
     return snap.exists() ? snap.data() : null;
@@ -220,7 +249,7 @@ export class Database {
       id: paymentId,
       createdAt: serverTimestamp(),
     });
-    this._cache.payments = null;
+    this.invalidate('payments');
     return paymentId;
   }
   async getPaymentsByInvoice(invoiceNo) {
@@ -240,7 +269,7 @@ export class Database {
   /** Raw delete of one payment document (no invoice recalculation). */
   async deletePaymentDoc(paymentId) {
     await deleteDoc(this.ref('payments', paymentId));
-    this._cache.payments = null;
+    this.invalidate('payments');
   }
   /** `syncLedger: false` = the caller re-syncs the customer's ledger once after several deletions. */
   async deletePayment(paymentId, { syncLedger = true } = {}) {
@@ -263,7 +292,7 @@ export class Database {
     }
     const paymentData = snap.data();
     await deleteDoc(this.ref('payments', usedId));
-    this._cache.payments = null;
+    this.invalidate('payments');
     if (paymentData.invoiceNo) {
       await this.updateInvoiceAfterPaymentDeletion(paymentData.invoiceNo, paymentData.amount, {
         syncLedger,
@@ -297,7 +326,7 @@ export class Database {
   }
   async deletePaymentsByInvoice(invoiceNo) {
     await this._deleteWhere('payments', 'invoiceNo', invoiceNo);
-    this._cache.payments = null;
+    this.invalidate('payments');
   }
   // ------------------------------------------------------------------ Sales returns
   async saveReturn(returnData) {
@@ -307,7 +336,7 @@ export class Database {
       id: returnId,
       createdAt: serverTimestamp(),
     });
-    this._cache.returns = null;
+    this.invalidate('returns');
     return returnId;
   }
   async getReturnsByInvoice(invoiceNo) {
@@ -324,11 +353,11 @@ export class Database {
   }
   async deleteReturn(returnId) {
     await deleteDoc(this.ref('returns', returnId.toString()));
-    this._cache.returns = null;
+    this.invalidate('returns');
   }
   async deleteReturnsByInvoice(invoiceNo) {
     await this._deleteWhere('returns', 'invoiceNo', invoiceNo);
-    this._cache.returns = null;
+    this.invalidate('returns');
   }
   // ------------------------------------------------------------------ Customers
   /** `merge`: keep the fields not given (bill screens only know name/address and must not wipe openingBalance). */
@@ -336,7 +365,7 @@ export class Database {
     const data = { ...customerData, updatedAt: serverTimestamp() };
     if (merge) await setDoc(this.ref('customers', customerData.phone), data, { merge: true });
     else await setDoc(this.ref('customers', customerData.phone), data);
-    this._cache.customers = null;
+    this.invalidate('customers');
     return customerData.phone;
   }
   async getCustomer(phone) {
@@ -349,14 +378,14 @@ export class Database {
   /** Raw delete of the customer document only (used when a customer's phone number — the doc id — changes). */
   async deleteCustomerDoc(phone) {
     await deleteDoc(this.ref('customers', phone));
-    this._cache.customers = null;
+    this.invalidate('customers');
   }
   /** Deletes the customer AND moves all of their invoices to the recycle bin (no ledger to keep: it all goes). */
   async deleteCustomer(phone) {
     const invoices = await this._where('invoices', 'customerPhone', phone);
     await Promise.all(invoices.map((inv) => this.deleteInvoice(inv.invoiceNo, { syncLedger: false })));
     await deleteDoc(this.ref('customers', phone));
-    this._cache.customers = null;
+    this.invalidate('customers');
   }
   /** Rewrites name/phone/address on all of a customer's invoices (matched by old name) and the customer doc. */
   /** `oldPhone`: the customer's phone before the edit (its chain is re-synced too when it changes). */
@@ -369,8 +398,15 @@ export class Database {
     { oldPhone, newOpening } = {},
   ) {
     const snap = await getDocs(query(this.col('invoices'), where('customerName', '==', oldName)));
+    const docs = await this._ownBillsOfName(
+      snap.docs,
+      oldPhone,
+      (b) => b.customerPhone,
+      oldName,
+      () => this.getAllCustomers().then((list) => list.map((c) => ({ name: c.name, phone: c.phone }))),
+    );
     await Promise.all(
-      snap.docs.map((d) =>
+      docs.map((d) =>
         updateDoc(d.ref, {
           customerName: newName,
           customerPhone: newPhone,
@@ -379,7 +415,7 @@ export class Database {
         }),
       ),
     );
-    this._cache.invoices = null;
+    this.invalidate('invoices');
     if (newPhone) {
       const customerData = { name: newName, phone: newPhone, address: newAddress };
       if (openingBalance !== undefined) customerData.openingBalance = openingBalance;
@@ -395,13 +431,47 @@ export class Database {
       await this.syncSalesLedger({ customerName: oldName, customerPhone: oldPhone });
     }
   }
+  /**
+   * Of the bills carrying a party's (old) name, the ones that are really this party's: those with its phone, and the
+   * phone-less ones stamped into its chain — or, unstamped, only while no other phone uses that name. Without an old
+   * phone every bill of the name is the party's (as before). `loadParties()` lists the directory ({ name, phone }).
+   */
+  async _ownBillsOfName(docs, oldPhone, phoneOf, oldName, loadParties) {
+    const own = normalizePhone(oldPhone);
+    if (!own) return docs;
+    const sameName = (n) =>
+      String(n ?? '')
+        .trim()
+        .toLowerCase() ===
+      String(oldName ?? '')
+        .trim()
+        .toLowerCase();
+    let namesake = docs.some((d) => {
+      const p = normalizePhone(phoneOf(d.data()));
+      return p && p !== own;
+    });
+    if (!namesake) {
+      const parties = await loadParties().catch(() => []);
+      namesake = parties.some(
+        (x) => sameName(x.name) && normalizePhone(x.phone) && normalizePhone(x.phone) !== own,
+      );
+    }
+    return docs.filter((d) => {
+      const bill = d.data();
+      const p = normalizePhone(phoneOf(bill));
+      if (p) return p === own;
+      if (bill.ledgerParty !== undefined && bill.ledgerParty !== null)
+        return normalizePhone(bill.ledgerParty) === own;
+      return !namesake;
+    });
+  }
   // ------------------------------------------------------------------ Suppliers
   /** `merge`: keep the fields not given (bill screens only know name/address and must not wipe openingBalance). */
   async saveSupplier(supplierData, { merge = false } = {}) {
     const data = { ...supplierData, updatedAt: serverTimestamp() };
     if (merge) await setDoc(this.ref('suppliers', supplierData.phone), data, { merge: true });
     else await setDoc(this.ref('suppliers', supplierData.phone), data);
-    this._cache.suppliers = null;
+    this.invalidate('suppliers');
     return supplierData.phone;
   }
   async getSupplier(phone) {
@@ -413,7 +483,7 @@ export class Database {
   }
   async deleteSupplier(phone) {
     await deleteDoc(this.ref('suppliers', phone));
-    this._cache.suppliers = null;
+    this.invalidate('suppliers');
   }
   // ------------------------------------------------------------------ Purchase bills
   async savePurchaseBill(invoiceData) {
@@ -422,13 +492,13 @@ export class Database {
       timestamp: serverTimestamp(),
       createdAt: new Date().toISOString(),
     });
-    this._cache.purchaseInvoices = null;
+    this.invalidate('purchaseInvoices');
     return true;
   }
   /** Partial update of a purchase bill (web: `.update(invoiceData)`), used when applying payments/returns. */
   async updatePurchaseBillFields(invoiceNo, data) {
     await updateDoc(this.ref('purchase_invoices', invoiceNo), data);
-    this._cache.purchaseInvoices = null;
+    this.invalidate('purchaseInvoices');
   }
   /** `strict`: a failed read throws instead of looking like "no bills" (balance calculations need to know). */
   async getAllPurchaseBills({ strict = false } = {}) {
@@ -442,7 +512,7 @@ export class Database {
     );
   }
   async getPurchaseBill(invoiceNo) {
-    const cached = this._cache.purchaseInvoices?.find((i) => i.invoiceNo === invoiceNo);
+    const cached = this._cached('purchaseInvoices')?.find((i) => i.invoiceNo === invoiceNo);
     if (cached) return cached;
     const snap = await getDoc(this.ref('purchase_invoices', invoiceNo));
     return snap.exists() ? snap.data() : null;
@@ -458,7 +528,7 @@ export class Database {
       id: paymentId,
       createdAt: serverTimestamp(),
     });
-    this._cache.purchasePayments = null;
+    this.invalidate('purchasePayments');
     return paymentId;
   }
   async getAllPurchasePayments() {
@@ -478,7 +548,7 @@ export class Database {
   /** Raw delete of one purchase-payment document (no bill recalculation). */
   async deletePurchasePaymentDoc(paymentId) {
     await deleteDoc(this.ref('purchase_payments', paymentId));
-    this._cache.purchasePayments = null;
+    this.invalidate('purchasePayments');
   }
   /** `syncLedger: false` = the caller re-syncs the supplier's ledger once after several deletions. */
   async deletePurchasePayment(paymentId, { syncLedger = true } = {}) {
@@ -486,24 +556,27 @@ export class Database {
     if (!snap.exists()) return;
     const paymentData = snap.data();
     await deleteDoc(this.ref('purchase_payments', paymentId));
-    this._cache.purchasePayments = null;
+    this.invalidate('purchasePayments');
     if (paymentData.invoiceNo && paymentData.amount) {
       await this.updatePurchaseInvoiceAfterPaymentDeletion(paymentData.invoiceNo, paymentData.amount, {
         syncLedger,
         paymentMethod: paymentData.paymentMethod,
+        paymentType: paymentData.paymentType,
       });
     }
     return true;
   }
   /**
    * Update a purchase bill after one of its payments was deleted: like the sales version, the amount leaves the paid
-   * totals and the deleted payment's own method in the top-level cash / account breakdown. Both splits (top-level and
-   * the nested initial `payment`) are written folded, so a legacy `upi` amount becomes Account and its key goes.
+   * totals; a payment added later also leaves its method in the top-level cash / account breakdown. A payment made
+   * WITH the bill (`paymentType` 'initial') is not in that breakdown (a purchase bill keeps it in the nested `payment`
+   * split, which the History undo lowers itself — taking it from the breakdown wiped later payments). Both splits are
+   * written folded, so a legacy `upi` amount becomes Account and its key goes.
    */
   async updatePurchaseInvoiceAfterPaymentDeletion(
     invoiceNo,
     paymentAmount,
-    { syncLedger = true, paymentMethod } = {},
+    { syncLedger = true, paymentMethod, paymentType } = {},
   ) {
     try {
       const found = await this.getPurchaseBill(invoiceNo);
@@ -512,7 +585,9 @@ export class Database {
       if (bill.paymentBreakdown) {
         const method = normalizeMethod(paymentMethod ?? bill.paymentMethod);
         const split = foldBreakdown(bill.paymentBreakdown);
-        split[method] = Math.max(0, split[method] - toNum(paymentAmount));
+        // an initial payment of a bill WITH a nested split is not in the top-level breakdown
+        if (!(paymentType === 'initial' && bill.payment))
+          split[method] = Math.max(0, split[method] - toNum(paymentAmount));
         bill.paymentBreakdown = split;
       }
       bill.amountPaid = Math.max(0, (bill.amountPaid || bill.payment?.totalPaid || 0) - paymentAmount);
@@ -532,7 +607,7 @@ export class Database {
   }
   async deletePurchasePaymentsByInvoice(invoiceNo) {
     await this._deleteWhere('purchase_payments', 'invoiceNo', invoiceNo);
-    this._cache.purchasePayments = null;
+    this.invalidate('purchasePayments');
   }
   // ------------------------------------------------------------------ Purchase returns
   async savePurchaseReturn(returnData) {
@@ -542,7 +617,7 @@ export class Database {
       id: returnId,
       createdAt: serverTimestamp(),
     });
-    this._cache.purchaseReturns = null;
+    this.invalidate('purchaseReturns');
     return returnId;
   }
   async getPurchaseReturnsByInvoice(invoiceNo) {
@@ -553,11 +628,11 @@ export class Database {
   }
   async deletePurchaseReturn(returnId) {
     await deleteDoc(this.ref('purchaseReturns', returnId.toString()));
-    this._cache.purchaseReturns = null;
+    this.invalidate('purchaseReturns');
   }
   async deletePurchaseReturnsByInvoice(invoiceNo) {
     await this._deleteWhere('purchaseReturns', 'invoiceNo', invoiceNo);
-    this._cache.purchaseReturns = null;
+    this.invalidate('purchaseReturns');
   }
   // ------------------------------------------------------------------ Shortcuts (shared by sales + purchase bills)
   async getAllShortcuts() {
@@ -577,12 +652,12 @@ export class Database {
   /** Uses the shortcut key as the document id for easy lookup/overwrite. */
   async saveShortcut(shortcut) {
     await setDoc(this.ref('shortcuts', shortcut.shortcutKey), { ...shortcut, createdAt: serverTimestamp() });
-    this._cache.shortcuts = null;
+    this.invalidate('shortcuts');
     return shortcut.shortcutKey;
   }
   async deleteShortcut(shortcutKey) {
     await deleteDoc(this.ref('shortcuts', shortcutKey));
-    this._cache.shortcuts = null;
+    this.invalidate('shortcuts');
   }
   // Legacy purchase_shortcuts collection (present in db.js, unused by any page)
   async savePurchaseShortcut(shortcutData) {
@@ -590,7 +665,7 @@ export class Database {
       ...shortcutData,
       updatedAt: serverTimestamp(),
     });
-    this._cache.purchaseShortcuts = null;
+    this.invalidate('purchaseShortcuts');
     return shortcutData.id;
   }
   async getAllPurchaseShortcuts() {
@@ -598,20 +673,27 @@ export class Database {
   }
   async deletePurchaseShortcut(id) {
     await deleteDoc(this.ref('purchase_shortcuts', id));
-    this._cache.purchaseShortcuts = null;
+    this.invalidate('purchaseShortcuts');
   }
   // ------------------------------------------------------------------ Opening stock
+  /**
+   * Document id of a product-keyed record (opening stock, product metadata): the description itself, except that "/"
+   * (which Firestore reads as a path separator) is written as %2F. Names without "/" keep the id they always had.
+   */
+  _productDocId(description) {
+    return String(description ?? '').replace(/\//g, '%2F');
+  }
   /** `rolls` = optional roll count of the opening stock; a call without it stores what it always did (no `rolls`). */
   async saveOpeningStock(description, qty, rolls) {
     const data = { description, qty, updatedAt: serverTimestamp() };
     if (rolls !== undefined && rolls !== null) data.rolls = toNum(rolls);
-    await setDoc(this.ref('openingStocks', description), data);
-    this._cache.openingStocks = null;
+    await setDoc(this.ref('openingStocks', this._productDocId(description)), data);
+    this.invalidate('openingStocks');
     return description;
   }
   async deleteOpeningStock(description) {
-    await deleteDoc(this.ref('openingStocks', description));
-    this._cache.openingStocks = null;
+    await deleteDoc(this.ref('openingStocks', this._productDocId(description)));
+    this.invalidate('openingStocks');
     return description;
   }
   async getAllOpeningStocks() {
@@ -622,11 +704,11 @@ export class Database {
   // ------------------------------------------------------------------ Product Metadata
   async saveProductMetadata(description, metadata) {
     await setDoc(
-      this.ref('productMetadata', description),
+      this.ref('productMetadata', this._productDocId(description)),
       { ...metadata, description, updatedAt: serverTimestamp() },
       { merge: true },
     );
-    this._cache.productMetadata = null;
+    this.invalidate('productMetadata');
     return description;
   }
   async getAllProductMetadata() {
@@ -637,7 +719,7 @@ export class Database {
   // ------------------------------------------------------------------ Expenses
   async saveExpense(expenseData) {
     await setDoc(this.ref('expenses', expenseData.id), expenseData);
-    this._cache.expenses = null;
+    this.invalidate('expenses');
     return expenseData;
   }
   async getAllExpenses() {
@@ -649,7 +731,7 @@ export class Database {
   }
   async deleteExpense(id) {
     await deleteDoc(this.ref('expenses', id));
-    this._cache.expenses = null;
+    this.invalidate('expenses');
   }
   // ------------------------------------------------------------------ Sales recycle bin
   async moveInvoiceToRecycleBin(invoiceNo, { syncLedger = true } = {}) {
@@ -672,8 +754,8 @@ export class Database {
     };
     await setDoc(this.ref('recycleBin', entry.id), entry);
     await deleteDoc(this.ref('invoices', invoiceNo));
-    this._cache.recycleBin = null;
-    this._cache.invoices = null;
+    this.invalidate('recycleBin');
+    this.invalidate('invoices');
     await this.deletePaymentsByInvoice(invoiceNo);
     await this.deleteReturnsByInvoice(invoiceNo);
     // the bills after it no longer carry its balance (the web's call here was a no-op: the invoice was already gone)
@@ -720,12 +802,12 @@ export class Database {
   }
   async permanentDeleteFromRecycleBin(itemId) {
     await deleteDoc(this.ref('recycleBin', itemId));
-    this._cache.recycleBin = null;
+    this.invalidate('recycleBin');
   }
   async emptyRecycleBin() {
     const snap = await getDocs(this.col('recycleBin'));
     await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
-    this._cache.recycleBin = null;
+    this.invalidate('recycleBin');
     return snap.size;
   }
   // ------------------------------------------------------------------ Purchase recycle bin
@@ -752,8 +834,8 @@ export class Database {
     await deleteDoc(this.ref('purchase_invoices', invoiceNo));
     await this.deletePurchasePaymentsByInvoice(invoiceNo);
     await this.deletePurchaseReturnsByInvoice(invoiceNo);
-    this._cache.purchaseRecycleBin = null;
-    this._cache.purchaseInvoices = null;
+    this.invalidate('purchaseRecycleBin');
+    this.invalidate('purchaseInvoices');
     await this.syncPurchaseLedger(invoiceData, { before: invoiceData });
     await this.cleanupOrphanedData();
   }
@@ -785,12 +867,12 @@ export class Database {
   }
   async permanentDeletePurchaseFromRecycleBin(itemId) {
     await deleteDoc(this.ref('purchaseRecycleBin', itemId));
-    this._cache.purchaseRecycleBin = null;
+    this.invalidate('purchaseRecycleBin');
   }
   async emptyPurchaseRecycleBin() {
     const snap = await getDocs(this.col('purchaseRecycleBin'));
     await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
-    this._cache.purchaseRecycleBin = null;
+    this.invalidate('purchaseRecycleBin');
     return snap.size;
   }
   /** Disabled in the web app by user request: customers/suppliers are NOT deleted when their bills are deleted. */
@@ -975,7 +1057,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: record.createdAt || new Date().toISOString(),
     });
-    this._cache.finance = null;
+    this.invalidate('finance');
     return id;
   }
   async getAllFinanceRecords() {
@@ -992,7 +1074,7 @@ export class Database {
   }
   async deleteFinanceRecord(id) {
     await deleteDoc(this.ref('finance', id));
-    this._cache.finance = null;
+    this.invalidate('finance');
   }
   // ------------------------------------------------------------------ Lenders
   async saveLender(lenderData) {
@@ -1000,7 +1082,7 @@ export class Database {
       ...lenderData,
       updatedAt: serverTimestamp(),
     });
-    this._cache.lenders = null;
+    this.invalidate('lenders');
     return lenderData.phone;
   }
   async getLender(phone) {
@@ -1012,7 +1094,7 @@ export class Database {
   }
   async deleteLender(phone) {
     await deleteDoc(this.ref('lenders', phone));
-    this._cache.lenders = null;
+    this.invalidate('lenders');
   }
   // ------------------------------------------------------------------ Bank & Cash Accounts
   async saveBankAccount(account) {
@@ -1023,7 +1105,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: account.createdAt || new Date().toISOString(),
     });
-    this._cache.bank_accounts = null;
+    this.invalidate('bank_accounts');
     return id;
   }
   async getAllBankAccounts() {
@@ -1040,7 +1122,7 @@ export class Database {
   }
   async deleteBankAccount(id) {
     await deleteDoc(this.ref('bank_accounts', id));
-    this._cache.bank_accounts = null;
+    this.invalidate('bank_accounts');
   }
 
   // ------------------------------------------------------------------ Cash in Hand / Drawer Config
@@ -1064,7 +1146,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: tx.createdAt || new Date().toISOString(),
     });
-    this._cache.account_transactions = null;
+    this.invalidate('account_transactions');
     return id;
   }
   async getAllAccountTransactions() {
@@ -1078,7 +1160,7 @@ export class Database {
   }
   async deleteAccountTransaction(id) {
     await deleteDoc(this.ref('account_transactions', id));
-    this._cache.account_transactions = null;
+    this.invalidate('account_transactions');
   }
 
   // ------------------------------------------------------------------ Dyeing & Processing Batches (Workflow 2)
@@ -1091,7 +1173,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: batchData.createdAt || new Date().toISOString(),
     });
-    this._cache.dyeing_batches = null;
+    this.invalidate('dyeing_batches');
     return id;
   }
   async getAllDyeingBatches() {
@@ -1109,7 +1191,7 @@ export class Database {
     );
   }
   async getDyeingBatch(id) {
-    const cached = this._cache.dyeing_batches?.find((b) => b.id === id || b.batchId === id);
+    const cached = this._cached('dyeing_batches')?.find((b) => b.id === id || b.batchId === id);
     if (cached) return cached;
     const snap = await getDoc(this.ref('dyeing_batches', id));
     if (snap.exists()) return snap.data();
@@ -1119,7 +1201,7 @@ export class Database {
   async deleteDyeingBatch(id) {
     await deleteDoc(this.ref('dyeing_batches', id));
     await this._deleteWhere('dyeing_batches', 'batchId', id);
-    this._cache.dyeing_batches = null;
+    this.invalidate('dyeing_batches');
   }
 
   // ------------------------------------------------------------------ Dyers / Dyeing Units Directory
@@ -1131,7 +1213,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: dyerData.createdAt || new Date().toISOString(),
     });
-    this._cache.dyers = null;
+    this.invalidate('dyers');
     return id;
   }
   async getAllDyers() {
@@ -1145,14 +1227,14 @@ export class Database {
     );
   }
   async getDyer(id) {
-    const cached = this._cache.dyers?.find((d) => d.id === id || d.phone === id);
+    const cached = this._cached('dyers')?.find((d) => d.id === id || d.phone === id);
     if (cached) return cached;
     const snap = await getDoc(this.ref('dyers', id));
     return snap.exists() ? snap.data() : null;
   }
   async deleteDyer(id) {
     await deleteDoc(this.ref('dyers', id));
-    this._cache.dyers = null;
+    this.invalidate('dyers');
   }
 
   // ------------------------------------------------------------------ Combing & Processing Batches
@@ -1165,7 +1247,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: batchData.createdAt || new Date().toISOString(),
     });
-    this._cache.combing_batches = null;
+    this.invalidate('combing_batches');
     return id;
   }
   async getAllCombingBatches() {
@@ -1183,7 +1265,7 @@ export class Database {
     );
   }
   async getCombingBatch(id) {
-    const cached = this._cache.combing_batches?.find((b) => b.id === id || b.batchId === id);
+    const cached = this._cached('combing_batches')?.find((b) => b.id === id || b.batchId === id);
     if (cached) return cached;
     const snap = await getDoc(this.ref('combing_batches', id));
     if (snap.exists()) return snap.data();
@@ -1193,7 +1275,7 @@ export class Database {
   async deleteCombingBatch(id) {
     await deleteDoc(this.ref('combing_batches', id));
     await this._deleteWhere('combing_batches', 'batchId', id);
-    this._cache.combing_batches = null;
+    this.invalidate('combing_batches');
   }
 
   // ------------------------------------------------------------------ Processing lots (Issue -> Dyeing -> Combing -> Received)
@@ -1205,7 +1287,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: lot.createdAt || new Date().toISOString(),
     });
-    this._cache.processing_lots = null;
+    this.invalidate('processing_lots');
     return id;
   }
   async getAllProcessingLots() {
@@ -1217,7 +1299,7 @@ export class Database {
   }
   async deleteProcessingLot(id) {
     await deleteDoc(this.ref('processing_lots', id));
-    this._cache.processing_lots = null;
+    this.invalidate('processing_lots');
   }
 
   // ------------------------------------------------------------------ Processors Directory (Combing & Processing Units)
@@ -1229,7 +1311,7 @@ export class Database {
       updatedAt: serverTimestamp(),
       createdAt: processorData.createdAt || new Date().toISOString(),
     });
-    this._cache.processors = null;
+    this.invalidate('processors');
     return id;
   }
   async getAllProcessors() {
@@ -1245,14 +1327,14 @@ export class Database {
     );
   }
   async getProcessor(id) {
-    const cached = this._cache.processors?.find((p) => p.id === id || p.phone === id);
+    const cached = this._cached('processors')?.find((p) => p.id === id || p.phone === id);
     if (cached) return cached;
     const snap = await getDoc(this.ref('processors', id));
     return snap.exists() ? snap.data() : null;
   }
   async deleteProcessor(id) {
     await deleteDoc(this.ref('processors', id));
-    this._cache.processors = null;
+    this.invalidate('processors');
   }
 }
 export const db = new Database();

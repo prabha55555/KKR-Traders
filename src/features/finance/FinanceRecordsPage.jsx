@@ -8,9 +8,7 @@ import {
   AlertCircle,
   History,
   Phone,
-  CheckCircle2,
-  Banknote,
-  Building2,
+  Scale,
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
@@ -19,9 +17,18 @@ import { accountLabel, accountLabelWithBank } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, toNum } from '@/core/format';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
-import { Button, DataTable, EmptyState, ErrorState, Page, IconButton, useFeedback, Badge } from '@/ui';
-import KpiRow from '../overview/components/KpiRow';
-import InkStat from '../overview/components/InkStat';
+import {
+  Badge,
+  Button,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Page,
+  StatCard,
+  StatGrid,
+  useFeedback,
+} from '@/ui';
 import SkeletonRows from '../overview/components/SkeletonRows';
 import FilterBar from '../overview/components/FilterBar';
 import ShowMore from '../overview/components/ShowMore';
@@ -34,6 +41,18 @@ import FinancePaymentHistoryModal from './FinancePaymentHistoryModal';
 import { todayISO } from '@/core/format';
 
 const rs = (n) => `Rs. ${formatCurrency(n)}`;
+
+/** "Receive Loan In": Cash in Hand (green) or the bank account (blue), the same colours as everywhere else. */
+function LoanAccount({ record, bankMap }) {
+  const isCash = !record.depositAccount || record.depositAccount === 'cash';
+  if (isCash) return <Badge tone="success">Cash in Hand</Badge>;
+  const bank = bankMap[record.depositAccount];
+  return (
+    <span title={bank ? accountLabelWithBank(bank) : 'Bank Account'} className="inline-flex max-w-full">
+      <Badge tone="info">{bank ? accountLabel(bank) : 'Bank Account'}</Badge>
+    </span>
+  );
+}
 
 export default function FinanceRecordsPage() {
   const { toast, confirm } = useFeedback();
@@ -152,10 +171,7 @@ export default function FinanceRecordsPage() {
     if (stats.isSettled) {
       return (
         <div className="flex flex-col items-start gap-1.5">
-          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-            <CheckCircle2 className="size-3 text-emerald-600" />
-            Settled
-          </span>
+          <Badge status="Settled" />
           <div className="flex max-w-[220px] flex-wrap gap-1">
             {Array.from({ length: totalBlocks }).map((_, i) => {
               const due = new Date(start);
@@ -212,36 +228,55 @@ export default function FinanceRecordsPage() {
     );
   };
 
+  /** History (view) · Add Payment (pay) · Edit · Delete, in their action colours. */
+  const rowActions = (e) => (
+    <>
+      <IconButton icon={History} onClick={() => setHistoryRecord(e)} label="History" variant="outlineInfo" />
+      <IconButton
+        icon={CreditCard}
+        onClick={() => setPaymentRecord(e)}
+        label="Add Payment"
+        variant="outlineSuccess"
+      />
+      <IconButton icon={Edit} onClick={() => openEdit(e)} label="Edit" variant="edit" />
+      <IconButton icon={Trash2} onClick={() => void remove(e)} label="Delete" variant="outlineDanger" />
+    </>
+  );
+
   const columns = [
     {
       key: 'lender',
       header: 'Lender',
-      className: 'whitespace-nowrap font-bold text-slate-900',
+      className: 'min-w-32 font-bold break-words text-brand-800',
       value: (e) => e.lenderName,
     },
     {
       key: 'phone',
       header: 'Phone',
-      className: 'whitespace-nowrap text-slate-600 font-mono text-xs',
+      nowrap: true,
+      className: 'font-mono text-xs text-slate-600',
       value: (e) => e.phone,
     },
     {
       key: 'start',
       header: 'Start Date',
-      className: 'whitespace-nowrap text-slate-600',
+      nowrap: true,
+      className: 'text-slate-600',
       value: (e) => formatDateShort(e.startDate),
     },
     {
       key: 'end',
       header: 'End Date',
-      className: 'whitespace-nowrap text-slate-600',
+      nowrap: true,
+      className: 'text-slate-600',
       value: (e) => (e.endDate ? formatDateShort(e.endDate) : 'Ongoing'),
     },
     {
       key: 'totalMonths',
       header: 'Total Months',
       align: 'center',
-      className: 'whitespace-nowrap font-semibold text-slate-800 tabular-nums',
+      nowrap: true,
+      className: 'font-semibold text-slate-800 tabular-nums',
       value: (e) => {
         const stats = calculateFinanceStats(e, calcDate || undefined);
         const m = e.endDate ? stats.totalMonths : stats.monthsElapsed;
@@ -252,44 +287,27 @@ export default function FinanceRecordsPage() {
     {
       key: 'rate',
       header: 'Rate/Mo',
-      className: 'whitespace-nowrap font-bold text-amber-800 tabular-nums',
+      align: 'right',
+      className: 'font-bold text-amber-700',
       value: (e) => `${e.rate}%`,
     },
     {
       key: 'principal',
       header: 'Principal',
       align: 'right',
-      className: 'font-display font-bold text-indigo-950 tabular-nums whitespace-nowrap',
+      className: 'font-display font-bold text-brand-800',
       value: (e) => rs(toNum(e.principal)),
     },
     {
       key: 'receiveLoanIn',
       header: 'Receive Loan In',
-      className: 'whitespace-nowrap',
-      render: (e) => {
-        const isCash = !e.depositAccount || e.depositAccount === 'cash';
-        const bank = !isCash ? bankMap[e.depositAccount] : null;
-        return isCash ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-            <Banknote className="size-3.5" />
-            Cash in Hand
-          </span>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200"
-            title={bank ? accountLabelWithBank(bank) : 'Bank Account'}
-          >
-            <Building2 className="size-3.5" />
-            {bank ? accountLabel(bank) : 'Bank Account'}
-          </span>
-        );
-      },
+      render: (e) => <LoanAccount record={e} bankMap={bankMap} />,
     },
     {
       key: 'interest',
       header: 'Interest Accrued',
       align: 'right',
-      className: 'font-display font-bold text-amber-700 tabular-nums whitespace-nowrap',
+      className: 'font-display font-bold text-amber-700',
       value: (e) => {
         const stats = calculateFinanceStats(e, calcDate || undefined);
         return rs(stats.totalInterestAccrued);
@@ -299,7 +317,7 @@ export default function FinanceRecordsPage() {
       key: 'paid',
       header: 'Paid',
       align: 'right',
-      className: 'font-display font-bold text-blue-700 tabular-nums whitespace-nowrap',
+      className: 'font-display font-bold text-emerald-700',
       value: (e) => {
         const stats = calculateFinanceStats(e, calcDate || undefined);
         return rs(stats.totalPaid);
@@ -309,7 +327,7 @@ export default function FinanceRecordsPage() {
       key: 'balance',
       header: 'Balance Payable',
       align: 'right',
-      className: 'font-display font-extrabold text-emerald-800 tabular-nums whitespace-nowrap',
+      className: 'font-display font-extrabold text-red-600',
       render: (e) => {
         const stats = calculateFinanceStats(e, calcDate || undefined);
 
@@ -317,9 +335,8 @@ export default function FinanceRecordsPage() {
           <div className="flex flex-col items-end">
             <span>{rs(stats.balancePayable)}</span>
             {stats.isOverdue && (
-              <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-red-500">
-                <AlertCircle className="size-3" />
-                Overdue: {rs(stats.overdueAmount)}
+              <div className="mt-1">
+                <Badge status="Overdue">Overdue: {rs(stats.overdueAmount)}</Badge>
               </div>
             )}
           </div>
@@ -329,7 +346,7 @@ export default function FinanceRecordsPage() {
     {
       key: 'progress',
       header: 'Progress',
-      className: 'whitespace-nowrap min-w-[120px]',
+      className: 'min-w-[120px]',
       render: (e) => {
         const stats = calculateFinanceStats(e, calcDate || undefined);
         return renderProgress(stats, e);
@@ -339,29 +356,8 @@ export default function FinanceRecordsPage() {
       key: 'actions',
       header: 'Actions',
       align: 'center',
-      render: (e) => (
-        <div className="flex items-center justify-center gap-2">
-          <IconButton
-            icon={History}
-            onClick={() => setHistoryRecord(e)}
-            label="History"
-            className="text-slate-600 hover:bg-slate-50 hover:text-brand-700"
-          />
-          <IconButton
-            icon={CreditCard}
-            onClick={() => setPaymentRecord(e)}
-            label="Add Payment"
-            className="text-blue-600 hover:bg-blue-50 hover:text-blue-800"
-          />
-          <IconButton icon={Edit} onClick={() => openEdit(e)} label="Edit" />
-          <IconButton
-            icon={Trash2}
-            onClick={() => void remove(e)}
-            label="Delete"
-            className="text-red-500 hover:bg-red-50 hover:text-red-700"
-          />
-        </div>
-      ),
+      nowrap: true,
+      render: (e) => <div className="flex items-center justify-center gap-2">{rowActions(e)}</div>,
     },
   ];
 
@@ -379,14 +375,14 @@ export default function FinanceRecordsPage() {
             const stats = calculateFinanceStats(e, calcDate || undefined);
             return (
               <div className="flex flex-col gap-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-bold text-slate-900">{e.lenderName}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-bold break-words text-brand-800">{e.lenderName}</div>
                     <div className="mt-0.5 flex items-center gap-1 font-mono text-xs text-slate-600">
-                      <Phone className="size-3 text-slate-400" />
+                      <Phone className="size-3 text-slate-400" aria-hidden />
                       {e.phone}
                     </div>
-                    <div className="mt-1 text-[11px] font-bold text-amber-800">Rate: {e.rate}% / mo</div>
+                    <div className="mt-1 text-[11px] font-bold text-amber-700">Rate: {e.rate}% / mo</div>
                     <div className="mt-1 space-y-0.5 text-[11px] font-medium text-slate-600">
                       <div>
                         Start:{' '}
@@ -408,53 +404,22 @@ export default function FinanceRecordsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <IconButton
-                      icon={History}
-                      onClick={() => setHistoryRecord(e)}
-                      label="History"
-                      className="text-slate-500 hover:text-brand-700"
-                    />
-                    <IconButton
-                      icon={CreditCard}
-                      onClick={() => setPaymentRecord(e)}
-                      label="Add Payment"
-                      className="text-blue-600 hover:text-blue-800"
-                    />
-                    <IconButton icon={Edit} onClick={() => openEdit(e)} label="Edit" />
-                    <IconButton
-                      icon={Trash2}
-                      onClick={() => void remove(e)}
-                      label="Delete"
-                      className="text-red-500 hover:text-red-700"
-                    />
-                  </div>
+                  <div className="grid shrink-0 grid-cols-2 gap-1.5">{rowActions(e)}</div>
                 </div>
 
-                <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-line bg-slate-50/80 p-2.5">
+                <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-line bg-slate-50/80 p-2.5 tabular-nums">
                   <div>
                     <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                       Principal
                     </div>
-                    <div className="font-display font-bold text-indigo-950">{rs(toNum(e.principal))}</div>
+                    <div className="font-display font-bold text-brand-800">{rs(toNum(e.principal))}</div>
                   </div>
                   <div>
                     <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                       Receive Loan In
                     </div>
-                    <div className="mt-0.5 text-xs font-semibold">
-                      {!e.depositAccount || e.depositAccount === 'cash' ? (
-                        <span className="flex items-center gap-1 font-semibold text-emerald-700">
-                          <Banknote className="size-3.5" /> Cash in Hand
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 font-semibold text-blue-700">
-                          <Building2 className="size-3.5" />{' '}
-                          {bankMap[e.depositAccount]
-                            ? accountLabel(bankMap[e.depositAccount])
-                            : 'Bank Account'}
-                        </span>
-                      )}
+                    <div className="mt-0.5">
+                      <LoanAccount record={e} bankMap={bankMap} />
                     </div>
                   </div>
                   <div>
@@ -469,25 +434,25 @@ export default function FinanceRecordsPage() {
                     <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                       Total Paid
                     </div>
-                    <div className="font-display font-bold text-blue-700">{rs(stats.totalPaid)}</div>
+                    <div className="font-display font-bold text-emerald-700">{rs(stats.totalPaid)}</div>
                   </div>
                   <div className="col-span-2 mt-0.5 border-t border-slate-200/60 pt-1.5">
                     <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                       Balance Payable
                     </div>
-                    <div className="font-display text-base font-black text-emerald-800">
+                    <div className="font-display text-base font-black text-red-600">
                       {rs(stats.balancePayable)}
                     </div>
                   </div>
                 </div>
                 {stats.isOverdue && (
-                  <div className="mt-1 flex items-center gap-1.5 rounded-md border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600">
-                    <AlertCircle className="size-4" />
+                  <div className="mt-1 flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 tabular-nums">
+                    <AlertCircle className="size-4 shrink-0" aria-hidden />
                     Overdue: {rs(stats.overdueAmount)}
                   </div>
                 )}
 
-                <div className="mt-2 rounded-lg border border-line bg-white p-2 shadow-sm">
+                <div className="mt-2 rounded-xl border border-line bg-white p-2">
                   <div className="mb-1.5 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                     Interest Payment Progress
                   </div>
@@ -507,7 +472,7 @@ export default function FinanceRecordsPage() {
               }
               action={
                 settledCount > 0 ? (
-                  <Button variant="outline" size="sm" onClick={() => navigate('/finance/settled')}>
+                  <Button variant="outlineInfo" size="sm" onClick={() => navigate('/finance/settled')}>
                     View Settled Records ({settledCount})
                   </Button>
                 ) : undefined
@@ -524,34 +489,36 @@ export default function FinanceRecordsPage() {
       title="Finance Records"
       icon={Landmark}
       actions={
-        <Button icon={Plus} onClick={openAdd} className="max-sm:hidden">
+        <Button variant="primary" icon={Plus} onClick={openAdd} className="max-sm:hidden">
           Add Record
         </Button>
       }
     >
-      <KpiRow cols={4}>
-        <InkStat icon={Landmark} label="Total Principal" value={rs(totals.principal)} />
-        <InkStat icon={Sigma} label="Total Interest" value={rs(totals.interest)} />
-        <InkStat icon={CreditCard} label="Total Paid" value={rs(totals.paid)} />
-        <InkStat icon={Sigma} label="Balance Payable" value={rs(totals.balance)} />
-      </KpiRow>
+      <StatGrid cols={4} className="mb-5">
+        <StatCard icon={Landmark} label="Total Principal" value={rs(totals.principal)} tone="brand" />
+        <StatCard icon={Sigma} label="Total Interest" value={rs(totals.interest)} tone="warning" />
+        <StatCard icon={CreditCard} label="Total Paid" value={rs(totals.paid)} tone="success" />
+        <StatCard icon={Scale} label="Balance Payable" value={rs(totals.balance)} tone="danger" />
+      </StatGrid>
 
       {totals.overdue > 0 && (
-        <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-full bg-red-100 text-red-600">
-              <AlertCircle className="size-6" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-red-900">Overdue Payments Detected</h3>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-red-600 ring-1 ring-red-200 ring-inset">
+              <AlertCircle className="size-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-red-800">Overdue Payments Detected</h3>
               <p className="mt-0.5 text-xs font-medium text-red-700">
                 Some of your interest payments are past due.
               </p>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs font-bold tracking-wider text-red-500 uppercase">Total Overdue</div>
-            <div className="font-display text-lg font-extrabold text-red-600">{rs(totals.overdue)}</div>
+            <div className="text-xs font-bold tracking-wider text-red-600 uppercase">Total Overdue</div>
+            <div className="font-display text-lg font-extrabold text-red-600 tabular-nums">
+              {rs(totals.overdue)}
+            </div>
           </div>
         </div>
       )}

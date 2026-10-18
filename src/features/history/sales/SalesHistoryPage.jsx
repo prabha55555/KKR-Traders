@@ -10,7 +10,7 @@
  */
 import { History } from 'lucide-react';
 import { useMemo } from 'react';
-import { Page, RefreshButton } from '@/ui';
+import { Page } from '@/ui';
 import { AddPaymentSheet } from '../components/AddPaymentSheet';
 import { DeleteInvoiceSheet } from '../components/DeleteInvoiceSheet';
 import { HistoryDateGroupList } from '../components/HistoryDateGroupList';
@@ -46,12 +46,7 @@ export default function SalesHistoryPage() {
   const { totalDays, overallStats } = h.stats;
 
   return (
-    <Page
-      title="Sales History"
-      icon={History}
-      max="7xl"
-      actions={<RefreshButton loading={h.refreshing} onClick={() => void h.refresh()} />}
-    >
+    <Page title="Sales History" icon={History} max="7xl">
       <div className="space-y-5">
         {h.error ? null : (
           <RecentInvoicesStrip

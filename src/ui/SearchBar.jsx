@@ -17,7 +17,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search…', classNam
             type="button"
             aria-label="Clear search"
             onClick={() => onChange('')}
-            className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-full bg-slate-100 p-1 text-slate-500 hover:bg-red-50 hover:text-red-600"
           >
             <X className="size-4" />
           </button>

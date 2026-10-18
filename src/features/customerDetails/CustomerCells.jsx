@@ -81,7 +81,7 @@ export function AddressText({ address, showIcon }) {
       aria-label={`Address ${address || 'N/A'}`}
       className={cn(
         'flex min-h-7 items-start gap-2 rounded-md text-left text-sm font-medium text-slate-500 focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:outline-none',
-        truncated && 'cursor-pointer',
+        truncated && 'cursor-pointer hover:text-gold-700',
       )}
     >
       {showIcon ? <MapPin className="mt-0.5 size-4 shrink-0 text-gold-600" aria-hidden /> : null}
@@ -106,7 +106,7 @@ export function CustomerName({ name, hasReturns, size = 'card' }) {
       </span>
       {hasReturns ? (
         <span
-          className="inline-flex items-center rounded-full bg-amber-50 px-1.5 py-1 text-amber-700 ring-1 ring-amber-300 ring-inset"
+          className="inline-flex shrink-0 items-center rounded-full bg-amber-50 px-1.5 py-1 text-amber-800 ring-1 ring-amber-200 ring-inset"
           title="This customer has returns"
           aria-label="This customer has returns"
         >

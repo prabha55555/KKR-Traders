@@ -9,7 +9,7 @@ import { Link } from 'react-router';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { ProductDescriptionInput } from '@/components/bill/ProductDescriptionInput';
 import { formatCurrency, todayISO, toNum } from '@/core/format';
-import { Button, DateField, Grid, Modal, NumberField, SelectField, TextField } from '@/ui';
+import { Button, DateField, Grid, Modal, NumberField, SelectField, TextField, cn } from '@/ui';
 import {
   LOT_STATUS,
   dcNumberPart,
@@ -88,8 +88,15 @@ function Summary({ rows }) {
     <dl className="grid gap-1.5 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-line">
       {rows.map(([label, value, tone]) => (
         <div key={label} className="flex items-baseline justify-between gap-3">
-          <dt className="text-slate-600">{label}</dt>
-          <dd className={tone ?? 'font-semibold text-brand-800 tabular-nums'}>{value}</dd>
+          <dt className="min-w-0 text-slate-600">{label}</dt>
+          <dd
+            className={cn(
+              'min-w-0 text-right wrap-anywhere',
+              tone ?? 'font-semibold text-brand-800 tabular-nums',
+            )}
+          >
+            {value}
+          </dd>
         </div>
       ))}
     </dl>
@@ -106,10 +113,10 @@ function FormModal({ open, onClose, title, formId, saving, submitLabel, error, c
       title={title}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="neutral" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" form={formId} variant="primary" loading={saving}>
+          <Button type="submit" form={formId} variant="success" loading={saving}>
             {submitLabel}
           </Button>
         </>
@@ -162,7 +169,9 @@ export function IssueModal({ open, onClose, data, existing = null, onSaved, conf
           }
         : { ...emptyLot(todayISO()), dcNo: suggestNextDcNo(data.lots), dyeingCharge: '' },
     );
-  }, [open, existing, data.lots]);
+    // reset only when the form opens or another lot is picked: a background reload (new lot objects) must not wipe
+    // what is being typed
+  }, [open, existing?.id]);
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
   const available = useMemo(
     () => (form.greyDescription ? availableGrey(data.stockMap, form.greyDescription, existing) : null),
@@ -233,7 +242,7 @@ export function IssueModal({ open, onClose, data, existing = null, onSaved, conf
               : 'Pick the grey fabric from the list'
           }
         />
-        <Grid cols={{ base: 2 }}>
+        <Grid cols={{ base: 1, sm: 2 }}>
           <NumberField
             label="Rolls"
             inputMode="numeric"
@@ -306,7 +315,9 @@ export function DyedModal({ open, onClose, lot, data, onSaved }) {
       combingRate: lot.combingRate ? String(lot.combingRate) : '',
       combingCharge: d ? typedText(lot.combingChargeTyped) : '',
     });
-  }, [open, lot]);
+    // reset only when the form opens or another lot is picked: a background reload (new lot objects) must not wipe
+    // what is being typed
+  }, [open, lot?.id]);
   if (!lot) return null;
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
   const greyQty = toNum(lot.grey?.qty);
@@ -351,7 +362,7 @@ export function DyedModal({ open, onClose, lot, data, onSaved }) {
           />
           <DateField label="DC Date" value={form.date ?? ''} onChange={(date) => patch({ date })} />
         </Grid>
-        <Grid cols={{ base: 2 }}>
+        <Grid cols={{ base: 1, sm: 2 }}>
           <NumberField
             label="Rolls"
             inputMode="numeric"
@@ -426,7 +437,9 @@ export function ReceiveModal({ open, onClose, lot, data, onSaved }) {
       qty: r ? String(r.qty ?? '') : '',
       finishedDescription: lot.finishedDescription ?? '',
     });
-  }, [open, lot]);
+    // reset only when the form opens or another lot is picked: a background reload (new lot objects) must not wipe
+    // what is being typed
+  }, [open, lot?.id]);
   const preview = useMemo(
     () =>
       lot && toNum(form.qty) > 0
@@ -481,7 +494,7 @@ export function ReceiveModal({ open, onClose, lot, data, onSaved }) {
           />
           <DateField label="Received on" value={form.date ?? ''} onChange={(date) => patch({ date })} />
         </Grid>
-        <Grid cols={{ base: 2 }}>
+        <Grid cols={{ base: 1, sm: 2 }}>
           <NumberField
             label="Final rolls"
             inputMode="numeric"

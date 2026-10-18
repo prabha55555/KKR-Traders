@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { cn } from './cn';
 
 const SIZES = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-3xl', xl: 'sm:max-w-5xl' };
+/** Open dialogs, newest last: Escape closes only the topmost one (a zoomed image over a detail sheet, a confirm over a form). */
+const openStack = [];
 
 /**
  * Dialog for forms and detail views. A bottom sheet on phones, a centred dialog from the `sm` breakpoint up.
@@ -30,13 +32,18 @@ export function Modal({
     const previouslyFocused = document.activeElement;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const token = {};
+    openStack.push(token);
     const onKey = (e) => {
-      if (e.key === 'Escape' && dismissable) closeRef.current?.();
+      if (e.key === 'Escape' && dismissable && openStack[openStack.length - 1] === token)
+        closeRef.current?.();
     };
     document.addEventListener('keydown', onKey);
     // move focus into the dialog (the panel itself, so no keyboard pops up on phones)
     panelRef.current?.focus();
     return () => {
+      const at = openStack.indexOf(token);
+      if (at >= 0) openStack.splice(at, 1);
       document.body.style.overflow = prevOverflow;
       document.removeEventListener('keydown', onKey);
       previouslyFocused?.focus?.();
@@ -77,7 +84,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="-mr-1.5 rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                className="-mr-1.5 rounded-xl border border-slate-200 bg-slate-100 p-2 text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:outline-none"
               >
                 <X className="size-5" />
               </button>

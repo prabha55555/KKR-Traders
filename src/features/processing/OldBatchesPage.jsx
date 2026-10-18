@@ -18,21 +18,22 @@ import { useFocusLoad } from '@/hooks/useFocusLoad';
 import {
   Badge,
   Button,
-  Card,
   ChoiceChips,
   EmptyState,
   ErrorState,
   LoadingState,
   Page,
-  RefreshButton,
   SearchBar,
-  cn,
   useFeedback,
 } from '@/ui';
+import { Cell, RecordRow } from './LotRow';
 
 const rupees = (n) => `₹${formatCurrency(n)}`;
 const qtyText = (qty, unit) =>
   `${Math.round(toNum(qty) * 1000) / 1000} ${unit && unit !== 'Kgs' ? unit : 'kg'}`;
+/** Old batch status text; its colour comes from the app-wide status map (completed green, in process blue). */
+const statusText = (status) =>
+  status === 'COMPLETED' ? 'Completed' : status === 'CANCELLED' ? 'Cancelled' : 'In process';
 
 export default function OldBatchesPage() {
   const { toast, confirm } = useFeedback();
@@ -47,7 +48,7 @@ export default function OldBatchesPage() {
     ]);
     setState({ dyeing: dyeing || [], combing: combing || [] });
   }, []);
-  const { loading, error, refreshing, refresh, reload } = useFocusLoad(load);
+  const { loading, error, refresh, reload } = useFocusLoad(load);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -110,11 +111,7 @@ export default function OldBatchesPage() {
   const HistoryModal = modal?.type === 'combing' ? CombingPaymentHistoryModal : DyeingPaymentHistoryModal;
 
   return (
-    <Page
-      title="Old Batches"
-      icon={Archive}
-      actions={<RefreshButton onClick={refresh} loading={refreshing} />}
-    >
+    <Page title="Old Batches" icon={Archive}>
       <p className="mb-4 rounded-xl bg-sky-50 p-3 text-sm text-sky-800 ring-1 ring-sky-200">
         Batches from the old separate Dyeing and Combing screens. They still count in stock and finance; here
         you can pay them or delete them. New work is done as Processing Lots.
@@ -150,80 +147,77 @@ export default function OldBatchesPage() {
               message="Nothing matches — or there were none."
             />
           ) : (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {rows.map(({ type, batch, stats }) => (
-                <Card key={`${type}-${batch.id ?? batch.batchId}`} className="p-3.5">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-brand-800">{batch.batchId}</span>
-                        <Badge tone={type === 'dyeing' ? 'info' : 'brand'}>
-                          {type === 'dyeing' ? 'Dyeing' : 'Combing'}
-                        </Badge>
-                        <Badge
-                          tone={
-                            batch.status === 'COMPLETED'
-                              ? 'success'
-                              : batch.status === 'CANCELLED'
-                                ? 'neutral'
-                                : 'warning'
-                          }
-                        >
-                          {batch.status === 'COMPLETED'
-                            ? 'Completed'
-                            : batch.status === 'CANCELLED'
-                              ? 'Cancelled'
-                              : 'In process'}
-                        </Badge>
-                      </div>
-                      <div className="truncate text-xs text-slate-500">
-                        {formatDateIN(batch.batchDate)} · {batch.processorName || '—'}
-                      </div>
-                      <div className="mt-1 truncate text-sm text-slate-700">
-                        {batch.input?.description} · {qtyText(batch.input?.qty, batch.input?.unit)}
-                        {batch.status === 'COMPLETED' && batch.output?.length
-                          ? ` → ${batch.output.map((o) => `${o.description} ${qtyText(o.qty, o.unit)}`).join(', ')}`
-                          : ''}
-                      </div>
-                    </div>
-                    <div className="text-right text-sm tabular-nums">
-                      <div className="text-xs text-slate-500">Charges {rupees(stats.totalCharges)}</div>
-                      <div
-                        className={cn(
-                          'font-bold',
-                          stats.balanceDue > 0 ? 'text-red-600' : 'text-emerald-700',
+            <div className="space-y-3">
+              {rows.map(({ type, batch, stats }) => {
+                const output =
+                  batch.status === 'COMPLETED' && batch.output?.length
+                    ? batch.output.map((o) => `${o.description} ${qtyText(o.qty, o.unit)}`).join(', ')
+                    : '';
+                return (
+                  <RecordRow
+                    key={`${type}-${batch.id ?? batch.batchId}`}
+                    code={batch.batchId}
+                    meta={
+                      <>
+                        <span className="text-xs font-medium text-slate-500 tabular-nums">
+                          {formatDateIN(batch.batchDate)}
+                        </span>
+                        <Badge tone="neutral">{type === 'dyeing' ? 'Dyeing' : 'Combing'}</Badge>
+                        <Badge status={statusText(batch.status)} />
+                        {stats.balanceDue > 0 ? (
+                          <Badge status="Due">Due {rupees(stats.balanceDue)}</Badge>
+                        ) : (
+                          <Badge status="Settled" />
                         )}
-                      >
-                        {stats.balanceDue > 0 ? `Due ${rupees(stats.balanceDue)}` : 'Settled'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {stats.balanceDue > 0 ? (
-                      <Button size="sm" icon={Wallet} onClick={() => setModal({ kind: 'pay', type, batch })}>
-                        Pay
-                      </Button>
-                    ) : null}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      icon={History}
-                      onClick={() => setModal({ kind: 'history', type, batch })}
+                      </>
+                    }
+                    actions={
+                      <>
+                        {stats.balanceDue > 0 ? (
+                          <Button
+                            size="sm"
+                            variant="outlineSuccess"
+                            icon={Wallet}
+                            onClick={() => setModal({ kind: 'pay', type, batch })}
+                          >
+                            Pay
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="sm"
+                          variant="outlineInfo"
+                          icon={History}
+                          onClick={() => setModal({ kind: 'history', type, batch })}
+                        >
+                          Payments ({stats.paymentsCount ?? (batch.payments ?? []).length})
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outlineDanger"
+                          icon={Trash2}
+                          onClick={() => remove(type, batch, stats)}
+                        >
+                          Delete
+                        </Button>
+                      </>
+                    }
+                  >
+                    <Cell
+                      label={type === 'dyeing' ? 'Dyeing unit' : 'Combing unit'}
+                      sub={batch.processorPhone || null}
                     >
-                      Payments ({stats.paymentsCount ?? (batch.payments ?? []).length})
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outlineDanger"
-                      icon={Trash2}
-                      className="ml-auto"
-                      onClick={() => remove(type, batch, stats)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </Card>
-              ))}
+                      {batch.processorName || '—'}
+                    </Cell>
+                    <Cell label="Sent" sub={batch.input?.description || null}>
+                      {qtyText(batch.input?.qty, batch.input?.unit)}
+                    </Cell>
+                    <Cell label="Received back">{output || '—'}</Cell>
+                    <Cell label="Charges" sub={`Paid ${rupees(stats.totalPaid)}`}>
+                      {rupees(stats.totalCharges)}
+                    </Cell>
+                  </RecordRow>
+                );
+              })}
             </div>
           )}
         </div>

@@ -6,7 +6,7 @@
  */
 import { History } from 'lucide-react';
 import { useMemo } from 'react';
-import { Page, RefreshButton } from '@/ui';
+import { Page } from '@/ui';
 import {
   AddPaymentSheet,
   DeleteInvoiceSheet,
@@ -49,11 +49,7 @@ export default function PurchaseHistoryPage() {
   const { totalDays, overallStats } = h.stats;
 
   return (
-    <Page
-      title="Purchase History"
-      icon={History}
-      actions={<RefreshButton loading={h.refreshing} onClick={() => void h.refresh()} />}
-    >
+    <Page title="Purchase History" icon={History}>
       <div className="space-y-5">
         {h.error ? null : (
           <RecentInvoicesStrip

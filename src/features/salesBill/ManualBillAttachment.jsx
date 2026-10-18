@@ -1,7 +1,6 @@
-import { Camera, Image as ImageIcon, Trash2, ZoomIn, X } from 'lucide-react';
+import { Camera, Image as ImageIcon, Trash2, ZoomIn } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { Button } from '@/ui';
-import { cn } from '@/ui/cn';
+import { Button, Modal } from '@/ui';
 
 /**
  * Resizes an image file to a balanced dimension (default 1024px) and compresses to JPEG data URL.
@@ -110,7 +109,7 @@ export function ManualBillAttachment({ value, onChange }) {
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="outlineGold"
                 icon={ImageIcon}
                 disabled={loading}
                 onClick={() => fileInputRef.current?.click()}
@@ -122,94 +121,76 @@ export function ManualBillAttachment({ value, onChange }) {
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-line bg-white shadow-xs">
-          <div className="flex items-center justify-between border-b border-line bg-slate-50/80 px-3 py-2">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-              <span className="flex h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200" />
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-slate-50/80 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-700">
+              <span className="flex size-2 shrink-0 rounded-full bg-emerald-500 ring-2 ring-emerald-200" />
               Manual Bill Slip Attached
             </div>
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setZoomOpen(true)}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200/60"
+              <Button
+                size="sm"
+                variant="outlineInfo"
+                icon={ZoomIn}
                 title="Preview slip"
+                onClick={() => setZoomOpen(true)}
               >
-                <ZoomIn className="h-3.5 w-3.5 text-slate-500" />
                 Preview
-              </button>
-              <button
-                type="button"
-                onClick={handleRemove}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+              </Button>
+              <Button
+                size="sm"
+                variant="outlineDanger"
+                icon={Trash2}
                 title="Remove attached photo"
+                onClick={handleRemove}
               >
-                <Trash2 className="h-3.5 w-3.5" />
                 Remove
-              </button>
+              </Button>
             </div>
           </div>
 
-          <div
-            className="group relative cursor-pointer bg-slate-900/5 p-2 text-center"
+          <button
+            type="button"
             onClick={() => setZoomOpen(true)}
+            aria-label="View full image"
+            className="group relative block w-full cursor-pointer bg-slate-900/5 p-2 text-center focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none focus-visible:ring-inset"
           >
             <img
               src={value}
               alt="Attached manual bill slip preview"
               className="mx-auto max-h-48 rounded-lg object-contain shadow-xs transition-transform duration-200 group-hover:scale-[1.01]"
             />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
-              <span className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-900 shadow">
-                <ZoomIn className="h-4 w-4" /> Click to view full image
+            <span className="absolute inset-0 flex items-center justify-center bg-brand-950/30 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              <span className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-bold text-brand-900 shadow">
+                <ZoomIn className="size-4" aria-hidden /> Click to view full image
               </span>
-            </div>
-          </div>
+            </span>
+          </button>
 
-          <div className="flex items-center justify-between bg-slate-50/50 px-3 py-2 text-[11px] text-slate-500">
-            <span>This slip will be merged into the PDF document</span>
-            <button
-              type="button"
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-slate-50/50 px-3 py-1.5 text-[11px] text-slate-500">
+            <span className="min-w-0">This slip will be merged into the PDF document</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Camera}
+              className="-mr-2"
               onClick={() => cameraInputRef.current?.click()}
-              className="font-medium text-brand-700 hover:underline"
             >
               Retake Photo
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Modal Preview */}
-      {zoomOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"
-          onClick={() => setZoomOpen(false)}
-        >
-          <div
-            className="relative max-h-[90vh] max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h3 className="text-sm font-bold text-slate-900">Manual Bill Slip Attachment</h3>
-              <button
-                type="button"
-                onClick={() => setZoomOpen(false)}
-                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="max-h-[75vh] overflow-auto bg-slate-100 p-4">
-              <img
-                src={value}
-                alt="Full size manual bill slip"
-                className="mx-auto max-h-full rounded-lg object-contain shadow-md"
-              />
-            </div>
-          </div>
+      {/* Full-size preview */}
+      <Modal open={zoomOpen} onClose={() => setZoomOpen(false)} title="Manual Bill Slip Attachment" size="lg">
+        <div className="-mx-4 -my-4 bg-slate-100 p-4 sm:-mx-6 sm:-my-5">
+          <img
+            src={value}
+            alt="Full size manual bill slip"
+            className="mx-auto max-h-[70dvh] rounded-lg object-contain shadow-md"
+          />
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

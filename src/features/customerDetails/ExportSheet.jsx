@@ -1,8 +1,8 @@
-import { Columns3, Download, FileSpreadsheet, Sigma } from 'lucide-react';
+import { Banknote, Columns3, Download, FileSpreadsheet, FileText, Sigma, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { formatRupees } from '@/core/format';
-import { Button, Checkbox, ChoiceChips, Modal } from '@/ui';
+import { Button, Checkbox, ChoiceChips, Modal, StatCard, StatGrid } from '@/ui';
 import { computeStats } from './aggregate';
 import { formatCount } from './display';
 import { EXPORT_COLUMN_OPTIONS } from './exportData';
@@ -12,17 +12,6 @@ const FORMAT_OPTIONS = [
   { value: 'json', label: 'JSON' },
 ];
 const ALL_COLUMNS = EXPORT_COLUMN_OPTIONS.map((o) => o.value);
-
-function SummaryItem({ value, label }) {
-  return (
-    <div className="min-w-0 flex-1 rounded-xl bg-gold-50/60 p-3 text-center ring-1 ring-gold-200 ring-inset">
-      <div className="font-display text-sm font-extrabold [overflow-wrap:anywhere] text-brand-800 tabular-nums">
-        {value}
-      </div>
-      <div className="mt-0.5 text-xs font-medium text-slate-500">{label}</div>
-    </div>
-  );
-}
 
 function Step({ icon: Icon, title, children }) {
   return (
@@ -64,10 +53,15 @@ export function ExportSheet({ visible, customers, onClose, onExport }) {
       title="Export Customer Data"
       footer={
         <>
-          <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
+          <Button variant="neutral" onClick={onClose} className="flex-1 sm:flex-none">
             Cancel
           </Button>
-          <Button icon={Download} onClick={() => onExport(format, columns)} className="flex-1 sm:flex-none">
+          <Button
+            variant="secondary"
+            icon={Download}
+            onClick={() => onExport(format, columns)}
+            className="flex-1 sm:flex-none"
+          >
             Export Data
           </Button>
         </>
@@ -93,11 +87,27 @@ export function ExportSheet({ visible, customers, onClose, onExport }) {
         </Step>
 
         <Step icon={Sigma} title="Data Summary">
-          <div className="flex gap-2">
-            <SummaryItem value={formatCount(summary.totalCustomers)} label="Customers" />
-            <SummaryItem value={formatCount(summary.totalInvoices)} label="Total Invoices" />
-            <SummaryItem value={formatRupees(summary.totalCurrentBillAmount)} label="Total Amount" />
-          </div>
+          <StatGrid cols={3}>
+            <StatCard
+              icon={Users}
+              tone="info"
+              value={formatCount(summary.totalCustomers)}
+              label="Customers"
+            />
+            <StatCard
+              icon={FileText}
+              tone="info"
+              value={formatCount(summary.totalInvoices)}
+              label="Total Invoices"
+            />
+            <StatCard
+              icon={Banknote}
+              tone="brand"
+              value={formatRupees(summary.totalCurrentBillAmount)}
+              label="Total Amount"
+              className="col-span-2 sm:col-span-1"
+            />
+          </StatGrid>
         </Step>
       </div>
     </Modal>

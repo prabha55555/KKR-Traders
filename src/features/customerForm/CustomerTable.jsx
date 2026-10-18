@@ -19,7 +19,7 @@ export function CustomerTable({ customers, emptyText, onEdit, onDelete }) {
         render: (c) => (
           <div className="flex items-center gap-3">
             <InitialAvatar name={c.name} size="sm" />
-            <span className="min-w-0 font-semibold text-brand-800">{c.name || '(no name)'}</span>
+            <span className="min-w-0 font-semibold break-words text-brand-800">{c.name || '(no name)'}</span>
           </div>
         ),
       },
@@ -27,7 +27,8 @@ export function CustomerTable({ customers, emptyText, onEdit, onDelete }) {
         key: 'phone',
         header: 'Phone',
         value: (c) => c.phone || 'N/A',
-        className: 'whitespace-nowrap text-slate-600 tabular-nums',
+        nowrap: true,
+        className: 'text-slate-600 tabular-nums',
       },
       {
         key: 'address',
@@ -40,7 +41,7 @@ export function CustomerTable({ customers, emptyText, onEdit, onDelete }) {
         header: 'Opening Balance',
         align: 'right',
         value: (c) => (c.openingBalance ? `₹${Number(c.openingBalance).toFixed(2)}` : '₹0.00'),
-        className: 'whitespace-nowrap tabular-nums font-semibold text-slate-700',
+        className: 'font-semibold text-slate-700',
       },
       {
         key: 'actions',

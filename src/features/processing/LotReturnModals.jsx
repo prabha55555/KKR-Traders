@@ -45,7 +45,9 @@ export function AddReturnModal({ open, onClose, lot, shortcuts, stockMap, onSave
       description: from === 'dyeing' ? (lot.grey?.description ?? '') : '',
       notes: '',
     });
-  }, [open, lot]);
+    // reset only when the form opens or another lot is picked: a background reload (new lot objects) must not wipe
+    // what is being typed
+  }, [open, lot?.id]);
   if (!lot) return null;
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
   const pickFrom = (from) =>
@@ -76,10 +78,10 @@ export function AddReturnModal({ open, onClose, lot, shortcuts, stockMap, onSave
       title={`Add return — lot ${formatDcNo(lot.dcNo)}`}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="neutral" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" form={formId} loading={saving} icon={RotateCcw}>
+          <Button type="submit" form={formId} variant="warning" loading={saving} icon={RotateCcw}>
             Save return
           </Button>
         </>
@@ -125,7 +127,7 @@ export function AddReturnModal({ open, onClose, lot, shortcuts, stockMap, onSave
             onChange={(dcNo) => patch({ dcNo })}
           />
         </Grid>
-        <Grid cols={{ base: 2 }}>
+        <Grid cols={{ base: 1, sm: 2 }}>
           <NumberField
             label="Rolls"
             inputMode="numeric"
@@ -164,6 +166,8 @@ export function AddReturnModal({ open, onClose, lot, shortcuts, stockMap, onSave
 }
 
 export function ReturnHistoryModal({ open, onClose, lot, onChanged, confirm, toast }) {
+  // one delete at a time: a second one started meanwhile would work on the lot from before the first
+  const [busy, setBusy] = useState(false);
   if (!lot) return null;
   const t = lotTotals(lot);
   const returns = [...(lot.returns ?? [])].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -175,10 +179,13 @@ export function ReturnHistoryModal({ open, onClose, lot, onChanged, confirm, toa
       confirmText: 'Delete',
     });
     if (!ok) return;
+    setBusy(true);
     try {
       onChanged(await deleteLotReturn(lot, r.id));
     } catch (err) {
       toast('Cannot delete', errorText(err), 'error');
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -187,7 +194,7 @@ export function ReturnHistoryModal({ open, onClose, lot, onChanged, confirm, toa
       onClose={onClose}
       title={`Return history — lot ${formatDcNo(lot.dcNo)}`}
       footer={
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="neutral" onClick={onClose}>
           Close
         </Button>
       }
@@ -205,26 +212,40 @@ export function ReturnHistoryModal({ open, onClose, lot, onChanged, confirm, toa
             {lot.dyeing ? `, ${kg(t.combingReturnedQty)} by the combing unit` : ''} · back in stock worth{' '}
             {rupees(t.returnedValue)}
           </p>
-          <ul className="divide-y divide-line rounded-xl ring-1 ring-line">
-            {returns.map((r) => (
-              <li key={r.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-brand-800 tabular-nums">
-                    {kg(r.qty)}
-                    {r.rolls ? ` · ${r.rolls} rolls` : ''}
+          <ul className="divide-y divide-slate-200 rounded-xl ring-1 ring-slate-300">
+            {returns.map((r) => {
+              const detail = [
+                formatDateIN(r.date),
+                r.from === 'combing'
+                  ? (lot.combingUnit?.name ?? 'Combing unit')
+                  : (lot.dyer?.name ?? 'Dyeing unit'),
+                r.dcNo ? formatDcNo(r.dcNo) : '',
+                r.description,
+                r.notes,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <li key={r.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-brand-800 tabular-nums">
+                      {kg(r.qty)}
+                      {r.rolls ? ` · ${r.rolls} rolls` : ''}
+                    </div>
+                    <div className="truncate text-xs text-slate-500" title={detail}>
+                      {detail}
+                    </div>
                   </div>
-                  <div className="truncate text-xs text-slate-500">
-                    {formatDateIN(r.date)} ·{' '}
-                    {r.from === 'combing'
-                      ? (lot.combingUnit?.name ?? 'Combing unit')
-                      : (lot.dyer?.name ?? 'Dyeing unit')}
-                    {r.dcNo ? ` · ${formatDcNo(r.dcNo)}` : ''} · {r.description}
-                    {r.notes ? ` · ${r.notes}` : ''}
-                  </div>
-                </div>
-                <IconButton icon={Trash2} label="Delete return" onClick={() => remove(r)} />
-              </li>
-            ))}
+                  <IconButton
+                    icon={Trash2}
+                    variant="outlineDanger"
+                    label="Delete return"
+                    disabled={busy}
+                    onClick={() => remove(r)}
+                  />
+                </li>
+              );
+            })}
           </ul>
         </>
       )}

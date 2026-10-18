@@ -12,8 +12,8 @@ import {
 } from '@/core/billing';
 import { db } from '@/core/db';
 import { toNum, todayISO } from '@/core/format';
-import { SALES_LEDGER, sameParty } from '@/core/ledger';
-import { PAYMENT_METHODS, foldBreakdown } from '@/core/paymentMethods';
+import { SALES_LEDGER, normalizePhone, sameParty } from '@/core/ledger';
+import { PAYMENT_METHODS, foldBreakdown, normalizeMethod } from '@/core/paymentMethods';
 import { invalidateStocksCache } from '@/features/overview/stocks/stocksService';
 export function emptySalesForm() {
   return {
@@ -134,12 +134,31 @@ export async function loadInvoiceSuggestion(invoiceDate) {
  * Returns the invoice as stored after the sync (its previous balance / totals may have been corrected).
  */
 export async function saveSalesBill(form, { replaceExisting = false } = {}) {
-  const invoice = buildSalesInvoice(form);
-  let before = await db.getInvoice(invoice.invoiceNo).catch(() => null);
+  const invoiceNo = form.invoiceNo.trim();
+  let before = await db.getInvoice(invoiceNo).catch(() => null);
   if (before && replaceExisting) {
-    await db.moveInvoiceToRecycleBin(invoice.invoiceNo);
+    await db.moveInvoiceToRecycleBin(invoiceNo);
     before = null;
   }
+  // the bill's payment records as they are NOW: a payment added from History while this edit was open still counts
+  let existing = [];
+  try {
+    existing = await db.getPaymentsByInvoice(invoiceNo);
+  } catch (err) {
+    console.error('Error reading payments:', err);
+  }
+  const later = before ? existing.filter((p) => p.paymentType !== 'initial') : [];
+  const invoice = buildSalesInvoice(
+    before
+      ? {
+          ...form,
+          additionalPaymentsTotal: later.reduce((sum, p) => sum + toNum(p.amount), 0),
+          additionalPaymentsBreakdown: breakdownFromPayments(later),
+        }
+      : form,
+  );
+  // a phone-less bill stays in the ledger chain it was put in while it keeps its name and still has no phone
+  if (before && keepsLedgerStamp(before, invoice)) invoice.ledgerParty = before.ledgerParty;
   const initialBreakdown = {
     cash: toNum(form.cash),
     account: toNum(form.account),
@@ -151,14 +170,16 @@ export async function saveSalesBill(form, { replaceExisting = false } = {}) {
   }
   // Replace previously stored initial payments for this invoice (the web app did this on every save). This also
   // removes legacy `_initial_upi` documents: their amount is in the form's Account now.
+  const initialBefore = existing.filter((p) => p.paymentType === 'initial');
   try {
-    const existing = await db.getPaymentsByInvoice(invoice.invoiceNo);
-    const initial = existing.filter((p) => p.paymentType === 'initial');
-    if (initial.length > 0) await Promise.all(initial.map((p) => db.deletePaymentDoc(p.id)));
+    if (initialBefore.length > 0) await Promise.all(initialBefore.map((p) => db.deletePaymentDoc(p.id)));
   } catch (err) {
     console.error('Error clearing old initial payments:', err);
   }
-  const paymentDate = todayISO();
+  // money taken at the sale keeps its date when the bill is edited later (an older bill without records: its own date)
+  const paymentDate = before
+    ? (initialBefore.find((p) => p.paymentDate)?.paymentDate ?? invoice.invoiceDate ?? todayISO())
+    : todayISO();
   PAYMENT_METHODS.forEach((method) => {
     if (initialBreakdown[method] > 0) {
       const paymentDoc = {
@@ -183,6 +204,21 @@ export async function saveSalesBill(form, { replaceExisting = false } = {}) {
   invalidateStocksCache();
   return withSyncedLedger(invoice, rows);
 }
+/** An edit of a phone-less bill that still has no phone and the same name keeps the chain stamp it had. */
+function keepsLedgerStamp(before, invoice) {
+  if (before.ledgerParty === undefined || before.ledgerParty === null) return false;
+  if (normalizePhone(before.customerPhone) || normalizePhone(invoice.customerPhone)) return false;
+  const name = (n) =>
+    String(n ?? '')
+      .trim()
+      .toLowerCase();
+  return name(before.customerName) === name(invoice.customerName);
+}
+/** All of an older bill's untracked payment under its single payment method (legacy 'upi' / 'account' = Account). */
+const singleMethodSplit = (invoice, total) =>
+  normalizeMethod(invoice.paymentMethod) === 'account'
+    ? { cash: 0, account: total }
+    : { cash: total, account: 0 };
 /** The saved bill with the derived values the ledger sync stored for it. */
 function withSyncedLedger(bill, rows) {
   const row = rows?.find((r) => String(r.bill.invoiceNo) === String(bill.invoiceNo));
@@ -209,7 +245,7 @@ function untrackedInitialSplit(invoice, additionalBreakdown, additionalTotal) {
     };
     if (Math.abs(split.cash + split.account - total) < 0.005) return split;
   }
-  return { cash: total, account: 0 };
+  return singleMethodSplit(invoice, total);
 }
 /** script.js loadInvoiceForEditing + Utils.setFormData: turn a stored invoice back into an editable form. */
 export async function loadSalesBillForEditing(invoiceNo) {
@@ -218,9 +254,14 @@ export async function loadSalesBillForEditing(invoiceNo) {
   let additionalPaymentsTotal = 0;
   let additionalPaymentsBreakdown = { cash: 0, account: 0 };
   let paymentBreakdown = foldBreakdown(invoice.paymentBreakdown);
+  // the bank the money taken AT THE SALE went to (a later payment into another bank must not move it on re-save)
+  let initialBank = null;
   try {
     const payments = await db.getPaymentsByInvoice(invoiceNo);
     const initial = payments.filter((p) => p.paymentType === 'initial');
+    initialBank =
+      initial.find((p) => normalizeMethod(p.paymentMethod) === 'account' && p.bankAccountId)?.bankAccountId ??
+      null;
     const additional = payments.filter((p) => p.paymentType !== 'initial');
     additionalPaymentsTotal = additional.reduce((sum, p) => sum + p.amount, 0);
     additionalPaymentsBreakdown = breakdownFromPayments(additional);
@@ -233,7 +274,7 @@ export async function loadSalesBillForEditing(invoiceNo) {
   }
   // Old invoices without a breakdown: everything was cash. A legacy UPI amount is loaded as Account (the form has no
   // UPI field, so it must not stay hidden in the totals).
-  const pb = paymentBreakdown ?? { cash: invoice.amountPaid || 0, account: 0 };
+  const pb = paymentBreakdown ?? singleMethodSplit(invoice, toNum(invoice.amountPaid));
   const form = {
     invoiceNo: invoice.invoiceNo,
     invoiceDate: invoice.invoiceDate,
@@ -252,12 +293,13 @@ export async function loadSalesBillForEditing(invoiceNo) {
     previousBalance: invoice.previousBalance ?? 0,
     manualPreviousBalance:
       invoice.manualPreviousBalance !== undefined ? String(invoice.manualPreviousBalance) : '',
-    discountAmount: String(invoice.discountAmount || 0),
+    // older invoices stored the discount as `discount` (the ledger and History still read it)
+    discountAmount: String(toNum(invoice.discountAmount) || toNum(invoice.discount) || 0),
     cash: String(pb.cash || 0),
     account: String(pb.account || 0),
     additionalPaymentsTotal,
     additionalPaymentsBreakdown,
-    bankAccountId: invoice.bankAccountId || null,
+    bankAccountId: initialBank || invoice.bankAccountId || null,
     manualBillImage: invoice.manualBillImage || null,
   };
   return { form, invoice };

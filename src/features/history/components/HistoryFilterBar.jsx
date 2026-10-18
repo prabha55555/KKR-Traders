@@ -10,11 +10,11 @@
  *   onClear()        reset everything
  *   labels    { party } – "Search customer name or invoice no"
  */
-import { ChevronDown, Search as SearchIcon, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Search as SearchIcon, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { digitsOnly } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { Button, DateField, SearchBar, TextField, cn } from '@/ui';
+import { Button, Card, DateField, SearchBar, TextField, cn } from '@/ui';
 
 export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels }) {
   const { isCompact } = useBreakpoint();
@@ -29,14 +29,15 @@ export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels })
   const party = labels.party.toLowerCase();
 
   return (
-    <form
+    <Card
+      as="form"
       role="search"
       aria-label="Filter invoices"
       onSubmit={(e) => {
         e.preventDefault();
         onSearch();
       }}
-      className="space-y-3.5 rounded-2xl border border-line bg-white p-3.5 shadow-card sm:p-4"
+      className="space-y-3.5"
     >
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)] lg:items-end">
         <SearchBar
@@ -51,7 +52,10 @@ export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels })
             type="button"
             aria-expanded={showRanges}
             onClick={() => setMoreOpen((v) => !v)}
-            className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-50 px-3 text-sm font-semibold text-brand-800 ring-1 ring-line transition ring-inset hover:bg-gold-50 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none"
+            className={cn(
+              'flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-brand-800 ring-1 transition ring-inset hover:bg-gold-50 hover:ring-gold-300 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none',
+              showRanges ? 'bg-gold-50 ring-gold-300' : 'bg-slate-50 ring-line',
+            )}
           >
             <span className="flex size-6 items-center justify-center rounded-md bg-gold-100 text-gold-700">
               <SlidersHorizontal className="size-3.5" aria-hidden />
@@ -135,7 +139,7 @@ export function HistoryFilterBar({ value, onChange, onSearch, onClear, labels })
       ) : null}
 
       {isCompact ? <Buttons onClear={onClear} /> : null}
-    </form>
+    </Card>
   );
 }
 
@@ -153,11 +157,11 @@ const RangeTo = () => <span className="text-xs font-semibold text-slate-400 uppe
 
 function Buttons({ onClear }) {
   return (
-    <div className="flex gap-2 lg:items-end lg:justify-end">
-      <Button type="submit" icon={SearchIcon} className="flex-1 lg:flex-none">
+    <div className="flex flex-wrap gap-2 lg:items-end lg:justify-end">
+      <Button type="submit" variant="primary" icon={SearchIcon} className="flex-1 lg:flex-none">
         Search
       </Button>
-      <Button variant="outlineDanger" onClick={onClear} className="flex-1 lg:flex-none">
+      <Button variant="outlineWarning" icon={X} onClick={onClear} className="flex-1 lg:flex-none">
         Clear Filters
       </Button>
     </div>

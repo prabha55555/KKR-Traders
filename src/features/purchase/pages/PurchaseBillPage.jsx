@@ -39,7 +39,7 @@ export default function PurchaseBillPage() {
           title="Invoice"
           icon={Receipt}
           right={
-            <Button variant="ghost" size="sm" icon={RotateCcw} onClick={bill.reset}>
+            <Button variant="outlineWarning" size="sm" icon={RotateCcw} onClick={bill.reset}>
               Clear
             </Button>
           }
@@ -81,8 +81,6 @@ export default function PurchaseBillPage() {
       saving={bill.saving}
       onSave={bill.save}
       onShare={bill.share}
-      onRefresh={bill.refresh}
-      refreshing={bill.refreshing}
       main={main}
       summary={<PurchaseTotalsCard form={form} totals={totals} onChange={patch} />}
     />

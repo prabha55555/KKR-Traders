@@ -119,8 +119,18 @@ export function usePurchaseBillForm() {
   const applySuggestion = () => {
     if (suggestion.nextInvoiceNo) patch({ invoiceNo: suggestion.nextInvoiceNo });
   };
+  /** set before the first await, so a double tap cannot start a second save (`saving` is only set further down) */
+  const busy = useRef(false);
   const save = async () => {
-    if (saving) return;
+    if (saving || busy.current) return;
+    busy.current = true;
+    try {
+      await saveOnce();
+    } finally {
+      busy.current = false;
+    }
+  };
+  const saveOnce = async () => {
     const check = await checkPurchaseBeforeSave(form);
     if (check.error) {
       toast(check.error.title, check.error.message, 'error');

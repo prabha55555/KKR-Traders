@@ -60,13 +60,13 @@ export default function FinanceFormModal({ form, onChange, saving, onClose, onSa
       size="md"
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={saving} className="max-sm:flex-1">
+          <Button variant="neutral" onClick={onClose} disabled={saving} className="max-sm:flex-1">
             Cancel
           </Button>
           <Button
             type="submit"
             form={FORM_ID}
-            variant="primary"
+            variant="success"
             icon={Save}
             loading={saving}
             className="max-sm:flex-1"

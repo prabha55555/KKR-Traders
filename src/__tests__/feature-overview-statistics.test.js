@@ -161,8 +161,9 @@ describe('computeAnalytics: ledger-consistent outstanding and bill values', () =
     const a = computeAnalytics({ ...base, salesBills, salesReturns }, 'all');
     expect(a.customerOutstanding).toBe(1500);
     expect(a.customersWithDues).toBe(2);
-    // Sales = the bills' own amounts (600 + 100), not grandTotal (which carries the previous balance)
-    expect(a.current.salesAmount).toBe(700);
+    // Sales = the bills' own amounts (500 + 100 + 100), not grandTotal (which carries the previous balance), less the
+    // goods returned against them (200 + 30: back in stock, refunded or not)
+    expect(a.current.salesAmount).toBe(470);
   });
 
   it('purchases KPI sums the bill amount; a supplier credit (negative closing) is not outstanding', () => {

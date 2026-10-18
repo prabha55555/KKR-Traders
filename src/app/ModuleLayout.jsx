@@ -31,7 +31,7 @@ import { useAuth } from '@/app/AuthProvider';
 import { COMPANY } from '@/core/branding';
 import { formatDateShort, todayISO } from '@/core/format';
 import { storage } from '@/platform';
-import { cn, useFeedback } from '@/ui';
+import { IconButton, cn, useFeedback } from '@/ui';
 import { BrandLockup, BrandMark } from './Brand';
 import { OfflineBanner } from './pwa';
 
@@ -155,15 +155,7 @@ function UserCard({ onLogout }) {
         <div className="truncate text-sm font-semibold text-white">{username ?? 'User'}</div>
         <div className="text-[11px] text-brand-300">Signed in</div>
       </div>
-      <button
-        type="button"
-        onClick={onLogout}
-        aria-label="Logout"
-        title="Logout"
-        className="rounded-xl p-2 text-brand-300 transition hover:bg-red-500/20 hover:text-red-200"
-      >
-        <LogOut className="size-[18px]" />
-      </button>
+      <IconButton icon={LogOut} label="Logout" variant="outlineDanger" onClick={onLogout} />
     </div>
   );
 }
@@ -217,9 +209,10 @@ export function NavMenu({ onItemClick }) {
               className={({ isActive: linkActive }) =>
                 cn(
                   'group relative flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition duration-150',
+                  'focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none',
                   linkActive
                     ? 'bg-white/10 font-semibold text-white'
-                    : 'text-brand-200 hover:bg-white/5 hover:text-white',
+                    : 'text-brand-200 hover:bg-gold-500/10 hover:text-white',
                 )
               }
             >
@@ -238,7 +231,7 @@ export function NavMenu({ onItemClick }) {
                     )}
                     aria-hidden
                   />
-                  <span className="flex-1 text-left">{category.title}</span>
+                  <span className="min-w-0 flex-1 truncate text-left">{category.title}</span>
                 </>
               )}
             </NavLink>
@@ -258,7 +251,10 @@ export function NavMenu({ onItemClick }) {
               aria-controls={panelId}
               className={cn(
                 'group flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition duration-150',
-                isCurrent ? 'text-white' : 'text-brand-200 hover:bg-white/5 hover:text-white',
+                'focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none',
+                isCurrent
+                  ? 'font-semibold text-white hover:bg-white/5'
+                  : 'text-brand-200 hover:bg-gold-500/10 hover:text-white',
               )}
             >
               <Icon
@@ -286,10 +282,11 @@ export function NavMenu({ onItemClick }) {
                   onClick={onItemClick}
                   className={({ isActive: itemActive }) =>
                     cn(
-                      'group relative flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition duration-150',
+                      'group relative flex min-w-0 items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition duration-150',
+                      'focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none',
                       itemActive
                         ? 'bg-gold-500/15 font-semibold text-gold-200 shadow-sm ring-1 ring-gold-400/20'
-                        : 'text-brand-300 hover:bg-white/5 hover:text-white',
+                        : 'text-brand-300 hover:bg-gold-500/10 hover:text-white',
                     )
                   }
                 >
@@ -358,7 +355,7 @@ function TopBar({ module }) {
         <NavLink
           to={module.home ?? module.to}
           end
-          className="shrink-0 font-medium text-slate-500 hover:text-brand-800"
+          className="shrink-0 rounded font-medium text-slate-500 transition hover:text-gold-700 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none"
         >
           {module.title}
         </NavLink>
@@ -392,15 +389,8 @@ function MobileDrawer({ open, onClose }) {
       />
       <div className="relative flex h-full w-80 max-w-[85vw] animate-sheet-in flex-col surface-ink text-white shadow-2xl ring-1 ring-white/10">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <BrandLockup />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close menu"
-            className="rounded-xl p-2 text-brand-300 hover:bg-white/10 hover:text-white"
-          >
-            <X className="size-5" />
-          </button>
+          <BrandLockup className="min-w-0" />
+          <IconButton icon={X} label="Close menu" variant="neutral" onClick={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -423,9 +413,9 @@ function MobileHeader({ module, onOpenMenu }) {
         type="button"
         onClick={onOpenMenu}
         aria-label="Open navigation menu"
-        className="rounded-xl p-2 text-brand-200 transition hover:bg-white/10 active:scale-95"
+        className="shrink-0 rounded-xl p-2 text-brand-200 ring-1 ring-white/10 transition ring-inset hover:bg-gold-500/15 hover:text-gold-300 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none active:scale-95"
       >
-        <Menu className="size-5" />
+        <Menu className="size-5" aria-hidden />
       </button>
       <Link to="/" aria-label="Dashboard" className="shrink-0">
         <BrandMark size="sm" />
@@ -455,7 +445,8 @@ function BottomTabs({ module }) {
               className={({ isActive }) =>
                 cn(
                   'flex min-h-[3.6rem] flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-semibold transition',
-                  isActive ? 'text-gold-300' : 'text-brand-300',
+                  'focus-visible:bg-white/5 focus-visible:outline-none',
+                  isActive ? 'text-gold-300' : 'text-brand-300 hover:text-gold-200',
                 )
               }
             >

@@ -4,20 +4,29 @@
  * phones) with edit / delete, and an add / edit sheet (header button, floating "+" on phones).
  */
 import { CalendarDays, CalendarRange, Plus, Sigma, Wallet } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { CASH_LABEL, accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, toNum, todayISO } from '@/core/format';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
-import { Badge, Button, DataTable, EmptyState, ErrorState, Page, StatCard, cn, useFeedback } from '@/ui';
+import {
+  Badge,
+  Button,
+  ChoiceChips,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Page,
+  StatCard,
+  StatGrid,
+  cn,
+  useFeedback,
+} from '@/ui';
 
 import FilterBar from '../components/FilterBar';
 import FloatingAddButton from '../components/FloatingAddButton';
-import InkStat from '../components/InkStat';
-import KpiRow from '../components/KpiRow';
-import RefreshButton from '../components/RefreshButton';
 import RowActions from '../components/RowActions';
 import ShowMore from '../components/ShowMore';
 import SkeletonRows from '../components/SkeletonRows';
@@ -43,19 +52,26 @@ const SOURCE_FILTERS = [
   { value: 'bank', label: 'Account' },
 ];
 
-/** The reason as a category-style chip ('-' when there is none). */
+/** The reason as a neutral category chip that wraps long text ('-' when there is none). */
 function ReasonChip({ expense, className }) {
   if (!expense.reason) return <span className="text-slate-400">-</span>;
   return (
     <span
       className={cn(
-        'inline-block rounded-lg bg-amber-50/80 px-2.5 py-1 text-[13px] leading-snug font-medium break-words text-amber-900 ring-1 ring-amber-200/70 ring-inset',
+        'inline-block max-w-full rounded-lg bg-slate-50 px-2.5 py-1 text-[13px] leading-snug font-medium break-words text-slate-800 ring-1 ring-slate-200 ring-inset',
         className,
       )}
     >
       {expense.reason}
     </span>
   );
+}
+
+/** "Paid via" label: Cash in green, a bank account in blue (same colours as the finance pages). */
+function PaidVia({ expense, bankAccounts }) {
+  const source = expense.paymentSource || 'cash';
+  if (source === 'cash') return <Badge tone="success">{CASH_LABEL}</Badge>;
+  return <Badge tone="info">{accountLabel(bankAccounts.find((b) => b.id === source))}</Badge>;
 }
 
 export default function ExpensesPage() {
@@ -68,7 +84,7 @@ export default function ExpensesPage() {
   const [form, setForm] = useState(null); // null = sheet closed
   const [saving, setSaving] = useState(false);
 
-  const { loading, refreshing, error, refresh, reload } = useFocusLoad(async () => {
+  const { loading, error, reload } = useFocusLoad(async () => {
     try {
       const [expList, banks] = await Promise.all([
         db.getAllExpenses(),
@@ -98,7 +114,18 @@ export default function ExpensesPage() {
   const totals = useMemo(() => computeExpenseTotals(shown, dateTerm, todayISO()), [shown, dateTerm]);
   const paged = usePagedRows(shown, `${dateTerm}|${reasonTerm}|${sourceFilter}`);
 
+  /** set before the first await, so a double tap cannot start a second save (`saving` is only set further down) */
+  const busy = useRef(false);
   const save = async () => {
+    if (saving || busy.current) return;
+    busy.current = true;
+    try {
+      await saveOnce();
+    } finally {
+      busy.current = false;
+    }
+  };
+  const saveOnce = async () => {
     const invalid = validateExpense(form);
     if (invalid) {
       toast('Warning', invalid, 'warning');
@@ -182,38 +209,21 @@ export default function ExpensesPage() {
     {
       key: 'date',
       header: 'Date',
-      className: 'whitespace-nowrap font-medium text-slate-700',
+      nowrap: true,
+      className: 'font-medium text-slate-700',
       value: (e) => formatDateShort(e.date),
     },
     { key: 'reason', header: 'Reason', className: 'min-w-48', render: (e) => <ReasonChip expense={e} /> },
     {
       key: 'paymentSource',
       header: 'Paid Via',
-      className: 'whitespace-nowrap',
-      render: (e) => {
-        const source = e.paymentSource || 'cash';
-        if (source === 'cash') {
-          return (
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/70">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {CASH_LABEL}
-            </span>
-          );
-        }
-        const bank = bankAccounts.find((b) => b.id === source);
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800 ring-1 ring-blue-200/70">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-            {accountLabel(bank)}
-          </span>
-        );
-      },
+      render: (e) => <PaidVia expense={e} bankAccounts={bankAccounts} />,
     },
     {
       key: 'amount',
       header: 'Amount',
       align: 'right',
-      className: 'font-display font-bold text-rose-700 tabular-nums whitespace-nowrap',
+      className: 'font-display font-bold text-red-600',
       value: (e) => rs(toNum(e.amount)),
     },
     { key: 'actions', header: 'Actions', align: 'center', render: actions },
@@ -236,22 +246,12 @@ export default function ExpensesPage() {
                   <span className="text-xs font-semibold tracking-wide text-slate-500">
                     {formatDateShort(e.date)}
                   </span>
-                  {e.paymentSource && e.paymentSource !== 'cash' ? (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-800 ring-1 ring-blue-200/70">
-                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                      {accountLabel(bankAccounts.find((b) => b.id === e.paymentSource))}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200/70">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      Cash
-                    </span>
-                  )}
+                  <PaidVia expense={e} bankAccounts={bankAccounts} />
                 </div>
                 <div>
                   <ReasonChip expense={e} />
                 </div>
-                <div className="font-display text-lg font-extrabold text-rose-700 tabular-nums">
+                <div className="font-display text-lg font-extrabold text-red-600 tabular-nums">
                   {rs(toNum(e.amount))}
                 </div>
               </div>
@@ -275,29 +275,26 @@ export default function ExpensesPage() {
       title="Other Expenses"
       icon={Wallet}
       actions={
-        <>
-          <RefreshButton onClick={refresh} refreshing={refreshing} />
-          <Button icon={Plus} onClick={openAdd} className="max-sm:hidden">
-            Add Expense
-          </Button>
-        </>
+        <Button variant="primary" icon={Plus} onClick={openAdd} className="max-sm:hidden">
+          Add Expense
+        </Button>
       }
     >
-      <KpiRow cols={3}>
+      <StatGrid cols={3} className="mb-5">
         <StatCard
           icon={CalendarDays}
           label={kpiLabel(totals.dayLabel)}
           value={rs(totals.dayTotal)}
-          tint="sky"
+          tone="danger"
         />
         <StatCard
           icon={CalendarRange}
           label={kpiLabel(totals.monthLabel)}
           value={rs(totals.monthTotal)}
-          tint="amber"
+          tone="danger"
         />
-        <InkStat icon={Sigma} label="Overall Total" value={rs(totals.total)} />
-      </KpiRow>
+        <StatCard icon={Sigma} label="Overall Total" value={rs(totals.total)} tone="danger" />
+      </StatGrid>
       <FilterBar
         date={dateTerm}
         onDateChange={setDateTerm}
@@ -306,18 +303,8 @@ export default function ExpensesPage() {
         textPlaceholder="Search by Reason..."
         quickDates
         extraFilters={
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Paid via">
-            {SOURCE_FILTERS.map(({ value, label }) => (
-              <Button
-                key={value}
-                size="sm"
-                variant={sourceFilter === value ? 'secondary' : 'subtle'}
-                aria-pressed={sourceFilter === value}
-                onClick={() => setSourceFilter(value)}
-              >
-                {label}
-              </Button>
-            ))}
+          <div role="group" aria-label="Paid via">
+            <ChoiceChips value={sourceFilter} onChange={setSourceFilter} options={SOURCE_FILTERS} />
           </div>
         }
         onClear={() => {

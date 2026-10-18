@@ -1,56 +1,41 @@
 import { Banknote, PackagePlus, ShoppingBag, TrendingDown, TrendingUp } from 'lucide-react';
 
 import { formatRupees } from '@/core/format';
-import { StatCard } from '@/ui';
+import { StatCard, StatGrid } from '@/ui';
 
-import InkStat from '../components/InkStat';
-import KpiRow from '../components/KpiRow';
-
-/** Label with the original tile's small caption underneath (hidden on phones to keep the tiles compact). */
-const tileLabel = (title, caption) => (
-  <>
-    {title}
-    <span className="block truncate text-[11px] font-normal text-slate-400 max-sm:hidden">{caption}</span>
-  </>
-);
-
-/** Same, on the dark ink tile. */
-const inkLabel = (title, caption) => (
-  <>
-    {title}
-    <span className="block truncate text-[11px] font-normal text-brand-400 max-sm:hidden">{caption}</span>
-  </>
-);
-
-/** The four "Financial Summary" tiles at the top of the stocks page (net profit / loss is the dark hero tile). */
+/** The four "Financial Summary" tiles at the top of the stocks page (net profit green, a loss red). */
 export default function FinancialSummary({ summary }) {
   const loss = summary.netProfitLoss < 0;
   return (
-    <KpiRow>
+    <StatGrid cols={4} className="mb-5">
       <StatCard
         icon={ShoppingBag}
-        tint="sky"
+        tone="brand"
         value={formatRupees(summary.totalSales)}
-        label={tileLabel('Total Sales', 'Total value of all sales')}
+        label="Total Sales"
+        hint="All sales, less returns"
       />
       <StatCard
         icon={PackagePlus}
-        tint="amber"
+        tone="neutral"
         value={formatRupees(summary.totalPurchases)}
-        label={tileLabel('Total Purchases', 'Total value of all purchases')}
+        label="Total Purchases"
+        hint="All purchases, less returns"
       />
       <StatCard
         icon={Banknote}
-        tint="green"
+        tone="success"
         value={formatRupees(summary.cashReceived)}
-        label={tileLabel('Cash Received', 'Money collected from sales')}
+        label="Cash Received"
+        hint="Collected from sales, less return refunds"
       />
-      <InkStat
+      <StatCard
         icon={loss ? TrendingDown : TrendingUp}
-        negative={loss}
+        tone={loss ? 'danger' : 'success'}
         value={formatRupees(summary.netProfitLoss)}
-        label={inkLabel('Net Profit / Loss', 'Total Sales minus Total Purchases')}
+        label="Net Profit / Loss"
+        hint="Net sales minus net purchases"
       />
-    </KpiRow>
+    </StatGrid>
   );
 }
