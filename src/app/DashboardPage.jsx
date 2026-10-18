@@ -65,6 +65,13 @@ const MODULE_CARDS = [
     icon: PieChart,
     points: ['Revenue & profit', 'Live stock levels', 'Expense tracking'],
   },
+  {
+    to: '/settings',
+    title: 'Settings',
+    text: 'Business details, logo, bill texts, modules and the app login (administrator).',
+    icon: Settings,
+    points: ['Business details & logo', 'Bill & message texts', 'Modules & login'],
+  },
 ];
 
 function greeting() {
@@ -107,9 +114,6 @@ export default function DashboardPage() {
             <BrandLockup className="min-w-0" />
             <div className="flex shrink-0 items-center gap-2">
               <InstallButton className="hidden sm:inline-flex" />
-              <Button variant="outline" size="sm" icon={Settings} onClick={() => nav('/settings')}>
-                <span className="max-sm:sr-only">Settings</span>
-              </Button>
               <Button variant="danger" size="sm" icon={LogOut} onClick={onLogout}>
                 <span className="max-sm:sr-only">Logout</span>
               </Button>

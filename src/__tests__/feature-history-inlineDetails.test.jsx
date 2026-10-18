@@ -283,11 +283,9 @@ describe('History table (desktop): the basic details are in the row, no popup ne
     expect(within(yarn).getByText('10 × ₹750.00')).toBeInTheDocument();
     expect(within(yarn).getByText('₹7,500.00')).toBeInTheDocument();
 
-    // the actions name the displayed number and pass the stored one
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Invoice No 005' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Return History of Invoice No 005' }));
-    expect(calls.edit).toHaveBeenCalledWith('P-005');
-    expect(calls.viewReturns).toHaveBeenCalledWith('P-005');
+    // the eye icon names the displayed number and passes the stored one
+    fireEvent.click(screen.getByRole('button', { name: 'Details of Invoice No 005' }));
+    expect(calls.open).toHaveBeenCalledWith('P-005');
   });
 
   it('"+N more" expands a long product list in place (no popup) and collapses it again', () => {
@@ -342,37 +340,33 @@ describe('History table (desktop): the basic details are in the row, no popup ne
     expect(within(dialog).getByRole('button', { name: /Return History/ })).toBeInTheDocument();
   });
 
-  it('every action still works from the row, as a coloured icon named after the bill', () => {
+  it('the Actions column holds only the eye icon; it opens the detail sheet with every other action', () => {
     const calls = spies();
     render(<HistoryInvoiceTable invoices={[salesInvoice()]} labels={SALES_LABELS} actions={calls} />);
-    const cases = [
-      ['Details of Invoice No 101', calls.open, 'bg-sky-50'],
-      ['Edit Invoice No 101', calls.edit, 'bg-blue-50'],
-      ['Add Payment to Invoice No 101', calls.addPayment, 'bg-emerald-50'],
-      ['Payment History of Invoice No 101', calls.viewPayments, 'bg-sky-50'],
-      ['Add Return to Invoice No 101', calls.addReturn, 'bg-amber-50'],
-      ['Return History of Invoice No 101', calls.viewReturns, 'bg-sky-50'],
-      ['Share Statement of Invoice No 101', calls.shareStatement, 'bg-violet-50'],
-      ['Download Statement of Invoice No 101', calls.downloadStatement, 'bg-brand-50'],
-      ['Delete Invoice No 101', calls.remove, 'bg-red-50'],
-    ];
     const actionsCell = billRows().cells[8];
     expect(
       within(actionsCell)
         .getAllByRole('button')
         .map((b) => b.getAttribute('aria-label')),
-    ).toEqual(cases.map(([name]) => name));
+    ).toEqual(['Details of Invoice No 101']);
     // the actions column also covers the products row
     expect(actionsCell).toHaveAttribute('rowspan', '2');
-    for (const [name, spy, colour] of cases) {
-      const button = screen.getByRole('button', { name });
-      expect(button).toHaveClass(colour);
-      fireEvent.click(button);
-      expect(spy).toHaveBeenCalledWith('101');
+    const eye = screen.getByRole('button', { name: 'Details of Invoice No 101' });
+    expect(eye).toHaveClass('bg-sky-50');
+    fireEvent.click(eye);
+    expect(calls.open).toHaveBeenCalledWith('101');
+    for (const name of [
+      /^Edit Invoice/,
+      /^Add Payment/,
+      /^Payment History/,
+      /^Add Return/,
+      /^Delete Invoice/,
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
     }
   });
 
-  it('leaves out the actions a bill does not offer', () => {
+  it('a bill with nothing paid, no products and no returns: the row still shows its details and the eye icon', () => {
     render(
       <HistoryInvoiceTable
         invoices={[

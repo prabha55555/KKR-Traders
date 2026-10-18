@@ -9,28 +9,15 @@
  *             balance vs refunded), Balance Due (after the returns settled on it) – the InvoiceSummaryBox figures.
  *   sub-row   every product line ("description · rolls · qty × rate = amount", first 3 + "+N more" in place) and
  *             the initial / additional payments.
- *   Actions   (spans both rows) coloured icon buttons: Details (detail sheet: slip image, history links), Edit,
- *             Add Payment, Payment History, Add Return, Return History, Share / Download Statement, Delete.
+ *   Actions   (spans both rows) the eye icon only: it opens the detail sheet, which holds every action (edit,
+ *             payments, returns, print / share, statements, delete), the slip image and the history links.
  * Rows are not clickable: the detail sheet opens from the Details action only. Every day's table uses the same
  * column widths; a table wider than the screen scrolls inside its own frame.
  *
  * Props: invoices (HistoryInvoice[]) · labels ({ party, formatInvoiceNo? }) · actions (HistoryInvoiceActions, stable).
  * Also exports `HistoryInvoiceTable` (just the table) and `buildInvoiceColumns(labels, actions)` (main-row columns).
  */
-import {
-  Banknote,
-  ClipboardList,
-  Download,
-  Eye,
-  FileText,
-  MessageCircle,
-  Printer,
-  ReceiptText,
-  RotateCcw,
-  Share2,
-  SquarePen,
-  Trash2,
-} from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { formatCurrency, formatDateIN, toNum } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -64,115 +51,20 @@ const Caption = ({ children, className }) => (
 );
 
 /**
- * Every action the bill offers, in a fixed order, as coloured icon buttons (ACTION COLOURS of ui/Button). The labels
- * name the bill ("Edit Invoice No 101") so each one is unique on the page.
+ * The Actions column holds only the eye icon: it opens the bill's detail sheet, which has every action (edit, payments,
+ * returns, print / share, statements, delete). The label names the bill ("Details of Invoice No 101").
  */
-function invoiceRowActions(invoice, labels, actions) {
-  const no = displayInvoiceNo(labels, invoice.invoiceNo);
-  return [
-    actions.open && {
-      key: 'details',
-      icon: Eye,
-      variant: 'outlineInfo',
-      label: `Details of Invoice No ${no}`,
-      run: actions.open,
-    },
-    actions.edit && {
-      key: 'edit',
-      icon: SquarePen,
-      variant: 'edit',
-      label: `Edit Invoice No ${no}`,
-      run: actions.edit,
-    },
-    invoice.canAddPayment &&
-      actions.addPayment && {
-        key: 'addPayment',
-        icon: Banknote,
-        variant: 'outlineSuccess',
-        label: `Add Payment to Invoice No ${no}`,
-        run: actions.addPayment,
-      },
-    invoice.amountPaid > 0 &&
-      actions.viewPayments && {
-        key: 'payments',
-        icon: ReceiptText,
-        variant: 'outlineInfo',
-        label: `Payment History of Invoice No ${no}`,
-        run: actions.viewPayments,
-      },
-    invoice.canAddReturn &&
-      actions.addReturn && {
-        key: 'addReturn',
-        icon: RotateCcw,
-        variant: 'outlineWarning',
-        label: `Add Return to Invoice No ${no}`,
-        run: actions.addReturn,
-      },
-    invoice.totalReturns > 0 &&
-      actions.viewReturns && {
-        key: 'returns',
-        icon: ClipboardList,
-        variant: 'outlineInfo',
-        label: `Return History of Invoice No ${no}`,
-        run: actions.viewReturns,
-      },
-    actions.whatsAppMessage && {
-      key: 'whatsApp',
-      icon: MessageCircle,
-      variant: 'whatsapp',
-      label: `WhatsApp Message for Invoice No ${no}`,
-      run: actions.whatsAppMessage,
-    },
-    actions.printInvoice && {
-      key: 'print',
-      icon: Printer,
-      variant: 'outline',
-      label: `Print Invoice No ${no}`,
-      run: actions.printInvoice,
-    },
-    actions.shareInvoicePdf && {
-      key: 'sharePdf',
-      icon: FileText,
-      variant: 'outlinePurple',
-      label: `Share Invoice PDF of Invoice No ${no}`,
-      run: actions.shareInvoicePdf,
-    },
-    actions.shareStatement && {
-      key: 'shareStatement',
-      icon: Share2,
-      variant: 'outlinePurple',
-      label: `Share Statement of Invoice No ${no}`,
-      run: actions.shareStatement,
-    },
-    actions.downloadStatement && {
-      key: 'downloadStatement',
-      icon: Download,
-      variant: 'outline',
-      label: `Download Statement of Invoice No ${no}`,
-      run: actions.downloadStatement,
-    },
-    actions.remove && {
-      key: 'delete',
-      icon: Trash2,
-      variant: 'outlineDanger',
-      label: `Delete Invoice No ${no}`,
-      run: actions.remove,
-    },
-  ].filter(Boolean);
-}
-
 function RowActions({ invoice, labels, actions }) {
+  if (!actions.open) return null;
+  const no = displayInvoiceNo(labels, invoice.invoiceNo);
   return (
-    <div className="grid grid-cols-[repeat(2,auto)] justify-center gap-1">
-      {invoiceRowActions(invoice, labels, actions).map((a) => (
-        <IconButton
-          key={a.key}
-          icon={a.icon}
-          variant={a.variant}
-          label={a.label}
-          onClick={() => a.run(invoice.invoiceNo)}
-        />
-      ))}
+    <div className="flex justify-center">
+      <IconButton
+        icon={Eye}
+        variant="outlineInfo"
+        label={`Details of Invoice No ${no}`}
+        onClick={() => actions.open(invoice.invoiceNo)}
+      />
     </div>
   );
 }
@@ -321,7 +213,7 @@ export function buildInvoiceColumns(labels, actions) {
             key: 'actions',
             header: 'Actions',
             align: 'center',
-            width: '6rem',
+            width: '4.5rem',
             spansDetails: true,
             render: (i) => <RowActions invoice={i} labels={labels} actions={actions} />,
           },

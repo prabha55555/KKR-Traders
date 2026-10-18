@@ -83,11 +83,10 @@ describe('HistoryInvoiceCard', () => {
 });
 
 describe('HistoryInvoiceTable', () => {
-  it('a row click no longer opens the detail: only the explicit Details action does', () => {
+  it('a row click does not open the detail: only the eye icon (Details) does — the only action in the row', () => {
     const actions = makeActions();
     render(<HistoryInvoiceTable invoices={[invoice()]} labels={SALES_LABELS} actions={actions} />);
-    fireEvent.click(screen.getByLabelText('Delete Invoice No 101'));
-    expect(actions.remove).toHaveBeenCalledWith('101');
+    expect(screen.queryByLabelText('Delete Invoice No 101')).toBeNull();
     fireEvent.click(screen.getByText('Ravi Stores'));
     fireEvent.click(screen.getByText('Cotton saree'));
     expect(actions.open).not.toHaveBeenCalled();
@@ -290,8 +289,10 @@ describe('history uses the app design system', () => {
     const total = within(table).getAllByRole('cell')[4];
     expect(total).toHaveTextContent('₹1,000.00');
     expect(total).toHaveAttribute('data-align', 'right');
-    expect(screen.getByLabelText('Edit Invoice No 101')).toHaveClass('bg-blue-50');
-    expect(screen.getByLabelText('Delete Invoice No 101')).toHaveClass('bg-red-50');
+    // the Actions column holds only the eye icon (the other actions are in the detail sheet)
+    const actionsCell = screen.getByRole('button', { name: 'Details of Invoice No 101' }).closest('td');
+    expect(within(actionsCell).getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Details of Invoice No 101' })).toHaveClass('bg-sky-50');
     expect(screen.getByText('Partially Paid')).toBeInTheDocument();
   });
 
