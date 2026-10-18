@@ -1,6 +1,7 @@
 /**
  * HistoryDateGroupList – the date-grouped invoice list: one heading per day (with the day's invoice count)
- * followed by that day's invoices (table on desktop, cards on phone/tablet – see HistoryInvoiceGroupBody).
+ * followed by that day's invoices (table on desktop, cards on phone/tablet – see HistoryInvoiceGroupBody; both show
+ * every bill's basic details inline, the same column widths on every day).
  * Days are paged (`pageDays` days per page, <Pagination> underneath) so thousands of invoices stay light.
  *
  * Props:

@@ -6,11 +6,28 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 const THEME_COLOR = '#0c1022';
 
+/**
+ * Prints which Firebase project a build / dev server talks to: every customer's build must show ITS OWN project
+ * (set VITE_FIREBASE_* in `.env.<customer>.local` and build with `--mode <customer>`; see docs/NEW_CUSTOMER_SETUP.md).
+ */
+function firebaseProjectNotice() {
+  return {
+    name: 'firebase-project-notice',
+    configResolved(config) {
+      const project =
+        config.env.VITE_FIREBASE_PROJECT_ID ||
+        'sriram-96e71 (original installation: no VITE_FIREBASE_* settings found)';
+      config.logger.info(`  Firebase project: ${project}`);
+    },
+  };
+}
+
 export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   plugins: [
+    firebaseProjectNotice(),
     react(),
     tailwindcss(),
     VitePWA({
@@ -22,7 +39,8 @@ export default defineConfig({
         id: '/',
         name: 'Brightlight Billing',
         short_name: 'Brightlight',
-        description: 'Brightlight Billing — premium sales, purchase, stock and expense management by Brightlight Solutions',
+        description:
+          'Brightlight Billing — premium sales, purchase, stock and expense management by Brightlight Solutions',
         lang: 'en-IN',
         start_url: '/',
         scope: '/',
@@ -37,9 +55,24 @@ export default defineConfig({
           { src: '/logo512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
-          { name: 'New Sales Bill', short_name: 'Sales Bill', url: '/sales/bill', icons: [{ src: '/logo192.png', sizes: '192x192' }] },
-          { name: 'New Purchase Bill', short_name: 'Purchase Bill', url: '/purchase/bill', icons: [{ src: '/logo192.png', sizes: '192x192' }] },
-          { name: 'Overview', short_name: 'Overview', url: '/overview/revenue', icons: [{ src: '/logo192.png', sizes: '192x192' }] },
+          {
+            name: 'New Sales Bill',
+            short_name: 'Sales Bill',
+            url: '/sales/bill',
+            icons: [{ src: '/logo192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'New Purchase Bill',
+            short_name: 'Purchase Bill',
+            url: '/purchase/bill',
+            icons: [{ src: '/logo192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Overview',
+            short_name: 'Overview',
+            url: '/overview/revenue',
+            icons: [{ src: '/logo192.png', sizes: '192x192' }],
+          },
         ],
       },
       workbox: {

@@ -188,9 +188,9 @@ describe('stat tiles', () => {
       balanceDue: 0,
     },
   ];
-  test('six cards in web order; text subtitle only for Total Amount / Paid / Balance', () => {
+  test('six cards in web order; amount-in-words hint only for Total Amount / Paid / Balance', () => {
     const tiles = buildStatTiles(computeStats(buildCustomerSummaries(invoices, [])));
-    expect(tiles.map((t) => [t.label, t.value, t.subtitle])).toEqual([
+    expect(tiles.map((t) => [t.label, t.value, t.hint])).toEqual([
       ['Total Customers', '1', undefined],
       ['Total Invoices', '1', undefined],
       ['Total Amount', '₹1,15,00,000.00', '(1.15 Cr)'],
@@ -223,8 +223,9 @@ describe('stat tiles', () => {
     ]);
     const tile = tiles.find((t) => t.key === 'returns');
     expect(tile.value).toBe('-₹2,500.00');
-    expect(tile.subtitle).toBe('(2.50 K)');
-    expect(tile.tone).toBe('negative');
+    expect(tile.hint).toBe('(2.50 K)');
+    // app status colour of returns everywhere (amber)
+    expect(tile.tone).toBe('warning');
   });
   test('Total Balance colour follows the sign', () => {
     const tone = (balance) =>
@@ -237,8 +238,9 @@ describe('stat tiles', () => {
         totalDiscountAmount: 0,
         pendingBalance: balance,
       }).find((t) => t.key === 'balance').tone;
-    expect(tone(10)).toBe('negative');
-    expect(tone(-10)).toBe('positive');
+    // StatCard / Badge tones: owed = red, credit = green, nil = grey
+    expect(tone(10)).toBe('danger');
+    expect(tone(-10)).toBe('success');
     expect(tone(0)).toBe('neutral');
   });
 });

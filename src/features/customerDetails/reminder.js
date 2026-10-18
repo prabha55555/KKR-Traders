@@ -2,7 +2,8 @@
  * WhatsApp payment-reminder messages — port of generateReminderMessage / updateMessageStats / sendWhatsAppReminder
  * from js/customer-details.js.
  */
-import { COMPANY, CREDIT_LINE } from '@/core/branding';
+import { CREDIT_LINE } from '@/core/branding';
+import { printName } from '@/core/business';
 import { formatRupees } from '@/core/format';
 import { customerBalance } from './aggregate';
 export const REMINDER_TEMPLATES = [
@@ -24,7 +25,7 @@ export function canSendReminder(customer) {
 export const reminderBalance = customerBalance;
 export function generateReminderMessage(customer, template) {
   const balance = formatRupees(reminderBalance(customer));
-  const company = COMPANY.name;
+  const company = printName();
   switch (template) {
     case 'standard':
       return `${company} - Payment Reminder

@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { StatsGrid } from '@/features/customerDetails/StatsGrid';
+import { PARTY_KINDS, PartyStatsGrid } from '@/components/party';
+import { buildStatTiles } from '@/features/customerDetails/statTiles';
+
+// the Customer Details status cards: the customer tiles in the shared party stat grid
+const StatsGrid = ({ stats }) => <PartyStatsGrid tiles={buildStatTiles(stats)} kind={PARTY_KINDS.customer} />;
 
 const stats = (over = {}) => ({
   totalCustomers: 3,

@@ -1,12 +1,14 @@
 /**
  * HistoryInvoiceDetailSheet – full detail of one invoice (summary, products, history links, every action).
- * Opened by clicking a table row on desktop.
+ * The table rows and cards already show every basic detail; this sheet opens only from their explicit "Details"
+ * action (or a ?view=<invoiceNo> link) for the extras: the manual bill slip image (with full-size zoom) and the
+ * payment / return history links.
  *
  * Props: invoice (HistoryInvoice | null; null = closed) · labels ({ party, formatInvoiceNo? }) ·
  *        actions (HistoryInvoiceActions) · onClose().
  * The page should pass actions that close the sheet first (a stacked dialog would hide toasts / confirms).
  */
-import { Camera, ZoomIn } from 'lucide-react';
+import { Camera, MapPin, Phone, ZoomIn } from 'lucide-react';
 import { useState } from 'react';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { Button, Modal } from '@/ui';
@@ -44,6 +46,20 @@ export function HistoryInvoiceDetailSheet({ invoice, labels, actions, onClose })
                   <p className="truncate font-display text-lg font-bold" title={invoice.partyName}>
                     {invoice.partyName}
                   </p>
+                  {invoice.partyPhone ? (
+                    <p className="flex items-center gap-1.5 text-xs text-brand-200 tabular-nums">
+                      <Phone className="size-3 shrink-0" aria-hidden />
+                      <span className="sr-only">Phone: </span>
+                      {invoice.partyPhone}
+                    </p>
+                  ) : null}
+                  {invoice.partyAddress ? (
+                    <p className="text-xs wrap-break-word text-brand-200">
+                      <MapPin className="mr-1.5 inline size-3 align-[-2px]" aria-hidden />
+                      <span className="sr-only">Address: </span>
+                      {invoice.partyAddress}
+                    </p>
+                  ) : null}
                   <p className="text-xs text-brand-300">{formatDateIN(invoice.invoiceDate)}</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">

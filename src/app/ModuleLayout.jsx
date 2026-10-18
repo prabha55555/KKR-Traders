@@ -1,6 +1,7 @@
 import {
   Archive,
   Boxes,
+  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -14,6 +15,7 @@ import {
   Menu,
   PieChart,
   Receipt,
+  Settings,
   ShoppingCart,
   Sparkles,
   Trash2,
@@ -28,7 +30,8 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '@/app/AuthProvider';
-import { COMPANY } from '@/core/branding';
+import { VENDOR } from '@/core/branding';
+import { useBusiness } from '@/hooks/useBusiness';
 import { formatDateShort, todayISO } from '@/core/format';
 import { storage } from '@/platform';
 import { IconButton, cn, useFeedback } from '@/ui';
@@ -43,6 +46,7 @@ import { OfflineBanner } from './pwa';
  * 4. Sales (Sell Finished Rolls)
  * 5. Finance (Bank, Cash, and Ledger Tracking)
  * 6. Overview (Stocks, Profit/Revenue, Analytics, Expenses)
+ * 7. Settings (the business's own details printed on bills, and the app login)
  *
  * Items flagged `tab: false` stay in the sidebar / drawer but are left out of the phone bottom tabs.
  */
@@ -122,6 +126,15 @@ export const NAV_CATEGORIES = [
       { to: '/overview/expenses', label: 'Expenses', short: 'Expenses', icon: Wallet },
       { to: '/overview/shortcuts', label: 'Product Shortcuts', short: 'Shortcuts', icon: Zap },
     ],
+  },
+  {
+    id: 'settings',
+    title: 'Settings',
+    icon: Settings,
+    basePath: '/settings',
+    home: '/settings',
+    // a single page: no bottom tabs on phones
+    items: [{ to: '/settings', label: 'Business Settings', short: 'Business', icon: Building2, tab: false }],
   },
 ];
 
@@ -329,7 +342,7 @@ function Sidebar() {
       <div className="space-y-3 border-t border-white/5 p-3">
         <UserCard onLogout={onLogout} />
         <p className="px-2 pb-1 text-center text-[10px] tracking-wide text-brand-400">
-          Powered by {COMPANY.displayName}
+          Powered by {VENDOR.name}
         </p>
       </div>
     </aside>
@@ -407,6 +420,7 @@ function MobileDrawer({ open, onClose }) {
 
 /** Phone / tablet header: menu button, brand and module title (Dashboard and Logout live in the drawer). */
 function MobileHeader({ module, onOpenMenu }) {
+  const business = useBusiness();
   return (
     <header className="no-print pt-safe h-app-header fixed inset-x-0 top-0 z-40 flex items-center gap-2 surface-ink px-3 text-white shadow-lift lg:hidden">
       <button
@@ -422,7 +436,9 @@ function MobileHeader({ module, onOpenMenu }) {
       </Link>
       <div className="min-w-0 flex-1 leading-tight">
         <h1 className="truncate font-display text-[15px] font-bold">{module.title}</h1>
-        <p className="truncate text-[10px] tracking-[0.2em] text-gold-400 uppercase">{COMPANY.displayName}</p>
+        <p className="truncate text-[10px] tracking-[0.2em] text-gold-400 uppercase">
+          {business.name || VENDOR.name}
+        </p>
       </div>
     </header>
   );

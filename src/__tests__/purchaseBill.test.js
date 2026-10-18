@@ -1,4 +1,4 @@
-import { COMPANY } from '@/core/branding';
+import { getBusiness } from '@/core/business';
 import { db } from '@/core/db';
 import {
   buildAcknowledgementMessage,
@@ -99,7 +99,7 @@ test('acknowledgement message', async () => {
   expect(msg).toContain('Supplier: ABC Mills');
   expect(msg).toContain('1. Yarn 30s - Qty: 5 - Amount: ₹1000.00');
   expect(msg).toContain('Total Amount: ₹1050.00');
-  expect(msg).toContain(`${COMPANY.displayName} has received the products mentioned above.`);
+  expect(msg).toContain(`${getBusiness().name} has received the products mentioned above.`);
 });
 
 test('acknowledgement: legacy UPI / GPay / bank payment documents are summed into one Account line', async () => {

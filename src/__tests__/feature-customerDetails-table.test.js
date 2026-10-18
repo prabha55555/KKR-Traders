@@ -1,5 +1,5 @@
 import { buildRowModel } from '@/features/customerDetails/rowModel';
-import { CUSTOMER_COLUMNS, FIXED_COLUMNS_WIDTH } from '@/features/customerDetails/tableColumns';
+import { PARTY_KINDS, partyTableColumns } from '@/components/party';
 const customer = (over = {}) => ({
   name: 'Ravi',
   phone: '9876543210',
@@ -12,31 +12,31 @@ const customer = (over = {}) => ({
   allInvoiceNumbers: ['12', '11'],
   ...over,
 });
-describe("table columns (the web page's <table>)", () => {
-  test('same ten columns, same order and header text as customer-details.html', () => {
-    expect(CUSTOMER_COLUMNS.map((c) => c.header)).toEqual([
+describe('customer table columns (the shared party table)', () => {
+  const columns = partyTableColumns(PARTY_KINDS.customer, {
+    renderActions: () => null,
+    actionsHeader: 'Reminder',
+  });
+  test("the web page's columns in ledger order, the WhatsApp reminder as the row action", () => {
+    expect(columns.map((c) => c.header)).toEqual([
       'Customer Name',
       'Phone',
       'Address',
       'Total Invoices',
+      'Opening Balance',
       'Total Amount',
       'Amount Paid',
       'Discount',
       'Returns',
       'Balance Due',
-      'WhatsApp Reminder',
+      'Reminder',
     ]);
-    expect(new Set(CUSTOMER_COLUMNS.map((c) => c.key)).size).toBe(10);
+    expect(new Set(columns.map((c) => c.key)).size).toBe(11);
   });
-  test('only name and address flex; every other column has a fixed width; amounts are right-aligned', () => {
-    const flexible = CUSTOMER_COLUMNS.filter((c) => c.flex !== undefined).map((c) => c.key);
-    expect(flexible).toEqual(['name', 'address']);
-    expect(CUSTOMER_COLUMNS.filter((c) => c.flex === undefined).every((c) => (c.width ?? 0) > 0)).toBe(true);
-    const right = CUSTOMER_COLUMNS.filter((c) => c.align === 'right').map((c) => c.key);
-    expect(right).toEqual(['invoices', 'amount', 'paid', 'discount', 'returns', 'balance']);
-  });
-  test('fixed columns leave room for name and address inside a 1280px window (968px content area)', () => {
-    expect(968 - FIXED_COLUMNS_WIDTH).toBeGreaterThanOrEqual(2 * 96);
+  test('figures are right-aligned (one-line tabular numbers in .erp-table); the action column is centred', () => {
+    const right = columns.filter((c) => c.align === 'right').map((c) => c.key);
+    expect(right).toEqual(['invoices', 'openingBalance', 'amount', 'paid', 'discount', 'returns', 'balance']);
+    expect(columns.find((c) => c.key === 'actions').align).toBe('center');
   });
 });
 describe('buildRowModel (cells shared by the cards and the table)', () => {

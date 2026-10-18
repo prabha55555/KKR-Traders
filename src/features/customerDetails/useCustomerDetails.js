@@ -50,6 +50,7 @@ export function useCustomerDetails() {
     loading,
     error,
     refresh,
+    term,
     setTerm,
     reminderFor,
     setReminderFor,

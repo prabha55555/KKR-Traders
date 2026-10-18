@@ -5,7 +5,7 @@
  * PartyLabels      { party: 'Customer' | 'Supplier', formatInvoiceNo?: (no) => string }
  *
  * HistoryInvoice   { invoiceNo, invoiceDate, partyName, partyPhone, partyAddress,
- *                    products: [{ description, qty, rate }], subtotal, previousBalance, discountAmount,
+ *                    products: [{ description, qty, rolls?, rate, amount? }], subtotal, previousBalance, discountAmount,
  *                    grandTotal, billAmount (own amount, no carried balance), amountPaid, balanceDue,
  *                    paymentBreakdown ({ cash, account }), legacyPaymentMethod ('cash' | 'account'),
  *                    payments: HistoryPayment[], returns: HistoryReturn[],
@@ -22,7 +22,8 @@
  * HistoryInvoiceActions – everything an invoice card / row / detail sheet can trigger. Every callback takes the
  * invoice number so the object can stay referentially stable (build it with useMemo):
  *   edit, remove, addPayment, addReturn, downloadStatement, shareStatement, viewPayments, viewReturns
- *   optional: open (row/card click -> detail sheet), printInvoice, shareInvoicePdf, whatsAppMessage
+ *   optional: open (the "Details" action of a row / card -> detail sheet), printInvoice, shareInvoicePdf,
+ *   whatsAppMessage
  * Optional entries are simply not rendered when missing.
  *
  * StatementState  { status: 'idle' | 'loading' | 'error' } | { status: 'empty', query } |

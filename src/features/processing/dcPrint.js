@@ -3,7 +3,7 @@
  * which also offers "Save as PDF"). It lists what goes to the dyeing unit and what it must become, and — when known —
  * the combing unit the dyed fabric goes to next, so both units can match it against their own DCs.
  */
-import { COMPANY } from '@/core/branding';
+import { getBusiness, printName } from '@/core/business';
 import { formatDateIN } from '@/core/format';
 import { formatDcNo } from './lotLogic';
 
@@ -57,9 +57,10 @@ export function buildLotDcHtml(lot) {
 </style></head><body>
   <div class="head">
     <div>
-      <div class="co">${esc(COMPANY.name)}</div>
-      <div class="muted">${esc(COMPANY.address)}</div>
-      ${COMPANY.cell ? `<div class="muted">Cell: ${esc(COMPANY.cell)}</div>` : ''}
+      <div class="co">${esc(printName())}</div>
+      <div class="muted">${esc(getBusiness().address)}</div>
+      ${getBusiness().phones ? `<div class="muted">Cell: ${esc(getBusiness().phones)}</div>` : ''}
+      ${getBusiness().gstin ? `<div class="muted">GSTIN: ${esc(getBusiness().gstin)}</div>` : ''}
     </div>
     <div class="meta">
       <span class="tag">DELIVERY CHALLAN &middot; JOB WORK</span>
@@ -78,6 +79,6 @@ export function buildLotDcHtml(lot) {
   <div class="note">Material sent for job work (dyeing and combing) only &mdash; not for sale. Please quote DC No <b>${esc(
     formatDcNo(lot.dcNo),
   )}</b> on your DC when delivering.${lot.notes ? `<br>Note: ${esc(lot.notes)}` : ''}</div>
-  <div class="sign"><div>Receiver's signature</div><div>For ${esc(COMPANY.name)}</div></div>
+  <div class="sign"><div>Receiver's signature</div><div>For ${esc(printName())}</div></div>
 </body></html>`;
 }

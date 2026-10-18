@@ -13,8 +13,11 @@ export { HistorySheet } from './HistorySheet';
 export {
   InvoiceActionButtons,
   InvoiceHistoryLinks,
+  InvoiceProductLines,
   InvoiceProducts,
   InvoiceSummaryBox,
+  PaidSplit,
+  PartyContact,
 } from './InvoiceParts';
 export { PartyStatementSection } from './PartyStatementSection';
 export { PaymentHistorySheet } from './PaymentHistorySheet';

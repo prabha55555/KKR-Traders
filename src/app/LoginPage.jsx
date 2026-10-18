@@ -17,7 +17,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router';
 
-import { COMPANY, PRODUCT, SERVICES } from '@/core/branding';
+import { PRODUCT, SERVICES, VENDOR } from '@/core/branding';
+import { useBusiness } from '@/hooks/useBusiness';
 import { Button, TextField, cn } from '@/ui';
 import { useAuth } from './AuthProvider';
 import { BrandLockup, BrandLogo } from './Brand';
@@ -65,8 +66,11 @@ function HeroPanel() {
       </div>
 
       <div className="relative flex min-w-0 flex-wrap items-center gap-x-6 gap-y-2 text-sm text-brand-300">
-        <a href="tel:+917845081278" className="inline-flex items-center gap-2 transition hover:text-gold-300">
-          <Phone className="size-4 text-gold-400" /> +91 7845081278
+        <a
+          href={`tel:+91${VENDOR.phone}`}
+          className="inline-flex items-center gap-2 transition hover:text-gold-300"
+        >
+          <Phone className="size-4 text-gold-400" /> {VENDOR.phoneDisplay}
         </a>
         <a
           href="mailto:contact@brightlightsolutions.in"
@@ -89,6 +93,8 @@ function HeroPanel() {
 
 export default function LoginPage() {
   const { signedIn, login } = useAuth();
+  // the business using the app (Settings page)
+  const business = useBusiness();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -136,7 +142,9 @@ export default function LoginPage() {
             <BrandLogo className="mx-auto w-44 sm:w-48" />
           </div>
           <h2 className="font-display text-2xl font-extrabold text-brand-800">Welcome back</h2>
-          <p className="mt-1 mb-6 text-sm text-slate-500">Sign in to continue to {PRODUCT.name}.</p>
+          <p className="mt-1 mb-6 text-sm text-slate-500">
+            Sign in to continue to {business.name || PRODUCT.name}.
+          </p>
 
           <div className="space-y-4">
             <TextField
@@ -197,13 +205,14 @@ export default function LoginPage() {
           </Button>
 
           <p className="mt-8 text-center text-xs text-slate-400">
-            &copy; {new Date().getFullYear()} {COMPANY.displayName}. All rights reserved.
+            &copy; {new Date().getFullYear()} {business.name || VENDOR.name}. All rights reserved.
           </p>
-          {COMPANY.tagline ? (
+          {business.tagline ? (
             <p className="mt-1 text-center text-[11px] font-medium tracking-wide text-gold-700">
-              {COMPANY.tagline}
+              {business.tagline}
             </p>
           ) : null}
+          <p className="mt-1 text-center text-[11px] text-slate-400">Powered by {VENDOR.name}</p>
         </form>
       </main>
     </div>

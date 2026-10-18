@@ -9,7 +9,8 @@ import {
   suggestPurchaseInvoiceNumber,
   totalRolls,
 } from '@/core/billing';
-import { COMPANY, CREDIT_LINE } from '@/core/branding';
+import { CREDIT_LINE } from '@/core/branding';
+import { purchaseAckLine } from '@/core/business';
 import { db } from '@/core/db';
 import { toNum, todayISO } from '@/core/format';
 import { PURCHASE_LEDGER, sameParty } from '@/core/ledger';
@@ -251,6 +252,7 @@ export async function buildAcknowledgementMessage(form) {
     }
   }
 
-  message += `\n${COMPANY.displayName} has received the products mentioned above. Thank you.\n\n${CREDIT_LINE}`;
+  // closing line from the Settings page (default: "<business> has received the products mentioned above. Thank you.")
+  message += `\n${purchaseAckLine()}\n\n${CREDIT_LINE}`;
   return message;
 }

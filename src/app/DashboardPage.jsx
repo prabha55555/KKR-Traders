@@ -9,15 +9,18 @@ import {
   PieChart,
   Phone,
   Receipt,
+  Settings,
   Share,
   ShoppingCart,
   Sparkles,
   Landmark,
   Layers,
 } from 'lucide-react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 
-import { COMPANY, PRODUCT, SERVICES } from '@/core/branding';
+import { PRODUCT, SERVICES, VENDOR } from '@/core/branding';
+import { isBusinessConfigured } from '@/core/business';
+import { useBusiness } from '@/hooks/useBusiness';
 import { formatDateShort, todayISO } from '@/core/format';
 import { Button, useFeedback } from '@/ui';
 import { useAuth } from './AuthProvider';
@@ -71,6 +74,10 @@ function greeting() {
 export default function DashboardPage() {
   const { logout, username } = useAuth();
   const { confirm } = useFeedback();
+  const nav = useNavigate();
+  // the business using the app (Settings page)
+  const business = useBusiness();
+  const greetName = business.ownerName || username;
   const { showIosHint } = useInstallPrompt();
 
   const onLogout = async () => {
@@ -96,6 +103,9 @@ export default function DashboardPage() {
             <BrandLockup className="min-w-0" />
             <div className="flex shrink-0 items-center gap-2">
               <InstallButton className="hidden sm:inline-flex" />
+              <Button variant="outline" size="sm" icon={Settings} onClick={() => nav('/settings')}>
+                <span className="max-sm:sr-only">Settings</span>
+              </Button>
               <Button variant="danger" size="sm" icon={LogOut} onClick={onLogout}>
                 <span className="max-sm:sr-only">Logout</span>
               </Button>
@@ -105,13 +115,19 @@ export default function DashboardPage() {
           <div className="animate-rise pt-6 pb-2 sm:pt-10">
             <p className="inline-flex items-center gap-2 text-sm font-semibold text-gold-300">
               <Sparkles className="size-4" /> {greeting()}
-              {username ? `, ${username}` : ''}
+              {greetName ? `, ${greetName}` : ''}
             </p>
             <h1 className="mt-2 max-w-2xl font-display text-3xl leading-[1.12] font-extrabold sm:text-5xl">
-              Welcome to <span className="text-gold-gradient">{PRODUCT.name}</span>
+              {business.welcomeMessage ? (
+                business.welcomeMessage
+              ) : (
+                <>
+                  Welcome to <span className="text-gold-gradient">{business.name || PRODUCT.name}</span>
+                </>
+              )}
             </h1>
-            {COMPANY.tagline ? (
-              <p className="mt-3 max-w-xl text-base text-brand-200 sm:text-lg">{COMPANY.tagline}.</p>
+            {business.tagline ? (
+              <p className="mt-3 max-w-xl text-base text-brand-200 sm:text-lg">{business.tagline}</p>
             ) : null}
             <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-brand-100 ring-1 ring-white/10 backdrop-blur">
               <CalendarDays className="size-4 text-gold-400" /> {formatDateShort(todayISO())}
@@ -122,6 +138,20 @@ export default function DashboardPage() {
 
       {/* ------------------------------------------------------------ content */}
       <main className="pb-safe relative mx-auto -mt-20 max-w-7xl px-4 pb-12 sm:-mt-24 sm:px-6 lg:px-8">
+        {!isBusinessConfigured() ? (
+          <div className="relative mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold-300 bg-gold-50 p-4 shadow-card">
+            <div className="min-w-0">
+              <p className="font-display font-bold text-brand-800">Set up your business</p>
+              <p className="text-sm text-slate-600">
+                Add your business name, address, phone, GST number and logo — they appear on every bill and
+                shared message.
+              </p>
+            </div>
+            <Button variant="primary" icon={Settings} onClick={() => nav('/settings')}>
+              Open Settings
+            </Button>
+          </div>
+        ) : null}
         <section aria-label="Modules" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {MODULE_CARDS.map(({ to, title, text, icon: Icon, points }, i) => (
             <Link
@@ -173,8 +203,8 @@ export default function DashboardPage() {
         <div className="relative mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="relative grid gap-8 md:grid-cols-[1.1fr_1fr]">
             <div>
-              <h2 className="font-display text-xl font-extrabold">Brightlight Solutions</h2>
-              <p className="mt-1 text-sm text-gold-300">Technology That Moves Business Forward</p>
+              <h2 className="font-display text-xl font-extrabold">{VENDOR.name}</h2>
+              <p className="mt-1 text-sm text-gold-300">{VENDOR.tagline}</p>
               <ul className="mt-5 flex flex-wrap gap-2">
                 {SERVICES.map((s) => (
                   <li
@@ -188,15 +218,11 @@ export default function DashboardPage() {
             </div>
             <ul className="space-y-3 text-sm text-brand-100">
               {[
-                [Phone, '+91 78450 81278', 'tel:+917845081278'],
-                [Mail, 'contact@brightlightsolutions.in', 'mailto:contact@brightlightsolutions.in'],
-                [Globe, 'www.brightlightsolutions.in', 'https://www.brightlightsolutions.in'],
-                [
-                  MapPin,
-                  'Kamatchi Amman Kovil Street, Kumarananthapuram, Tiruppur, Tamil Nadu 641602, India',
-                  'https://www.google.com/maps/search/?api=1&query=Kamatchi+Amman+Kovil+Street,+Kumarananthapuram,+Tiruppur,+Tamil+Nadu+641602,+India',
-                ],
-                [Clock, 'Business hours: 24 Hours', null],
+                [Phone, VENDOR.phoneDisplay, `tel:+91${VENDOR.phone}`],
+                [Mail, VENDOR.email, `mailto:${VENDOR.email}`],
+                [Globe, VENDOR.website, VENDOR.websiteUrl],
+                [MapPin, VENDOR.address, VENDOR.mapsUrl],
+                [Clock, VENDOR.hours, null],
               ].map(([Icon, text, href]) => (
                 <li key={text}>
                   {href ? (
@@ -224,7 +250,7 @@ export default function DashboardPage() {
             </ul>
           </div>
           <p className="relative mt-7 border-t border-white/10 pt-4 text-center text-xs text-brand-300">
-            &copy; {new Date().getFullYear()} {COMPANY.displayName}. All rights reserved.
+            &copy; {new Date().getFullYear()} {VENDOR.name}. All rights reserved.
           </p>
         </div>
       </footer>

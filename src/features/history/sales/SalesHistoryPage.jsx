@@ -3,8 +3,9 @@
  * js/invoice-history.js.
  *
  * Recent invoices strip, customer statement (combined / easy PDF, WhatsApp), search + invoice-number + date filters,
- * and the invoices grouped by day (table on desktop, cards on phones/tablets) with view / edit / print / WhatsApp /
- * add payment / payment history (undo) / returns (add, status, undo) / delete (type the number, moves to the bin).
+ * and the invoices grouped by day (table on desktop, cards on phones/tablets – every bill shows its customer, products,
+ * amounts, payments, returns and balance inline) with details (bill slip) / edit / add payment / payment history
+ * (undo) / returns (add, status, undo) / statements / delete (type the number, moves to the bin).
  * All business rules live in useSalesHistory / useSalesStatement; the UI parts are in ../components (shared with
  * Purchase History).
  */

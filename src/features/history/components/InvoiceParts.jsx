@@ -1,16 +1,25 @@
 /**
- * Building blocks shared by the invoice card and the invoice detail sheet.
+ * Building blocks shared by the invoice table, the invoice card and the invoice detail sheet.
  *
- * InvoiceSummaryBox({ invoice })                       – bill, previous balance, discount, total, paid split, returns, balance.
+ * InvoiceSummaryBox({ invoice })                       – bill, previous balance, discount, total, paid (initial /
+ *                                                        additional / total + Cash / Account split), returns, balance.
  *                                                        Only returns settled against the balance lower the due; refunded
  *                                                        returns are listed ("Returns (refunded)") without changing it.
- * InvoiceProducts({ invoice })                         – Product / (Rolls) / Qty / Rate list ("View Details"); the Rolls
- *                                                        column only when a line has a roll count.
+ * InvoiceProducts({ invoice })                         – Product / (Rolls) / Qty / Rate / Amount table (detail sheet); the
+ *                                                        Rolls column only when a line has a roll count.
+ * InvoiceProductLines({ invoice, limit, stacked })     – every product line inline ("description · rolls · qty × rate =
+ *                                                        amount"): the first `limit` (3) lines, "+N more" expands in place.
+ * PartyContact({ invoice, labels, clampAddress })      – party name, phone and address.
+ * PaidSplit({ invoice, short })                        – the Cash / Account split of what was paid (right-aligned lines).
+ * PaymentRecordsSummary({ invoice })                   – initial / additional payments (or the method of an older bill).
  * InvoiceHistoryLinks({ invoice, onViewPayments, onViewReturns })
  *                                                      – "Payment History (₹x)" / "Return History (₹x)" rows.
- * InvoiceActionButtons({ invoice, actions, compact })  – wrapped button grid (see HistoryInvoiceActions in ./types.js);
- *                                                        `compact` (phone/tablet card) folds the rare actions behind "More actions".
+ * InvoiceActionButtons({ invoice, actions, compact, onDetails })
+ *                                                      – wrapped button grid (see HistoryInvoiceActions in ./types.js);
+ *                                                        `compact` (phone/tablet card) leaves out the rare actions;
+ *                                                        `onDetails` adds a "Details" button (opens the detail sheet).
  * InvoiceStatusBadge({ invoice })                      – Paid / Partially Paid / Unpaid <Badge status> (presentational).
+ * InvoiceSlipBadge({ invoice })                        – "Slip Attached" when a manual bill slip image is stored.
  * PaidProgress({ invoice })                            – slim gold -> emerald bar: paid share of the invoice total.
  *
  * `invoice` is a HistoryInvoice view model, so the same parts serve sales and purchase.
@@ -18,17 +27,21 @@
 import {
   Banknote,
   Camera,
+  ChevronDown,
   ChevronRight,
   Download,
+  Eye,
   FileText,
+  MapPin,
   MessageCircle,
+  Phone,
   Printer,
   RotateCcw,
   Share2,
   SquarePen,
   Trash2,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { formatCurrency, toNum } from '@/core/format';
 import { methodLabel } from '@/core/paymentMethods';
 import { Badge, Button, cn } from '@/ui';
@@ -84,6 +97,135 @@ export function PaidProgress({ invoice, className }) {
   );
 }
 
+// ------------------------------------------------------------------ party / payment split
+
+/**
+ * Party name, phone and address. `clampAddress` keeps the address on one line (full text in the tooltip) – the table
+ * cell; the phone card shows it in full. The name stays in its own element (tests and screen readers find it alone).
+ */
+export function PartyContact({ invoice, labels, clampAddress = false, className }) {
+  const phone = String(invoice.partyPhone ?? '').trim();
+  const address = String(invoice.partyAddress ?? '').trim();
+  return (
+    <div className={cn('min-w-0', className)}>
+      <p className="leading-snug font-semibold wrap-break-word text-slate-800">
+        {labels ? <span className="sr-only">{labels.party}: </span> : null}
+        <span>{invoice.partyName || '-'}</span>
+      </p>
+      {phone ? (
+        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 tabular-nums">
+          <Phone className="size-3 shrink-0 text-slate-400" aria-hidden />
+          <span className="sr-only">Phone: </span>
+          <span>{phone}</span>
+        </p>
+      ) : null}
+      {address ? (
+        <p
+          className={cn(
+            'mt-0.5 text-xs leading-snug text-slate-500',
+            clampAddress ? 'line-clamp-1 wrap-anywhere' : 'wrap-break-word',
+          )}
+          title={clampAddress ? address : undefined}
+        >
+          <MapPin className="mr-1.5 inline size-3 align-[-2px] text-slate-400" aria-hidden />
+          <span className="sr-only">Address: </span>
+          {address}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Cash / Account parts of what was paid on the bill (non-zero parts only; [] when no split is stored). */
+export function paidSplitParts(invoice) {
+  const pb = invoice?.paymentBreakdown;
+  if (!pb || typeof pb !== 'object') return [];
+  return [
+    { key: 'cash', label: 'Cash', amount: toNum(pb.cash) },
+    { key: 'account', label: 'Account', amount: toNum(pb.account) },
+  ].filter((part) => part.amount > 0);
+}
+
+/** 'Cash' / 'Account' of an older bill that stored one method and no payment records, else ''. */
+function legacyMethodOf(invoice) {
+  if (!invoice?.legacyPaymentMethod || (invoice.payments ?? []).length > 0) return '';
+  return methodLabel(invoice.legacyPaymentMethod);
+}
+
+/**
+ * The Cash / Account split under a "Paid" figure (right-aligned lines). An older bill without a split shows its
+ * stored method instead. `short` (table column) writes Account as "A/c".
+ */
+export function PaidSplit({ invoice, short = false, className }) {
+  const parts = paidSplitParts(invoice);
+  const legacy = parts.length === 0 && toNum(invoice.amountPaid) > 0 ? legacyMethodOf(invoice) : '';
+  if (parts.length === 0 && !legacy) return null;
+  return (
+    <span
+      className={cn(
+        'flex flex-col items-end text-[11px] leading-snug font-medium text-slate-500 tabular-nums',
+        className,
+      )}
+    >
+      {parts.map((part) => (
+        <span key={part.key}>
+          {short && part.key === 'account' ? (
+            <abbr title="Account" className="no-underline">
+              A/c
+            </abbr>
+          ) : (
+            part.label
+          )}{' '}
+          {rs(part.amount)}
+        </span>
+      ))}
+      {legacy ? <span>via {legacy}</span> : null}
+    </span>
+  );
+}
+
+/** True when PaymentRecordsSummary has something to show (payment records, or the method of an older bill). */
+export const hasPaymentRecordsSummary = (invoice) =>
+  (invoice?.payments ?? []).length > 0 || legacyMethodOf(invoice) !== '';
+
+const NO_PAYMENTS = [];
+
+/**
+ * Initial / additional payments of the bill (the same figures as the summary box). Null when the bill has no payment
+ * records and no stored method.
+ */
+export function PaymentRecordsSummary({ invoice, className }) {
+  const payments = invoice.payments ?? NO_PAYMENTS;
+  const split = useMemo(() => splitPayments(payments), [payments]);
+  const additional = additionalPaymentsLabel(split.additional);
+  const legacy = legacyMethodOf(invoice);
+  if (payments.length === 0 && !legacy) return null;
+  return (
+    <dl className={cn('grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-0.5 text-[13px]', className)}>
+      {payments.length > 0 ? (
+        <>
+          <dt className="text-slate-500">Initial paid</dt>
+          <dd className="text-right font-semibold text-slate-800 tabular-nums">
+            {split.initial.length > 0 ? rs(split.initialTotal) : '-'}
+          </dd>
+          <dt className="text-slate-500">Additional paid</dt>
+          <dd className="text-right font-semibold wrap-anywhere text-slate-800 tabular-nums">
+            {additional || '-'}
+          </dd>
+        </>
+      ) : null}
+      {legacy ? (
+        <>
+          <dt className="text-slate-500">Method</dt>
+          <dd className="text-right font-semibold text-slate-800">{legacy}</dd>
+        </>
+      ) : null}
+    </dl>
+  );
+}
+
+// ------------------------------------------------------------------ summary box
+
 function Line({ label, value, valueClassName, bold, className }) {
   return (
     <div className={cn('flex items-baseline justify-between gap-3 text-sm', className)}>
@@ -105,6 +247,7 @@ export function InvoiceSummaryBox({ invoice }) {
   const { payments } = invoice;
   const split = useMemo(() => splitPayments(payments), [payments]);
   const additional = additionalPaymentsLabel(split.additional);
+  const methodParts = paidSplitParts(invoice);
   const adjusted = balanceReturnsOf(invoice);
   const refunded = refundedReturnsOf(invoice);
   const due = invoiceDue(invoice);
@@ -154,6 +297,12 @@ export function InvoiceSummaryBox({ invoice }) {
               ) : null}
             </span>
           </div>
+          {methodParts.map((part) => (
+            <div key={part.key} className="flex justify-between gap-3 pl-3 text-emerald-700">
+              <span>{part.label}:</span>
+              <span className="font-semibold tabular-nums">{rs(part.amount)}</span>
+            </div>
+          ))}
         </div>
 
         {adjusted > 0 ? (
@@ -176,6 +325,21 @@ export function InvoiceSummaryBox({ invoice }) {
   );
 }
 
+// ------------------------------------------------------------------ products
+
+/** A product line's amount: the stored `amount`, else qty × rate (a line saved without one). */
+export function productLineAmount(p) {
+  const stored = p?.amount;
+  return stored !== undefined && stored !== null && stored !== ''
+    ? toNum(stored)
+    : toNum(p?.qty) * toNum(p?.rate);
+}
+const rollsText = (p) => {
+  const rolls = toNum(p?.rolls);
+  return rolls > 0 ? `${rolls} roll${rolls === 1 ? '' : 's'}` : '';
+};
+const qtyText = (p) => (p?.qty === undefined || p?.qty === null || p?.qty === '' ? '0' : String(p.qty));
+
 export function InvoiceProducts({ invoice }) {
   const showRolls = invoice.products.some((p) => toNum(p?.rolls) > 0);
   return (
@@ -195,6 +359,9 @@ export function InvoiceProducts({ invoice }) {
             <th scope="col" className="num">
               Rate
             </th>
+            <th scope="col" className="num">
+              Amount
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -205,11 +372,12 @@ export function InvoiceProducts({ invoice }) {
                 {showRolls ? <td className="num">{toNum(p.rolls) > 0 ? toNum(p.rolls) : '-'}</td> : null}
                 <td className="num">{p.qty}</td>
                 <td className="num">{rs(p.rate)}</td>
+                <td className="num font-semibold">{rs(productLineAmount(p))}</td>
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan={showRolls ? 4 : 3} className="text-center text-slate-500">
+              <td colSpan={showRolls ? 5 : 4} className="text-center text-slate-500">
                 No products found
               </td>
             </tr>
@@ -219,6 +387,93 @@ export function InvoiceProducts({ invoice }) {
     </div>
   );
 }
+
+/**
+ * Every product line of a bill, inline (no popup): "description · rolls · qty × rate = amount".
+ * Row layout (table): one aligned line per product – description | rolls | qty × rate | = | amount.
+ * `stacked` (phone card): description and amount on one line, rolls · qty × rate under it.
+ * Bills with more than `limit` lines show the first `limit` and a "+N more" toggle that expands the list in place.
+ */
+export function InvoiceProductLines({ invoice, limit = 3, stacked = false, className }) {
+  const [expanded, setExpanded] = useState(false);
+  const listId = useId();
+  const products = invoice.products ?? [];
+  if (products.length === 0) {
+    return <p className={cn('text-[13px] text-slate-500', className)}>No products found</p>;
+  }
+  const hiddenCount = Math.max(0, products.length - limit);
+  const shown = expanded || hiddenCount === 0 ? products : products.slice(0, limit);
+
+  return (
+    <div className={className}>
+      {stacked ? (
+        <ul id={listId} role="list" className="divide-y divide-line">
+          {shown.map((p, i) => (
+            <li key={`${i}-${p.description}`} className="py-1.5 first:pt-0 last:pb-0">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="min-w-0 font-medium wrap-break-word text-slate-800">
+                  {p.description || '-'}
+                </span>
+                <span className="shrink-0 font-semibold text-slate-800 tabular-nums">
+                  {rs(productLineAmount(p))}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
+                {[rollsText(p), `${qtyText(p)} × ${rs(p.rate)}`].filter(Boolean).join(' · ')}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul
+          id={listId}
+          role="list"
+          className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-baseline gap-x-3 gap-y-1 text-[13px]"
+        >
+          {shown.map((p, i) => (
+            <li key={`${i}-${p.description}`} className="col-span-full grid grid-cols-subgrid items-baseline">
+              <span className="min-w-0 font-medium wrap-break-word text-slate-800">
+                {p.description || '-'}
+              </span>
+              <span className="text-right whitespace-nowrap text-slate-500 tabular-nums">{rollsText(p)}</span>
+              <span className="text-right whitespace-nowrap text-slate-600 tabular-nums">
+                {qtyText(p)} × {rs(p.rate)}
+              </span>
+              <span className="text-slate-400">=</span>
+              <span className="text-right font-semibold whitespace-nowrap text-slate-800 tabular-nums">
+                {rs(productLineAmount(p))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {hiddenCount > 0 ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-expanded={expanded}
+          aria-controls={listId}
+          onClick={() => setExpanded((open) => !open)}
+          className="mt-1 -ml-2 gap-1! px-2!"
+        >
+          {expanded ? (
+            'Show less'
+          ) : (
+            <>
+              +{hiddenCount} more <span className="sr-only">products</span>
+            </>
+          )}
+          <ChevronDown
+            className={cn('size-4 transition-transform duration-200', expanded && 'rotate-180')}
+            aria-hidden
+          />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ history links / actions
 
 function HistoryLink({ label, tone, tile, icon: Icon, onClick }) {
   return (
@@ -271,7 +526,7 @@ export function InvoiceHistoryLinks({ invoice, onViewPayments, onViewReturns }) 
   );
 }
 
-export function InvoiceActionButtons({ invoice, actions, compact = false }) {
+export function InvoiceActionButtons({ invoice, actions, compact = false, onDetails }) {
   const no = invoice.invoiceNo;
   const cell = compact ? 'grow basis-[46%]' : 'grow basis-[46%] sm:basis-[30%]';
   const extras = (
@@ -306,6 +561,11 @@ export function InvoiceActionButtons({ invoice, actions, compact = false }) {
 
   return (
     <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+      {onDetails ? (
+        <Button variant="outlineInfo" icon={Eye} className={cell} onClick={onDetails}>
+          Details
+        </Button>
+      ) : null}
       <Button variant="edit" icon={SquarePen} className={cell} onClick={() => actions.edit(no)}>
         Edit
       </Button>

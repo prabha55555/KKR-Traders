@@ -2,7 +2,8 @@
  * Printable invoice HTML — ported from the web app's PDFGenerator.generateHTMLContent.
  * Pure string builder (no platform APIs) so it is unit-testable and renders in any browser (and in the print dialog).
  */
-import { COMPANY } from '@/core/branding';
+import { VENDOR } from '@/core/branding';
+import { bankLines, billTermLines, getBusiness, monogramOf, printName } from '@/core/business';
 import { formatCurrency, formatDateIN, formatInvoiceNo, numberToWords, toNum } from '@/core/format';
 import { foldBreakdown, methodLabel, normalizeMethod } from '@/core/paymentMethods';
 const esc = (value) =>
@@ -11,15 +12,21 @@ const esc = (value) =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-/** Address / phone / e-mail / website line for the invoice header — empty details are left out. */
-function companyContactLine() {
+/**
+ * Address / phone / e-mail / website line (and the GST number) for the invoice header, from the business's Settings —
+ * empty details are left out.
+ */
+function companyContactLine(biz) {
   const parts = [
-    COMPANY.address && esc(COMPANY.address),
-    COMPANY.cell && `<span style="white-space: nowrap;">CELL: ${esc(COMPANY.cell)}</span>`,
-    COMPANY.email && esc(COMPANY.email),
-    COMPANY.website && esc(COMPANY.website),
+    biz.address && esc(biz.address),
+    biz.phones && `<span style="white-space: nowrap;">CELL: ${esc(biz.phones)}</span>`,
+    biz.email && esc(biz.email),
+    biz.website && esc(biz.website),
   ].filter(Boolean);
-  return parts.length ? `<p>${parts.join(' | ')}</p>` : '';
+  return [
+    parts.length ? `<p>${parts.join(' | ')}</p>` : '',
+    biz.gstin ? `<p><strong>GSTIN: ${esc(biz.gstin)}</strong></p>` : '',
+  ].join('');
 }
 const CSS = `
   * { box-sizing: border-box; }
@@ -85,6 +92,8 @@ export function invoiceBody(input) {
     accountBankName = '',
     copyType = 'BOTH',
     logoSrc = '',
+    // the business on the bill (Settings page); tests may pass their own
+    business: biz = getBusiness(),
   } = input;
   const balanceReturns = input.balanceReturns ?? totalReturns;
   const refundedReturns = Math.max(0, totalReturns - balanceReturns);
@@ -159,21 +168,21 @@ export function invoiceBody(input) {
     returnNote += `${returnNote ? ' ' : ''}Returns of Rs. ${formatCurrency(refundedReturns)} were refunded to the customer.`;
   }
   return `
-  <div class="watermark">${esc(COMPANY.monogram)} ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
+  <div class="watermark">${esc(monogramOf(biz))} ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
   <div class="invoice-container">
     <div class="invoice-header">
       <div class="company-info">
         <div class="company-details">
-          <h2>${COMPANY.name}</h2>
-          ${companyContactLine()}
+          <h2>${esc(printName(biz))}</h2>
+          ${companyContactLine(biz)}
         </div>
       </div>
       <div class="logo-container">
-        <div class="tagline">${COMPANY.tagline}</div>
-        ${logoSrc ? `<img src="${logoSrc}" alt="${COMPANY.displayName} Logo" />` : ''}
+        <div class="tagline">${esc(biz.tagline)}</div>
+        ${logoSrc ? `<img src="${logoSrc}" alt="${esc(biz.name)} Logo" />` : ''}
       </div>
       <div class="invoice-title">
-        <h2>ESTIMATED COPY <br><span style="font-size: 11px; color: #777;">(${copyType === 'BOTH' ? 'ORIGINAL' : copyType})</span></h2>
+        <h2>${esc(biz.salesBillTitle || 'ESTIMATED COPY')} <br><span style="font-size: 11px; color: #777;">(${copyType === 'BOTH' ? 'ORIGINAL' : copyType})</span></h2>
         <div><strong>Invoice No:</strong> ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
         <div><strong>Date:</strong> ${formatDateIN(invoice.invoiceDate)}</div>
       </div>
@@ -265,7 +274,8 @@ export function invoiceBody(input) {
       <div class="amount-in-words">
         <p><strong>Amount in words:</strong></p>
         <p style="margin-bottom: 12px; font-style: italic;">${numberToWords(invoice.grandTotal)}</p>
-        ${COMPANY.paymentNo ? `<p style="margin: 0; font-weight: bold; font-size: 13px;">Payment No : ${esc(COMPANY.paymentNo)}</p>` : ''}
+        ${biz.paymentNo ? `<p style="margin: 0; font-weight: bold; font-size: 13px;">Payment No : ${esc(biz.paymentNo)}</p>` : ''}
+        ${bankLines(biz).length ? `<p style="margin: 6px 0 0; font-size: 12px;">${bankLines(biz).map(esc).join(' &nbsp;|&nbsp; ')}</p>` : ''}
       </div>
       <div class="payment-calculation">
         <h3>PAYMENT SUMMARY</h3>
@@ -313,9 +323,9 @@ export function invoiceBody(input) {
 
     <div class="signature-section">
       <div class="declaration">
-        <p>Certified that the particulars given above are true and correct</p>
-        <p>**TERMS &amp; CONDITIONS APPLY</p>
-        <p>**E. &amp; O.E.</p>
+        ${billTermLines(biz)
+          .map((line) => `<p>${esc(line)}</p>`)
+          .join('')}
       </div>
       <div class="customer-signature">
         <p>Agreed and accepted</p>
@@ -323,7 +333,7 @@ export function invoiceBody(input) {
         <p>CUSTOMER SIGNATURE</p>
       </div>
       <div class="company-signature">
-        <p>For ${COMPANY.name}</p>
+        <p>For ${esc(printName(biz))}</p>
         <p class="signature-line"></p>
         <p>AUTHORIZED SIGNATORY</p>
       </div>
@@ -331,24 +341,24 @@ export function invoiceBody(input) {
 
     <div class="developer-credit-print" style="margin-top: 10px; font-size: 13px; font-weight: bold; color: #1b2030;">
       <p style="margin: 3px 0;">
-        Software created by Sabarish R.
+        Software created by ${esc(VENDOR.creditName)}
         <span style="color: #666; margin: 0 5px; font-weight: normal;">|</span>
-        For custom billing solutions, contact: 7845081278
+        For custom billing solutions, contact: ${esc(VENDOR.phone)}
       </p>
     </div>
   </div>`;
 }
 /** Attached manual bill slip page */
 export function manualBillPage(input) {
-  const { invoice } = input;
+  const { invoice, business: biz = getBusiness() } = input;
   if (!invoice.manualBillImage) return '';
   return `
-  <div class="watermark">${esc(COMPANY.monogram)} ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
+  <div class="watermark">${esc(monogramOf(biz))} ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>
   <div class="manual-bill-page">
     <div class="manual-bill-header">
       <div>
         <div class="manual-bill-title">Manual Bill Attachment</div>
-        <div class="manual-bill-subtitle">${esc(COMPANY.name)}</div>
+        <div class="manual-bill-subtitle">${esc(printName(biz))}</div>
       </div>
       <div style="text-align: right;">
         <div><strong>Invoice No:</strong> ${esc(formatInvoiceNo(invoice.invoiceNo))}</div>

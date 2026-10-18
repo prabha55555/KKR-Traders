@@ -1,8 +1,9 @@
 /**
  * Purchase History  (route /purchase/history)  – replaces original-app/purchase-history.html + js/purchase-history.js.
- * Recent bills strip, supplier statement, filters and the date-grouped bill list (table on desktop, cards on phones),
- * with view / edit / delete (→ Recycle Bin), payments, returns and statement PDFs / WhatsApp. ?search=<text> pre-fills
- * the search box. The shared UI lives in ../components, the rules in the purchase*.js services.
+ * Recent bills strip, supplier statement, filters and the date-grouped bill list (table on desktop, cards on phones –
+ * every bill shows its supplier, products, amounts, payments, returns and balance inline), with details (bill slip),
+ * edit / delete (→ Recycle Bin), payments, returns and statement PDFs / WhatsApp. ?search=<text> pre-fills the search
+ * box. The shared UI lives in ../components (same layout as Sales History), the rules in the purchase*.js services.
  */
 import { History } from 'lucide-react';
 import { useMemo } from 'react';
@@ -49,7 +50,7 @@ export default function PurchaseHistoryPage() {
   const { totalDays, overallStats } = h.stats;
 
   return (
-    <Page title="Purchase History" icon={History}>
+    <Page title="Purchase History" icon={History} max="7xl">
       <div className="space-y-5">
         {h.error ? null : (
           <RecentInvoicesStrip

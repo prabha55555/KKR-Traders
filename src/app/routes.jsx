@@ -39,6 +39,8 @@ const FinanceSettledRecordsPage = lazy(() => import('@/features/finance/FinanceS
 const FinanceLendersPage = lazy(() => import('@/features/finance/FinanceLendersPage'));
 const BankAccountsPage = lazy(() => import('@/features/finance/BankAccountsPage'));
 
+const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'));
+
 function RequireAuth() {
   const { signedIn } = useAuth();
   const location = useLocation();
@@ -110,6 +112,11 @@ export function AppRoutes() {
               <Route path="stocks" element={<StocksPage />} />
               <Route path="expenses" element={<ExpensesPage />} />
               <Route path="shortcuts" element={<ShortcutsPage />} />
+            </Route>
+
+            {/* the business's own details (printed on every bill) and the app login */}
+            <Route path="settings" element={<ModuleLayout module="settings" />}>
+              <Route index element={<SettingsPage />} />
             </Route>
           </Route>
 

@@ -3,7 +3,8 @@
  * PDFGenerator.shareStatementOnWhatsApp; the web source had mangled emoji, rebuilt here).
  */
 import { copyText, openExternal } from '@/platform';
-import { COMPANY, COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
+import { COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
+import { getBusiness, printName, sharePhonesOf } from '@/core/business';
 import { db } from '@/core/db';
 import { digitsOnly, formatCurrency, formatDateIN, formatInvoiceNo, toNum } from '@/core/format';
 import { foldBreakdown } from '@/core/paymentMethods';
@@ -45,7 +46,7 @@ export function buildStatementMessage(args) {
   const previousBalance = toNum(invoice.previousBalance) + toNum(invoice.manualPreviousBalance);
   const discount = toNum(invoice.discountAmount ?? invoice.discount);
   const dateStr = formatDateIN(invoice.invoiceDate);
-  let m = `*INVOICE STATEMENT*\n*${COMPANY.name}*\n\n\n`;
+  let m = `*INVOICE STATEMENT*\n*${printName()}*\n\n\n`;
   m += `+${LINE}\n│ 📋 *INVOICE DETAILS*\n+${LINE}\n│ 🔢 Invoice No: ${formatInvoiceNo(invoice.invoiceNo)}\n│ 📅 Date: ${dateStr}\n+${LINE}\n\n`;
   const custName = clip(invoice.customerName || '');
   const custAddr = invoice.customerAddress ? clip(invoice.customerAddress) : 'Not specified';
@@ -79,7 +80,7 @@ export function buildStatementMessage(args) {
     }
   }
   m += `│ ${LINE}\n│ *DUE:       Rs. ${fmt(balanceReturns > 0 ? adjustedBalanceDue : balanceDue)}*\n+${LINE}\n`;
-  m += `\n━━━━━━━━━━━━━━━━━━━━━━\n*CONTACT INFORMATION*\n🏪 *${COMPANY.name}*${COMPANY.whatsappLocation ? `\n📍 ${COMPANY.whatsappLocation}` : ''}${COMPANY.whatsappPhones ? `\n📞 ${COMPANY.whatsappPhones}` : ''}\n\n_Automated invoice statement._`;
+  m += `\n━━━━━━━━━━━━━━━━━━━━━━\n*CONTACT INFORMATION*\n🏪 *${printName()}*${getBusiness().shareLocation ? `\n📍 ${getBusiness().shareLocation}` : ''}${sharePhonesOf() ? `\n📞 ${sharePhonesOf()}` : ''}\n\n_Automated invoice statement._`;
   m += `\n\n${CREDIT_LINE}`;
   return m;
 }

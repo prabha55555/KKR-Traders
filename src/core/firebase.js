@@ -8,26 +8,54 @@ import {
 } from 'firebase/firestore';
 
 /**
- * Same Firebase project as the original web app (the client-side config is public by design; access is governed by
- * Firestore rules). Can be overridden with VITE_FIREBASE_* variables in a `.env.local` file.
+ * The Firebase project of THIS installation. Every business that buys the app gets its own Firebase project, so its
+ * bills, stock and settings never mix with another business's: the build reads the project from VITE_FIREBASE_*
+ * variables in an env file (see .env.example and docs/NEW_CUSTOMER_SETUP.md — e.g. `.env.<customer>.local`, built
+ * with `vite build --mode <customer>`). A build without them uses the original project below (the first installation).
+ * The client-side config is public by design; access is governed by Firestore rules.
  */
 const env = import.meta.env ?? {};
-const FIREBASE_PROJECT_ID = 'sriram-96e71';
-export const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY ?? 'AIzaSyCoa2ccdHrkcBghoHJFjDgwGAXdqrX0gGA',
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN ?? 'sriram-96e71.firebaseapp.com',
-  projectId: FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET ?? 'sriram-96e71.firebasestorage.app',
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '78011031388',
-  appId: env.VITE_FIREBASE_APP_ID ?? '1:78011031388:web:7e338f33f606ec540aeb99',
-  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID ?? 'G-ST1N907HZ9',
+
+const ORIGINAL_PROJECT = {
+  apiKey: 'AIzaSyCoa2ccdHrkcBghoHJFjDgwGAXdqrX0gGA',
+  authDomain: 'sriram-96e71.firebaseapp.com',
+  projectId: 'sriram-96e71',
+  storageBucket: 'sriram-96e71.firebasestorage.app',
+  messagingSenderId: '78011031388',
+  appId: '1:78011031388:web:7e338f33f606ec540aeb99',
+  measurementId: 'G-ST1N907HZ9',
 };
 
-if (env.VITE_FIREBASE_PROJECT_ID && env.VITE_FIREBASE_PROJECT_ID !== FIREBASE_PROJECT_ID) {
-  throw new Error(
-    `Invalid Firebase project "${env.VITE_FIREBASE_PROJECT_ID}". This application must use "${FIREBASE_PROJECT_ID}".`,
+const ENV_KEYS = {
+  apiKey: 'VITE_FIREBASE_API_KEY',
+  authDomain: 'VITE_FIREBASE_AUTH_DOMAIN',
+  projectId: 'VITE_FIREBASE_PROJECT_ID',
+  storageBucket: 'VITE_FIREBASE_STORAGE_BUCKET',
+  messagingSenderId: 'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  appId: 'VITE_FIREBASE_APP_ID',
+  measurementId: 'VITE_FIREBASE_MEASUREMENT_ID',
+};
+const REQUIRED = ['apiKey', 'authDomain', 'projectId', 'appId'];
+
+/**
+ * The config from the env variables when any is set (then the required ones must all be there, so a half-filled env
+ * file can never mix one project's key with another's id), else the original project.
+ */
+export function resolveFirebaseConfig(vars = env) {
+  const fromEnv = Object.fromEntries(
+    Object.entries(ENV_KEYS)
+      .map(([field, key]) => [field, String(vars[key] ?? '').trim()])
+      .filter(([, value]) => value),
   );
+  if (Object.keys(fromEnv).length === 0) return { ...ORIGINAL_PROJECT };
+  const missing = REQUIRED.filter((field) => !fromEnv[field]).map((field) => ENV_KEYS[field]);
+  if (missing.length) {
+    throw new Error(`Firebase settings incomplete in the env file: ${missing.join(', ')} missing.`);
+  }
+  return fromEnv;
 }
+
+export const firebaseConfig = resolveFirebaseConfig();
 
 let app = null;
 let firestore = null;
@@ -39,6 +67,8 @@ export function getFirebaseApp() {
 }
 
 export function getFirebaseAnalytics() {
+  // analytics only when the project has a measurement id
+  if (!firebaseConfig.measurementId) return null;
   if (!analytics) analytics = getAnalytics(getFirebaseApp());
   return analytics;
 }

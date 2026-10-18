@@ -3,7 +3,8 @@
  * PDF by expo-print in `documentOutput.ts`. Sections, columns and totals follow generatePDFStatement,
  * generateCombinedPDFStatement and generateCombinedPDFStatementEasy.
  */
-import { COMPANY } from '@/core/branding';
+import { VENDOR } from '@/core/branding';
+import { getBusiness, monogramOf, printName, sharePhonesOf } from '@/core/business';
 import { formatCurrency, formatDateIN, toISODate, toNum } from '@/core/format';
 import { formatDateTimeIN } from './dates';
 import { generatePaymentTableData } from './payments';
@@ -61,6 +62,8 @@ const CSS = `
   .footer div { margin: 2px 0; }
 `;
 function wrap(title, watermarkText, logoSrc, partyInfoHtml, body) {
+  // the business on the statement (Settings page)
+  const biz = getBusiness();
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -74,12 +77,13 @@ function wrap(title, watermarkText, logoSrc, partyInfoHtml, body) {
   <div class="doc">
     <div class="header-container">
       <div class="header-left">
-        <div class="company">${esc(COMPANY.name)}</div>
-        ${COMPANY.tagline ? `<div class="company-sub">${esc(COMPANY.tagline)}</div>` : ''}
-        ${COMPANY.address ? `<div class="company-sub">${esc(COMPANY.address)}</div>` : ''}
-        ${COMPANY.cell ? `<div class="company-sub">Cell: ${esc(COMPANY.cell)}</div>` : ''}
+        <div class="company">${esc(printName(biz))}</div>
+        ${biz.tagline ? `<div class="company-sub">${esc(biz.tagline)}</div>` : ''}
+        ${biz.address ? `<div class="company-sub">${esc(biz.address)}</div>` : ''}
+        ${biz.phones ? `<div class="company-sub">Cell: ${esc(biz.phones)}</div>` : ''}
+        ${biz.gstin ? `<div class="company-sub">GSTIN: ${esc(biz.gstin)}</div>` : ''}
       </div>
-      ${logoSrc ? `<div class="header-center"><img src="${logoSrc}" alt="${esc(COMPANY.displayName)}" /></div>` : ''}
+      ${logoSrc ? `<div class="header-center"><img src="${logoSrc}" alt="${esc(biz.name)}" /></div>` : ''}
       <div class="header-right">
         ${partyInfoHtml || ''}
       </div>
@@ -152,12 +156,15 @@ const paymentsTable = (payments, grandTotal, balanceReturns, refundedReturns, to
 function footer(now, includeCredit) {
   return `<div class="footer">
       <div>This is a computer-generated statement. No signature is required.</div>
-      ${COMPANY.whatsappPhones ? `<div>For any queries, please contact: ${esc(COMPANY.whatsappPhones)}</div>` : ''}
+      ${sharePhonesOf() ? `<div>For any queries, please contact: ${esc(sharePhonesOf())}</div>` : ''}
       <div>Generated on: ${esc(formatDateTimeIN(now))}</div>
-      ${includeCredit ? `<div style="margin-top: 10px; font-size: 13px; color: #1b2030; font-weight: bold;">Software created by Sabarish R. <span style="color: #666; font-weight: normal; margin: 0 5px;">|</span> For custom billing solutions, contact: 7845081278</div>` : ''}
+      ${includeCredit ? `<div style="margin-top: 10px; font-size: 13px; color: #1b2030; font-weight: bold;">Software created by ${esc(VENDOR.creditName)} <span style="color: #666; font-weight: normal; margin: 0 5px;">|</span> For custom billing solutions, contact: ${esc(VENDOR.phone)}</div>` : ''}
     </div>`;
 }
 const rs = (amount) => `Rs. ${formatCurrency(amount)}`;
+/** "SS Statement <party>" / "SS STATEMENT" — the business's initials (Settings page). */
+const statementTitle = (party) => `${monogramOf() || 'Account'} Statement ${party ?? ''}`.trim();
+const statementWatermark = () => `${monogramOf() ? `${monogramOf()} ` : ''}STATEMENT`;
 const todayOf = (now) => toISODate(now);
 /**
  * generatePDFStatement(): "ACCOUNT STATEMENT" for one invoice. `totalReturns` = all returns of the bill;
@@ -273,7 +280,7 @@ export function buildCombinedStatementHtml({ statement, labels, logoSrc, now }) 
     ${blocks}
     <div class="totals">${totalRows}</div>
     ${footer(now, true)}`;
-  return wrap(`SS Statement ${statement.partyName}`, 'SS STATEMENT', logoSrc, partyInfoHtml, body);
+  return wrap(statementTitle(statement.partyName), statementWatermark(), logoSrc, partyInfoHtml, body);
 }
 /**
  * generateCombinedPDFStatementEasy(): the party's opening balance, one ledger line per invoice (oldest first) and the
@@ -324,7 +331,7 @@ export function buildEasyStatementHtml({ partyName, invoices, labels, logoSrc, n
       <div class="row final"><span>Balance Due:</span><span>${esc(rs(easy.balanceDue))}</span></div>
     </div>
     ${footer(now, false)}`;
-  return wrap(`SS Statement ${partyName}`, 'SS STATEMENT', logoSrc, partyInfoHtml, body);
+  return wrap(statementTitle(partyName), statementWatermark(), logoSrc, partyInfoHtml, body);
 }
 // ------------------------------------------------------------------ file names
 const sanitize = (text) => text.replace(/[^a-zA-Z0-9]/g, '_');

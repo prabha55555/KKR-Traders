@@ -71,8 +71,10 @@ function AvgCostChip({ stock, className = 'mt-1 text-right' }) {
   return (
     <div className={cn('no-print', className)}>
       <span title="Average purchase price (purchase bills + dyeing / combing receipts; returns and opening stock excluded)">
-        <Badge tone={avg > 0 ? 'info' : 'neutral'} className={CHIP_CLASS}>
-          Avg buy {avg > 0 ? rupees(avg) : '-'}
+        {/* never truncated: the whole price shows; if the cell is narrow it wraps between label and price */}
+        <Badge tone={avg > 0 ? 'info' : 'neutral'} truncate={false} className={CHIP_CLASS}>
+          <span className="whitespace-nowrap">Avg buy</span>
+          <span className="whitespace-nowrap">{avg > 0 ? rupees(avg) : '-'}</span>
         </Badge>
       </span>
     </div>
@@ -208,7 +210,8 @@ export function ProductRowsEditor({
                 <th>Description</th>
                 <th className="num w-20">Rolls</th>
                 <th className="num w-24">Qty</th>
-                <th className="num w-24">Rate</th>
+                {/* wider on the Sales Bill, where the full "Avg buy ₹…" chip sits under the rate */}
+                <th className={cn('num', showAvgCost ? 'w-36' : 'w-24')}>Rate</th>
                 <th className={cn('num w-34', readOnly && CORNER_TR)}>Amount</th>
                 {!readOnly ? (
                   <th className={cn('w-14', CORNER_TR)}>

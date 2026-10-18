@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '@/core/db';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
@@ -83,13 +83,15 @@ describe('HistoryInvoiceCard', () => {
 });
 
 describe('HistoryInvoiceTable', () => {
-  it('opens the detail on row click but not when an icon action is used', () => {
+  it('a row click no longer opens the detail: only the explicit Details action does', () => {
     const actions = makeActions();
     render(<HistoryInvoiceTable invoices={[invoice()]} labels={SALES_LABELS} actions={actions} />);
     fireEvent.click(screen.getByLabelText('Delete Invoice No 101'));
     expect(actions.remove).toHaveBeenCalledWith('101');
-    expect(actions.open).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Ravi Stores'));
+    fireEvent.click(screen.getByText('Cotton saree'));
+    expect(actions.open).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Details of Invoice No 101' }));
     expect(actions.open).toHaveBeenCalledWith('101');
   });
 });
@@ -285,7 +287,9 @@ describe('history uses the app design system', () => {
     const table = screen.getByRole('table');
     expect(table).toHaveClass('erp-table');
     expect(table.parentElement).toHaveClass('erp-table-wrap');
-    expect(screen.getByText('₹1,000.00').closest('td')).toHaveAttribute('data-align', 'right');
+    const total = within(table).getAllByRole('cell')[4];
+    expect(total).toHaveTextContent('₹1,000.00');
+    expect(total).toHaveAttribute('data-align', 'right');
     expect(screen.getByLabelText('Edit Invoice No 101')).toHaveClass('bg-blue-50');
     expect(screen.getByLabelText('Delete Invoice No 101')).toHaveClass('bg-red-50');
     expect(screen.getByText('Partially Paid')).toBeInTheDocument();

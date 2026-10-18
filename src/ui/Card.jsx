@@ -57,19 +57,22 @@ const TONES = {
  * Status pill. `status` = the status text / key; its colour comes from the app-wide map (statusTone: green done/paid,
  * yellow pending/partial, red failed/due, blue processing). `tone` forces a colour instead. Children default to `status`.
  * `icon` = optional lucide icon before the text; other props (title, aria-*) go to the pill.
+ * `truncate={false}` = never cut the text short (figures such as "Avg buy ₹132.78" must show in full): the pill may
+ * wrap onto a second line instead.
  */
-export function Badge({ tone, status, icon: Icon, className, children, ...rest }) {
+export function Badge({ tone, status, icon: Icon, truncate = true, className, children, ...rest }) {
   return (
     <span
       {...rest}
       className={cn(
-        'inline-flex max-w-full items-center rounded-full px-2.5 py-0.5 text-xs leading-5 font-semibold whitespace-nowrap ring-1 ring-inset',
+        'inline-flex max-w-full items-center rounded-full px-2.5 py-0.5 text-xs leading-5 font-semibold ring-1 ring-inset',
+        truncate ? 'whitespace-nowrap' : 'flex-wrap justify-center gap-x-1 text-center',
         TONES[tone ?? (status !== undefined ? statusTone(status) : 'neutral')] ?? TONES.neutral,
         className,
       )}
     >
       {Icon ? <Icon className="mr-1 inline size-3.5 shrink-0" aria-hidden /> : null}
-      <span className="truncate">{children ?? status}</span>
+      {truncate ? <span className="truncate">{children ?? status}</span> : (children ?? status)}
     </span>
   );
 }

@@ -1,60 +1,74 @@
 /**
- * HistoryInvoiceCard – phone / tablet presentation of one invoice (the web's `.invoice-item`).
- * Products expand on demand ("View Details").
+ * HistoryInvoiceCard – phone / tablet presentation of one invoice, with the same basic details as the desktop table
+ * (no popup needed): number, date, status / slip badges, party with phone and address, total / paid / due, every
+ * product line (qty, rolls, rate, amount – first 3 + "+N more" in place), the amounts breakdown (InvoiceSummaryBox:
+ * bill, previous balance, discount, total, payments with the Cash / Account split, returns, balance due), the payment /
+ * return history links and the actions. "Details" opens the detail sheet (bill slip image).
  *
  * Props: invoice (HistoryInvoice) · labels ({ party, formatInvoiceNo? }) · actions (HistoryInvoiceActions, keep it stable).
  */
-import { ChevronDown, User } from 'lucide-react';
-import { memo, useState } from 'react';
-import { formatCurrency } from '@/core/format';
+import { memo } from 'react';
+import { formatCurrency, formatDateIN } from '@/core/format';
 import { cn } from '@/ui';
 import { invoiceDue } from '../lib/statement';
 import { displayInvoiceNo } from '../lib/types';
 import {
   InvoiceActionButtons,
   InvoiceHistoryLinks,
-  InvoiceProducts,
+  InvoiceProductLines,
   InvoiceSlipBadge,
   InvoiceStatusBadge,
   InvoiceSummaryBox,
   PaidProgress,
+  PartyContact,
 } from './InvoiceParts';
 
 const rs = (n) => `₹${formatCurrency(n)}`;
+const LABEL = 'text-[11px] font-bold tracking-[0.08em] text-slate-400 uppercase';
+const HEADING = 'mb-1.5 text-[11px] font-bold tracking-[0.08em] text-slate-500 uppercase';
 
 export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, labels, actions }) {
-  const [showProducts, setShowProducts] = useState(false);
   const no = invoice.invoiceNo;
+  const shownNo = displayInvoiceNo(labels, no);
   // returns settled on the balance are deducted; refunded returns do not change what is owed
   const due = invoiceDue(invoice);
+  const count = invoice.products?.length ?? 0;
 
   return (
-    <article className="flex h-full flex-col rounded-2xl border border-line bg-white p-3.5 shadow-card transition duration-200 hover:shadow-lift sm:p-4">
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="min-w-0 border-l-[3px] border-gold-400 pl-2.5 font-display text-base font-extrabold break-words text-brand-800">
-          Invoice No {displayInvoiceNo(labels, no)}
-        </h3>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+    <article
+      aria-label={`Invoice No ${shownNo}`}
+      className="flex h-full min-w-0 flex-col rounded-2xl border border-line bg-white p-3.5 shadow-card transition duration-200 hover:shadow-lift sm:p-4"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1.5">
+        <div className="min-w-0">
+          <h3 className="border-l-[3px] border-gold-400 pl-2.5 font-display text-base leading-tight font-extrabold wrap-break-word text-brand-800">
+            Invoice No {shownNo}
+          </h3>
+          <p className="mt-0.5 pl-3 text-xs text-slate-500 tabular-nums">
+            <span className="sr-only">Date: </span>
+            {formatDateIN(invoice.invoiceDate)}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           <InvoiceSlipBadge invoice={invoice} />
           <InvoiceStatusBadge invoice={invoice} />
         </div>
       </div>
-      <p className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-600">
-        <User className="size-3.5 shrink-0 text-slate-400" aria-hidden />
-        <span className="sr-only">{labels.party}: </span>
-        <span className="min-w-0 truncate font-medium text-slate-800" title={invoice.partyName}>
-          {invoice.partyName}
-        </span>
-      </p>
+
+      <PartyContact
+        invoice={invoice}
+        labels={labels}
+        className="mt-3 rounded-xl bg-slate-50/70 px-3 py-2 text-sm ring-1 ring-line ring-inset"
+      />
 
       <div className="mt-3 flex items-end justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400 uppercase">Total</div>
+        <div className="min-w-0">
+          <div className={LABEL}>Total</div>
           <div className="font-display text-2xl leading-tight font-extrabold text-brand-800 tabular-nums">
             {rs(invoice.grandTotal)}
           </div>
         </div>
-        <div className="text-right text-xs tabular-nums">
+        <div className="shrink-0 text-right text-xs tabular-nums">
           <div className="font-semibold text-emerald-700">Paid {rs(invoice.amountPaid)}</div>
           <div className={cn('font-semibold', due > 0 ? 'text-red-600' : 'text-slate-500')}>
             Due {rs(due)}
@@ -63,21 +77,12 @@ export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, la
       </div>
       <PaidProgress invoice={invoice} className="mt-2.5" />
 
-      <InvoiceSummaryBox invoice={invoice} />
+      <section aria-label={`Products of Invoice No ${shownNo}`} className="mt-3 border-t border-line pt-3">
+        <h4 className={HEADING}>Products ({count})</h4>
+        <InvoiceProductLines invoice={invoice} stacked />
+      </section>
 
-      <button
-        type="button"
-        aria-expanded={showProducts}
-        onClick={() => setShowProducts((v) => !v)}
-        className="mb-1 flex min-h-11 w-full items-center justify-between rounded-xl px-2 text-sm font-semibold text-gold-700 transition hover:bg-gold-50 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none"
-      >
-        View Details
-        <ChevronDown
-          className={cn('size-4 transition-transform duration-200', showProducts && 'rotate-180')}
-          aria-hidden
-        />
-      </button>
-      {showProducts ? <InvoiceProducts invoice={invoice} /> : null}
+      <InvoiceSummaryBox invoice={invoice} />
 
       <InvoiceHistoryLinks
         invoice={invoice}
@@ -85,7 +90,12 @@ export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, la
         onViewReturns={() => actions.viewReturns(no)}
       />
       <div className="mt-auto">
-        <InvoiceActionButtons invoice={invoice} actions={actions} compact />
+        <InvoiceActionButtons
+          invoice={invoice}
+          actions={actions}
+          compact
+          onDetails={actions.open ? () => actions.open(no) : undefined}
+        />
       </div>
     </article>
   );

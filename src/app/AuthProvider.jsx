@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { SESSION_KEYS, credentialsValid, isSessionExpired } from '@/core/auth';
+import { SESSION_KEYS, isSessionExpired, verifyLogin } from '@/core/auth';
 import { db } from '@/core/db';
 import { storage } from '@/platform';
 
@@ -33,7 +33,8 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (username, password) => {
     const user = username.trim();
-    if (!credentialsValid(user, password)) return false;
+    // the business's own login (Settings page), else the built-in one
+    if (!(await verifyLogin(user, password))) return false;
     storage.set(SESSION_KEYS.auth, 'true');
     storage.set(SESSION_KEYS.username, user);
     storage.set(SESSION_KEYS.loginTime, new Date().toISOString());
@@ -47,9 +48,15 @@ export function AuthProvider({ children }) {
     setSession({ ok: false, username: null });
   }, []);
 
+  /** after the login was changed on the Settings page: the session continues under the new username */
+  const renameSession = useCallback((user) => {
+    storage.set(SESSION_KEYS.username, user);
+    setSession((s) => ({ ...s, username: user }));
+  }, []);
+
   const value = useMemo(
-    () => ({ signedIn: session.ok, username: session.username, login, logout }),
-    [session, login, logout],
+    () => ({ signedIn: session.ok, username: session.username, login, logout, renameSession }),
+    [session, login, logout, renameSession],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

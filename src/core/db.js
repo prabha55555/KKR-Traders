@@ -1137,6 +1137,24 @@ export class Database {
     });
   }
 
+  // ------------------------------------------------------------------ The business using the app (Settings page)
+  /** `settings/business`: name, address, GST number, logo, bill texts … (see core/business.js); null when never set. */
+  async getBusinessSettings() {
+    const snap = await getDoc(this.ref('settings', 'business'));
+    return snap?.exists?.() ? snap.data() : null;
+  }
+  async saveBusinessSettings(data) {
+    await setDoc(this.ref('settings', 'business'), { ...data, updatedAt: serverTimestamp() });
+  }
+  /** `settings/login`: the app login chosen on the Settings page ({ username, passwordHash, salt, iterations }). */
+  async getLoginSettings() {
+    const snap = await getDoc(this.ref('settings', 'login'));
+    return snap?.exists?.() ? snap.data() : null;
+  }
+  async saveLoginSettings(data) {
+    await setDoc(this.ref('settings', 'login'), { ...data, updatedAt: serverTimestamp() });
+  }
+
   // ------------------------------------------------------------------ Fund Transfers / Account Transactions
   async saveAccountTransaction(tx) {
     const id = tx.id || uid('atx');

@@ -1,5 +1,6 @@
 /** WhatsApp text of the combined statement (shareCombinedStatementViaWhatsApp) and the phone check its sender uses. */
-import { COMPANY, COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
+import { COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
+import { getBusiness, printName, sharePhonesOf } from '@/core/business';
 import { digitsOnly, formatCurrency, formatDateIN } from '@/core/format';
 import { foldBreakdown } from '@/core/paymentMethods';
 import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from './statement';
@@ -72,7 +73,7 @@ export function buildCombinedStatementMessage(statement, labels) {
   const party = labels.party;
   const hasReturns = totals.totalReturns > 0;
   const lines = [
-    `*${COMPANY.name} - ACCOUNT STATEMENT*`,
+    `*${printName()} - ACCOUNT STATEMENT*`,
     '',
     HEAVY,
     '',
@@ -120,9 +121,9 @@ export function buildCombinedStatementMessage(statement, labels) {
     '',
     '*CONTACT INFORMATION*',
     LIGHT,
-    `🏢 *${COMPANY.name}*`,
-    ...(COMPANY.whatsappLocation ? [`📍 ${COMPANY.whatsappLocation}`] : []),
-    ...(COMPANY.whatsappPhones ? [`📞 *Phone: ${COMPANY.whatsappPhones}*`] : []),
+    `🏢 *${printName()}*`,
+    ...(getBusiness().shareLocation ? [`📍 ${getBusiness().shareLocation}`] : []),
+    ...(sharePhonesOf() ? [`📞 *Phone: ${sharePhonesOf()}*`] : []),
     '',
     '_This is an automated statement. Please contact us for any queries._',
   );
