@@ -40,6 +40,7 @@ const FinanceLendersPage = lazy(() => import('@/features/finance/FinanceLendersP
 const BankAccountsPage = lazy(() => import('@/features/finance/BankAccountsPage'));
 
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'));
+const AdminGate = lazy(() => import('@/features/settings/AdminGate').then((m) => ({ default: m.AdminGate })));
 
 function RequireAuth() {
   const { signedIn } = useAuth();
@@ -116,7 +117,15 @@ export function AppRoutes() {
 
             {/* the business's own details (printed on every bill) and the app login */}
             <Route path="settings" element={<ModuleLayout module="settings" />}>
-              <Route index element={<SettingsPage />} />
+              {/* administrator only (Brightlight Solutions): the client sees the administrator sign-in */}
+              <Route
+                index
+                element={
+                  <AdminGate>
+                    <SettingsPage />
+                  </AdminGate>
+                }
+              />
             </Route>
           </Route>
 

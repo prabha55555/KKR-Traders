@@ -55,35 +55,61 @@ A build **without** an env file uses the original installation's project (`srira
 ## 4. First sign-in and Settings (with the customer)
 
 1. Open the app and sign in with the **default login** the app was installed with.
-2. The dashboard shows **"Set up your business"** → **Open Settings** (or the **Settings** button / the Settings menu).
-3. Fill in the business details and press **Save**:
+2. Open **Settings** (dashboard button or the Settings menu). Settings is for the **administrator only** (Brightlight
+   Solutions): sign in with the administrator username and password (see "Administrator login" below). The client
+   only ever sees the sign-in card; the unlock lasts 30 minutes on that browser tab and ends on logout or **Lock
+   Settings**.
+3. **Modules** — pick the client's plan:
+   - Option 1: Purchase, Sales & Overview (+ Settings)
+   - Option 2: Purchase, Dyeing & Combing, Sales & Overview (+ Settings)
+   - Option 3: All modules with Finance (+ Settings)
+
+   Modules left out disappear from the menu and the dashboard, and their addresses show "not part of your plan".
+   Their data is kept; switching to a larger plan brings them back.
+4. Fill in the business details and press **Save settings**:
    - Business name, tagline, greeting name, welcome heading, logo, watermark initials
    - Address, phone numbers, e-mail, website, GST number
    - Sales bill: bill heading (e.g. *TAX INVOICE*), payment number, bank details, UPI ID, terms
    - Purchase acknowledgement closing line
    - Bill sharing (WhatsApp): town and phone numbers
-4. In the **Login** card set the customer's **own username and password** (stored as a secure one-way hash in their
-   database). The default login stops working for them from then on.
+5. In the **Client login** card set the client's **own username and password** (stored as a secure one-way hash in
+   their database; the client's current password is not needed). The default login stops working for them.
 
-Everything — dashboard, sales and purchase bills, printed invoices, statements, dyeing DCs, WhatsApp messages,
-reminders and the purchase acknowledgement — uses these details immediately. The business owner can change them any
-time on the Settings page; no new build is needed.
+Everything — the menu, dashboard, sales and purchase bills, printed invoices, statements, dyeing DCs, WhatsApp
+messages, reminders and the purchase acknowledgement — uses these settings immediately. When the client needs a change
+(new password, new address, another plan …), the administrator opens Settings again; no new build is needed.
+
+## Administrator login
+
+The administrator login is the same in every installation and is stored in `src/core/admin.js` only as a salted
+PBKDF2 hash (never the password). To change the administrator password:
+
+```bash
+node scripts/admin-hash.mjs "<new password>"
+```
+
+Paste the printed `salt`, `iterations` and `passwordHash` into `ADMIN_ACCOUNT` in `src/core/admin.js` and rebuild.
+Keep the administrator password private: anyone with it can change any client's settings and login.
 
 ## What is stored where
 
 | What | Where |
 | --- | --- |
-| The customer's business details | their Firestore `settings/business` document (+ a copy on each device for offline use) |
+| The customer's business details and module plan | their Firestore `settings/business` document (+ a copy on each device for offline use) |
 | The customer's login | their Firestore `settings/login` document (salted PBKDF2 hash — never the password itself) |
 | Their customers and suppliers | their own `customers` / `suppliers` collections (unchanged) |
 | Brightlight Solutions (maker) | `src/core/branding.js` — same for every customer |
+| The administrator login | `src/core/admin.js` (hash) — same for every customer |
 | Which Firebase project a build uses | the customer's `.env.<customer>.local` file |
 
-## The original installation (Santhamani Textiles)
+## No business details in the code
 
-It keeps working exactly as before: its project is the default, and until its owner saves the Settings page the app
-shows the details it always had (name, address, phones, logo). The first **Save** stores them in its database; from
-then on the Settings page is the only place they come from.
+No business's name, address, phone, GST number or logo is written in the source code — not even the first client's.
+Every installation shows exactly what was saved on its Settings page (until then the bills have no business name and
+the dashboard says the details are not set up). After **Save settings** the new details apply at once everywhere — in
+this tab, other open tabs and other devices — and are kept on each device for offline use. If the saved details
+cannot be loaded (no connection), the Settings page shows a warning and blocks saving, so an old copy can never
+overwrite them.
 
 > Security note: sign-in is checked in the app, and `firestore.rules` is open. For a production rollout to many
 > customers, move to Firebase Authentication with per-user rules (see the open items in `docs/ARCHITECTURE.md`).

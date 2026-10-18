@@ -20,7 +20,8 @@ import { Link, useNavigate } from 'react-router';
 
 import { PRODUCT, SERVICES, VENDOR } from '@/core/branding';
 import { isBusinessConfigured } from '@/core/business';
-import { useBusiness } from '@/hooks/useBusiness';
+import { moduleOfPath } from '@/core/modules';
+import { useBusiness, useModules } from '@/hooks/useBusiness';
 import { formatDateShort, todayISO } from '@/core/format';
 import { Button, useFeedback } from '@/ui';
 import { useAuth } from './AuthProvider';
@@ -78,6 +79,9 @@ export default function DashboardPage() {
   // the business using the app (Settings page)
   const business = useBusiness();
   const greetName = business.ownerName || username;
+  // only the modules in the client's plan
+  const enabled = useModules();
+  const cards = MODULE_CARDS.filter((card) => enabled(moduleOfPath(card.to)));
   const { showIosHint } = useInstallPrompt();
 
   const onLogout = async () => {
@@ -141,19 +145,19 @@ export default function DashboardPage() {
         {!isBusinessConfigured() ? (
           <div className="relative mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold-300 bg-gold-50 p-4 shadow-card">
             <div className="min-w-0">
-              <p className="font-display font-bold text-brand-800">Set up your business</p>
+              <p className="font-display font-bold text-brand-800">Business details not set up yet</p>
               <p className="text-sm text-slate-600">
-                Add your business name, address, phone, GST number and logo — they appear on every bill and
-                shared message.
+                Your administrator ({VENDOR.name}) adds the business name, address, phone, GST number and logo
+                in Settings — they appear on every bill and shared message.
               </p>
             </div>
             <Button variant="primary" icon={Settings} onClick={() => nav('/settings')}>
-              Open Settings
+              Settings (administrator)
             </Button>
           </div>
         ) : null}
         <section aria-label="Modules" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {MODULE_CARDS.map(({ to, title, text, icon: Icon, points }, i) => (
+          {cards.map(({ to, title, text, icon: Icon, points }, i) => (
             <Link
               key={to}
               to={to}

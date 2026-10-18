@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { formatRupees } from '@/core/format';
 import { Badge, Button, DataTable, Modal, SectionHeader } from '@/ui';
 
+import { useModules } from '@/hooks/useBusiness';
 import { useAppNavigate } from '@/hooks/useRouteParams';
 import { AvailableValue, OpeningValue, RollsLine } from './StockRowParts';
 import {
@@ -163,6 +164,8 @@ function HistorySection({ kind, entries, onSelectBill, showRolls }) {
 /** The original "Stock Details" modal: purchase history and sales history of one product. `row` null = closed. */
 export default function StockDetailModal({ row, onClose }) {
   const nav = useAppNavigate();
+  // Dyeing & Combing may not be in the client's plan: then its lines are not links
+  const processingOn = useModules()('processing');
   // keep the content while the dialog is closing / for the title
   const last = useRef(null);
   if (row) last.current = row;
@@ -171,6 +174,18 @@ export default function StockDetailModal({ row, onClose }) {
   const handleSelectBill = (kind, entry) => {
     const rawNo = entry.rawInvoiceNo || entry.invoiceNo || '';
     if (!rawNo) return;
+    const processingEntry =
+      entry.isProcessingIssue ||
+      entry.isProcessingReceipt ||
+      entry.isProcessingReturn ||
+      entry.isCombingReceipt ||
+      entry.isCombingIssue ||
+      entry.isDyeingReceipt ||
+      entry.isDyeingIssue ||
+      String(rawNo).startsWith('CB-') ||
+      String(rawNo).startsWith('B-') ||
+      String(rawNo).startsWith('Batch');
+    if (processingEntry && !processingOn) return;
     onClose();
     if (entry.isProcessingIssue || entry.isProcessingReceipt || entry.isProcessingReturn) {
       // the lot where it is now: Completed Lots once received, else Processing Lots at its current stage

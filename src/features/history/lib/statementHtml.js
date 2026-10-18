@@ -4,7 +4,7 @@
  * generateCombinedPDFStatement and generateCombinedPDFStatementEasy.
  */
 import { VENDOR } from '@/core/branding';
-import { getBusiness, monogramOf, printName, sharePhonesOf } from '@/core/business';
+import { documentPrefix, getBusiness, monogramOf, printName, sharePhonesOf } from '@/core/business';
 import { formatCurrency, formatDateIN, toISODate, toNum } from '@/core/format';
 import { formatDateTimeIN } from './dates';
 import { generatePaymentTableData } from './payments';
@@ -218,8 +218,8 @@ export function buildInvoiceStatementHtml(input) {
 
     ${footer(now, true)}`;
   return wrap(
-    `SS ${displayInvoiceNo(labels, invoice.invoiceNo)}`,
-    `SS ${displayInvoiceNo(labels, invoice.invoiceNo)}`,
+    `${documentPrefix()} ${displayInvoiceNo(labels, invoice.invoiceNo)}`,
+    `${documentPrefix()} ${displayInvoiceNo(labels, invoice.invoiceNo)}`,
     logoSrc,
     partyInfoHtml,
     body,
@@ -336,9 +336,9 @@ export function buildEasyStatementHtml({ partyName, invoices, labels, logoSrc, n
 // ------------------------------------------------------------------ file names
 const sanitize = (text) => text.replace(/[^a-zA-Z0-9]/g, '_');
 export const combinedStatementFileName = (partyName, now) =>
-  `SS_${sanitize(partyName)}_${toISODate(now)}.pdf`;
+  `${documentPrefix()}_${sanitize(partyName)}_${toISODate(now)}.pdf`;
 export const easyStatementFileName = (partyName, now) =>
-  `SS_Easy_${sanitize(partyName)}_${toISODate(now)}.pdf`;
+  `${documentPrefix()}_Easy_${sanitize(partyName)}_${toISODate(now)}.pdf`;
 /** The web kept the party name verbatim; characters a file system rejects are replaced. */
 export const invoiceStatementFileName = (invoiceNo, partyName, now) =>
-  `SS_${invoiceNo}_${partyName}_${toISODate(now)}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+  `${documentPrefix()}_${invoiceNo}_${partyName}_${toISODate(now)}.pdf`.replace(/[\\/:*?"<>|]/g, '_');

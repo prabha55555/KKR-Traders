@@ -142,8 +142,13 @@ export async function changeLogin({ currentUsername, currentPassword, username, 
     : credentialsValid(String(currentUsername ?? '').trim(), currentPassword);
   if (!ok) throw new Error('The current password is not correct.');
   const record = await makeLoginRecord(username, password);
+  await storeLoginRecord(record);
+  return record.username;
+}
+
+/** Stores a login record (makeLoginRecord) in the business's database and on this device. */
+export async function storeLoginRecord(record) {
   const { db } = await import('@/core/db');
   await db.saveLoginSettings(record);
   writeLoginCache(record);
-  return record.username;
 }

@@ -23,13 +23,17 @@ export function differs(form, saved) {
 }
 
 /**
- * State of the business form on the Settings page: refreshes the details from the database when the page opens
- * (`ready` once that settled — a failed read keeps the copy on this device), then edits a copy of them.
- * `save()` validates and stores them; it resolves { ok, error?, errors? } and ignores a second tap while saving.
+ * State of the business form on the Settings page: reads the SAVED details from the database when the page opens
+ * (`ready` once that settled), then edits a copy of them. `save()` validates and stores them; it resolves
+ * { ok, error?, errors? } and ignores a second tap while saving.
+ *
+ * `loadFailed`: the database could not be read, so the form only shows the copy on this device — which may be out of
+ * date. Saving is refused then (it would overwrite the real saved details with old ones); `retry()` reads again.
  */
 export function useBusinessForm() {
   const saved = useBusiness();
   const [ready, setReady] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [form, setForm] = useState(() => toForm(saved));
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -43,17 +47,29 @@ export function useBusinessForm() {
     if (!differs(form, base)) setForm(toForm(saved));
   }
 
-  useEffect(() => {
-    let alive = true;
-    loadBusiness()
-      .catch((e) => console.warn('Business settings could not be refreshed.', e))
-      .finally(() => {
-        if (alive) setReady(true);
-      });
-    return () => {
-      alive = false;
-    };
+  const alive = useRef(true);
+  const read = useCallback(async () => {
+    const result = await loadBusiness().catch(() => ({ ok: false }));
+    if (!alive.current) return result;
+    setLoadFailed(!result?.ok);
+    // a successful read: the form shows exactly what is saved (nothing typed yet when the page opens / retries)
+    if (result?.ok) setForm(toForm(result.values));
+    setReady(true);
+    return result;
   }, []);
+
+  useEffect(() => {
+    alive.current = true;
+    void read();
+    return () => {
+      alive.current = false;
+    };
+  }, [read]);
+
+  const retry = useCallback(async () => {
+    setReady(false);
+    return read();
+  }, [read]);
 
   const setField = useCallback((key, value) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -72,6 +88,13 @@ export function useBusinessForm() {
 
   const save = async () => {
     if (busy.current) return { ok: false };
+    if (loadFailed) {
+      return {
+        ok: false,
+        error:
+          'The saved settings could not be loaded, so saving is blocked to protect them. Tap "Try again".',
+      };
+    }
     const problems = validateBusiness(form);
     setErrors(problems);
     if (Object.keys(problems).length) {
@@ -92,5 +115,17 @@ export function useBusinessForm() {
     }
   };
 
-  return { ready, form, errors, saving, dirty: differs(form, saved), saved, setField, save, reset };
+  return {
+    ready,
+    loadFailed,
+    retry,
+    form,
+    errors,
+    saving,
+    dirty: differs(form, saved),
+    saved,
+    setField,
+    save,
+    reset,
+  };
 }

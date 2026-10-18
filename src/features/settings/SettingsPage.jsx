@@ -6,6 +6,7 @@
 import {
   Building2,
   Contact,
+  LayoutGrid,
   MessageCircle,
   Receipt,
   RotateCcw,
@@ -24,6 +25,7 @@ import {
   normalizeBusiness,
   purchaseAckLine,
 } from '@/core/business';
+import { MODULE_PLANS, MODULE_TITLES } from '@/core/modules';
 import {
   Badge,
   Button,
@@ -36,6 +38,7 @@ import {
   TextArea,
   TextField,
   TwoPane,
+  cn,
   useFeedback,
 } from '@/ui';
 import { BusinessPreview } from './BusinessPreview';
@@ -103,6 +106,53 @@ export default function SettingsPage() {
 
   const businessForm = (
     <form onSubmit={onSubmit} noValidate aria-label="Business details" className="space-y-5">
+      <Section title="Modules" icon={LayoutGrid}>
+        <p className="-mt-1 mb-3 text-sm text-slate-600">
+          Which parts of the app this client uses. Modules left out are hidden from the menu and the dashboard
+          and cannot be opened; their data is kept, and choosing a larger plan shows them again.
+        </p>
+        <div role="radiogroup" aria-label="Module plan" className="grid gap-3 md:grid-cols-3">
+          {MODULE_PLANS.map((plan, i) => {
+            const active = form.modulePlan === plan.id;
+            return (
+              <button
+                key={plan.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => biz.setField('modulePlan', plan.id)}
+                className={cn(
+                  'flex flex-col rounded-2xl border p-3.5 text-left transition focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none',
+                  active
+                    ? 'border-gold-400 bg-gold-50 ring-1 ring-gold-300'
+                    : 'border-line bg-white hover:border-gold-300 hover:bg-gold-50/50',
+                )}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase">
+                    Option {i + 1}
+                  </span>
+                  {active ? <Badge tone="success">Selected</Badge> : null}
+                </span>
+                <span className="mt-1 font-display font-bold text-brand-800">{plan.title}</span>
+                <span className="mt-2 flex flex-wrap gap-1">
+                  {plan.modules.map((m) => (
+                    <Badge key={m} tone={m === 'settings' ? 'neutral' : 'info'}>
+                      {MODULE_TITLES[m]}
+                    </Badge>
+                  ))}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {errors.modulePlan ? (
+          <p className="mt-2 text-xs font-medium text-red-600" role="alert">
+            {errors.modulePlan}
+          </p>
+        ) : null}
+      </Section>
+
       <Section title="Business profile" icon={Building2}>
         <Grid cols={{ base: 1, sm: 2 }}>
           <TextField
@@ -299,7 +349,14 @@ export default function SettingsPage() {
         <Button variant="neutral" icon={RotateCcw} onClick={biz.reset} disabled={!biz.dirty || biz.saving}>
           Reset
         </Button>
-        <Button type="submit" variant="success" icon={Save} loading={biz.saving}>
+        <Button
+          type="submit"
+          variant="success"
+          icon={Save}
+          loading={biz.saving}
+          disabled={biz.loadFailed}
+          title={biz.loadFailed ? 'Saving is blocked until the saved settings load' : undefined}
+        >
           Save settings
         </Button>
       </div>
@@ -309,12 +366,29 @@ export default function SettingsPage() {
   return (
     <Page {...pageProps}>
       <p className="mb-4 max-w-3xl text-sm leading-relaxed text-slate-600">
-        These are <strong className="text-brand-800">your business’s</strong> details — printed on your bills,
-        statements and DCs and in the messages you share. Your customers and suppliers are managed in their
+        The client’s <strong className="text-brand-800">business details</strong> (printed on their bills,
+        statements and DCs and in the messages they share), the{' '}
+        <strong className="text-brand-800">modules</strong> they use and their{' '}
+        <strong className="text-brand-800">login</strong>. Their customers and suppliers are managed in their
         own sections.
       </p>
 
-      {!isBusinessConfigured() ? (
+      {biz.loadFailed ? (
+        <div
+          role="alert"
+          className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-card"
+        >
+          <p className="min-w-0 flex-1 text-sm font-medium text-red-700">
+            The saved settings could not be loaded (check the internet connection). The details below are the
+            copy on this device and may be out of date, so saving is blocked until they load.
+          </p>
+          <Button variant="info" icon={RotateCcw} onClick={() => void biz.retry()}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
+
+      {!biz.loadFailed && !isBusinessConfigured() ? (
         <div
           role="status"
           className="mb-5 flex items-start gap-3 rounded-2xl border border-gold-300 bg-gold-50 p-4 shadow-card"
@@ -328,7 +402,7 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      <TwoPane main={businessForm} side={<BusinessPreview values={form} />} />
+      <TwoPane main={businessForm} side={<BusinessPreview values={form} username={username} />} />
 
       <div className="mt-5">
         <LoginCard />

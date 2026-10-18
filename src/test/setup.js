@@ -26,6 +26,8 @@ vi.mock('firebase/firestore', () => {
     getDoc: vi.fn(),
     getDocs: vi.fn(),
     getFirestore: vi.fn(() => ({})),
+    // live listeners: never fire in tests; return the "stop" function
+    onSnapshot: vi.fn(() => () => {}),
     initializeFirestore: vi.fn(() => ({})),
     persistentLocalCache: vi.fn(() => ({})),
     persistentMultipleTabManager: vi.fn(() => ({})),
@@ -37,4 +39,14 @@ vi.mock('firebase/firestore', () => {
     where: vi.fn(),
     writeBatch: vi.fn(() => ({ update: vi.fn(), set: vi.fn(), delete: vi.fn(), commit: vi.fn() })),
   };
+});
+
+// Every test starts with the sample business of src/test/businessFixture.js as the saved Settings (tests that need a
+// different business, or none, set their own).
+beforeEach(async () => {
+  const [{ setBusinessForTests }, { TEST_BUSINESS }] = await Promise.all([
+    import('@/core/business'),
+    import('./businessFixture'),
+  ]);
+  setBusinessForTests(TEST_BUSINESS);
 });

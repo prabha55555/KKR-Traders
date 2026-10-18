@@ -6,7 +6,7 @@ import { AuthProvider } from '@/app/AuthProvider';
 import { UpdatePrompt } from '@/app/pwa';
 import { AppRoutes } from '@/app/routes';
 import { PRODUCT } from '@/core/branding';
-import { getBusiness, loadBusiness, subscribeBusiness } from '@/core/business';
+import { getBusiness, loadBusiness, subscribeBusiness, watchBusiness } from '@/core/business';
 import { db } from '@/core/db';
 import { getFirebaseAnalytics } from '@/core/firebase';
 import { FeedbackProvider } from '@/ui';
@@ -21,6 +21,8 @@ const showTitle = (b) => {
 showTitle(getBusiness());
 subscribeBusiness(showTitle);
 void loadBusiness();
+// every later change (Settings saved here, in another tab or on another device) applies at once everywhere
+watchBusiness();
 try {
   getFirebaseAnalytics();
 } catch (e) {

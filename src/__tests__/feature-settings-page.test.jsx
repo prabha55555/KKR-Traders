@@ -55,10 +55,18 @@ const wrap = (ui, path = '/settings') =>
     </MemoryRouter>,
   );
 const renderPage = () => wrap(<SettingsPage />);
+/** HTML of the printed-bill preview (an iframe). */
+const billPreview = () => screen.getByTitle('Sales bill preview').getAttribute('srcdoc');
 const nameField = () => screen.findByLabelText(/^Business name/);
 const saveButton = () => screen.getByRole('button', { name: 'Save settings' });
 
+/** The administrator's unlock, as core/admin.js stores it (the tests never contain the administrator password). */
+const unlockAdminForTest = () =>
+  window.sessionStorage.setItem('admin_unlocked_until', String(Date.now() + 10 * 60_000));
+
 beforeEach(() => {
+  window.sessionStorage.clear();
+  unlockAdminForTest();
   window.localStorage.clear();
   // signed in with the default login
   window.localStorage.setItem(SESSION_KEYS.auth, 'true');
@@ -103,11 +111,12 @@ describe('Settings page — business details', () => {
     let release;
     saveBusiness.mockImplementation(() => new Promise((r) => (release = r)));
     renderPage();
-    const preview = () => screen.getByRole('region', { name: 'Bill preview' });
+    // the preview is the REAL printed bill (same builder as printing), rendered in a frame
+    const bill = () => billPreview();
     fireEvent.change(await nameField(), { target: { value: '  Sri Murugan Tex  ' } });
-    expect(within(preview()).getByText('SRI MURUGAN TEX')).toBeInTheDocument();
-    expect(within(preview()).getByText('GSTIN: 33ABCDE1234F1Z5')).toBeInTheDocument();
-    expect(within(preview()).getByText('Subject to Erode jurisdiction')).toBeInTheDocument();
+    expect(bill()).toContain('SRI MURUGAN TEX');
+    expect(bill()).toContain('GSTIN: 33ABCDE1234F1Z5');
+    expect(bill()).toContain('Subject to Erode jurisdiction');
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
     expect(screen.getByLabelText('Watermark initials')).toHaveAttribute('placeholder', 'SMT');
 
@@ -115,8 +124,8 @@ describe('Settings page — business details', () => {
     fireEvent.change(screen.getByLabelText('IFSC'), { target: { value: 'sbin0001234' } });
     expect(screen.getByLabelText('IFSC')).toHaveValue('SBIN0001234');
     fireEvent.click(screen.getByRole('radio', { name: 'CASH BILL' }));
-    expect(within(preview()).getByText('CASH BILL')).toBeInTheDocument();
-    expect(within(preview()).getByText('IFSC: SBIN0001234')).toBeInTheDocument();
+    expect(bill()).toContain('CASH BILL');
+    expect(bill()).toContain('IFSC: SBIN0001234');
 
     // a double tap saves once
     fireEvent.click(saveButton());
@@ -203,9 +212,7 @@ describe('Settings page — business details', () => {
       ),
     ).toBeInTheDocument();
     expect(await nameField()).toHaveValue('');
-    expect(
-      within(screen.getByRole('region', { name: 'Bill preview' })).getByText('YOUR BUSINESS NAME'),
-    ).toBeInTheDocument();
+    expect(billPreview()).toContain('YOUR BUSINESS NAME');
     fireEvent.click(saveButton());
     expect((await screen.findAllByText('Please enter the business name.')).length).toBeGreaterThan(0);
     expect(saveBusiness).not.toHaveBeenCalled();
@@ -221,26 +228,21 @@ describe('Settings page — business details', () => {
   });
 });
 
-describe('Settings page — login', () => {
-  test('changing the login checks the current password and stores only a salted hash', async () => {
+describe('Settings page — client login (administrator)', () => {
+  test('the administrator sets the client login without the current password; only a salted hash is stored', async () => {
     const { saveLogin } = stubDb();
     renderPage();
-    const card = await screen.findByRole('region', { name: 'Login' });
+    const card = await screen.findByRole('region', { name: 'Client login' });
     expect(within(card).getByText(`Signed in as ${USER}`)).toBeInTheDocument();
     expect(within(card).getByText(/uses the default login it was installed with/)).toBeInTheDocument();
+    expect(within(card).queryByLabelText('Current password')).toBeNull();
     const field = (label) => within(card).getByLabelText(label);
     expect(field('New username')).toHaveValue(USER);
 
-    fireEvent.change(field('Current password'), { target: { value: 'wrong' } });
     fireEvent.change(field('New username'), { target: { value: 'ganesh' } });
     fireEvent.change(field('New password'), { target: { value: 'secret123' } });
     fireEvent.change(field('Confirm new password'), { target: { value: 'secret123' } });
-    fireEvent.click(within(card).getByRole('button', { name: 'Save login' }));
-    expect(await within(card).findByText('The current password is not correct.')).toBeInTheDocument();
-    expect(saveLogin).not.toHaveBeenCalled();
-
-    fireEvent.change(field('Current password'), { target: { value: PASS } });
-    fireEvent.click(within(card).getByRole('button', { name: 'Save login' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Save client login' }));
     await waitFor(() => expect(saveLogin).toHaveBeenCalledTimes(1));
     const stored = saveLogin.mock.calls[0][0];
     expect(stored).toMatchObject({ username: 'ganesh' });
@@ -248,12 +250,10 @@ describe('Settings page — login', () => {
     expect(stored.salt).toEqual(expect.any(String));
     expect(JSON.stringify(stored)).not.toContain('secret123');
 
-    expect(await screen.findByText('Login changed')).toBeInTheDocument();
+    expect(await screen.findByText('Client login changed')).toBeInTheDocument();
     // the session carries on under the new username; the password boxes are emptied
     expect(within(card).getByText('Signed in as ganesh')).toBeInTheDocument();
     expect(window.localStorage.getItem(SESSION_KEYS.username)).toBe('ganesh');
-    expect(field('New username')).toHaveValue('ganesh');
-    expect(field('Current password')).toHaveValue('');
     expect(field('New password')).toHaveValue('');
     expect(field('Confirm new password')).toHaveValue('');
   });
@@ -261,13 +261,12 @@ describe('Settings page — login', () => {
   test('new passwords that do not match are refused', async () => {
     const { saveLogin } = stubDb();
     renderPage();
-    const card = await screen.findByRole('region', { name: 'Login' });
-    fireEvent.change(within(card).getByLabelText('Current password'), { target: { value: PASS } });
+    const card = await screen.findByRole('region', { name: 'Client login' });
     fireEvent.change(within(card).getByLabelText('New password'), { target: { value: 'secret123' } });
     fireEvent.change(within(card).getByLabelText('Confirm new password'), {
       target: { value: 'secret124' },
     });
-    fireEvent.click(within(card).getByRole('button', { name: 'Save login' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Save client login' }));
     expect(await within(card).findByText('The two new passwords do not match.')).toBeInTheDocument();
     expect(saveLogin).not.toHaveBeenCalled();
   });
@@ -289,8 +288,9 @@ describe('Settings in the menu and the routes', () => {
     expect(screen.getByRole('link', { name: 'Business Settings' })).toHaveAttribute('href', '/settings');
   });
 
-  test('/settings opens the Settings page inside the app shell', async () => {
+  test('/settings opens the Settings page inside the app shell (administrator signed in)', async () => {
     stubDb();
+    unlockAdminForTest();
     wrap(<AppRoutes />);
     expect(await nameField()).toHaveValue('Ganesh Textiles');
     expect(screen.getAllByRole('heading', { level: 1, name: 'Settings' }).length).toBeGreaterThan(0);

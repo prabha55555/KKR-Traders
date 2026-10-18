@@ -2,15 +2,15 @@ import { KeyRound, Save } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import { useAuth } from '@/app/AuthProvider';
-import { changeLogin } from '@/core/auth';
+import { setClientLogin } from '@/core/admin';
 import { Badge, Button, Card, Grid, SectionHeader, TextField, useFeedback } from '@/ui';
 
-const blank = (username) => ({ currentPassword: '', username, password: '', confirmPassword: '' });
+const blank = (username) => ({ username, password: '', confirmPassword: '' });
 
 /**
- * "Login" card of the Settings page (saved on its own): the username / password that open the app. The current
- * password is checked first; the new password is stored only as a salted hash (core/auth.js changeLogin), and the
- * session carries on under the new username.
+ * "Client login" card of the Settings page (administrator only, saved on its own): the username / password that open
+ * the app for the client. The administrator sets it without the client's current password; it is stored only as a
+ * salted hash (core/admin.js setClientLogin) and the session on this device carries on under the new username.
  */
 export function LoginCard() {
   const { username, renameSession } = useAuth();
@@ -35,16 +35,18 @@ export function LoginCard() {
     setSaving(true);
     setError('');
     try {
-      const newUsername = await changeLogin({
-        currentUsername: username ?? '',
-        currentPassword: values.currentPassword,
+      const newUsername = await setClientLogin({
         username: values.username,
         password: values.password,
         confirmPassword: values.confirmPassword,
       });
       renameSession(newUsername);
       setValues(blank(newUsername));
-      toast('Login changed', 'Use the new username and password the next time you sign in.', 'success');
+      toast(
+        'Client login changed',
+        'The client signs in with the new username and password from now on.',
+        'success',
+      );
     } catch (err) {
       setError(err?.message || 'The login could not be changed. Please try again.');
     } finally {
@@ -54,35 +56,29 @@ export function LoginCard() {
   };
 
   return (
-    <Card as="section" aria-label="Login">
+    <Card as="section" aria-label="Client login">
       <SectionHeader
-        title="Login"
+        title="Client login"
         icon={KeyRound}
         right={
-          <Badge tone="neutral" title="The username you are signed in with">
+          <Badge tone="neutral" title="The username signed in on this device">
             Signed in as {username || '—'}
           </Badge>
         }
       />
       <p className="-mt-1 mb-4 text-sm text-slate-600">
-        The username and password that open this app on every device. Until you set one, the app uses the
-        default login it was installed with.
+        The username and password the client uses to open this app on every device. Until one is set, the app
+        uses the default login it was installed with.
       </p>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={onSubmit} noValidate aria-label="Client login">
         <Grid cols={{ base: 1, sm: 2 }}>
           <TextField
-            label="Current password"
-            type="password"
-            autoComplete="current-password"
-            hint="The password you signed in with."
-            {...bind('currentPassword')}
-          />
-          <TextField
             label="New username"
-            autoComplete="username"
+            autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
             hint="At least 3 characters."
+            className="sm:col-span-2"
             {...bind('username')}
           />
           <TextField
@@ -110,7 +106,7 @@ export function LoginCard() {
         ) : null}
         <div className="mt-4 flex justify-end">
           <Button type="submit" variant="success" icon={Save} loading={saving}>
-            Save login
+            Save client login
           </Button>
         </div>
       </form>

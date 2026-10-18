@@ -8,9 +8,11 @@ import {
   BUNDLED_LOGO,
   DEFAULT_BUSINESS,
   bankLines,
+  businessSource,
+  documentPrefix,
   getBusiness,
   isBusinessConfigured,
-  legacyDetails,
+  loadBusiness,
   monogramOf,
   normalizeBusiness,
   printName,
@@ -18,6 +20,7 @@ import {
   saveBusiness,
   setBusinessForTests,
   validateBusiness,
+  watchBusiness,
 } from '@/core/business';
 import { changeLogin, hashPassword, makeLoginRecord, verifyLogin, PASS_B64, USER_B64 } from '@/core/auth';
 import { db } from '@/core/db';
@@ -39,21 +42,62 @@ const GANESH = {
   upiId: 'ganesh@sbi',
   billTerms: 'Goods once sold cannot be taken back\nSubject to Erode jurisdiction',
 };
-const legacy = () => normalizeBusiness(legacyDetails('sriram-96e71'));
-
-beforeEach(() => setBusinessForTests(legacy(), true));
 afterEach(() => vi.restoreAllMocks());
 
 describe('business details', () => {
-  test('the original installation keeps the details it always printed until Settings are saved', () => {
-    expect(legacyDetails('sriram-96e71')).toMatchObject({
-      name: 'Santhamani Textiles',
-      logo: BUNDLED_LOGO,
-      monogram: 'SS',
+  test('no business details are built into the app: without saved Settings everything is blank', async () => {
+    expect(DEFAULT_BUSINESS.name).toBe('');
+    vi.spyOn(db, 'init').mockResolvedValue();
+    vi.spyOn(db, 'getBusinessSettings').mockResolvedValue(null);
+    const result = await loadBusiness();
+    expect(result.ok).toBe(true);
+    expect(getBusiness().name).toBe('');
+    expect(getBusiness().address).toBe('');
+    expect(isBusinessConfigured()).toBe(false);
+    expect(businessSource()).toBe('database');
+  });
+
+  test('loading makes the saved details current everywhere (they always win over the copy on the device)', async () => {
+    setBusinessForTests({ name: 'Old Copy On This Device' }, true, 'device');
+    vi.spyOn(db, 'init').mockResolvedValue();
+    vi.spyOn(db, 'getBusinessSettings').mockResolvedValue({ ...GANESH, updatedAt: { seconds: 1 } });
+    await loadBusiness();
+    expect(getBusiness()).toMatchObject({ name: 'Ganesh Textiles', gstin: '33ABCDE1234F1Z5' });
+    expect(getBusiness()).not.toHaveProperty('updatedAt');
+    expect(businessSource()).toBe('database');
+  });
+
+  test('a failed read keeps the copy on this device for bills but is marked as failed (Settings must not save it)', async () => {
+    setBusinessForTests(GANESH, true, 'device');
+    vi.spyOn(db, 'init').mockResolvedValue();
+    vi.spyOn(db, 'getBusinessSettings').mockRejectedValue(new Error('offline'));
+    const result = await loadBusiness();
+    expect(result.ok).toBe(false);
+    expect(getBusiness().name).toBe('Ganesh Textiles');
+    expect(businessSource()).toBe('failed');
+  });
+
+  test('live updates: a change saved in another tab / device applies at once; an offline-cache miss never blanks', async () => {
+    let push;
+    vi.spyOn(db, 'init').mockResolvedValue();
+    vi.spyOn(db, 'watchBusinessSettings').mockImplementation((onData) => {
+      push = onData;
+      return () => {};
     });
-    expect(printName(legacy())).toBe('SANTHAMANI TEXTILES');
-    // a new customer's database starts blank (no Santhamani details leak into it)
-    expect(legacyDetails('ganesh-textiles-billing')).toBeNull();
+    const stop = watchBusiness();
+    await vi.waitFor(() => expect(push).toBeTypeOf('function'));
+    push({ ...GANESH, name: 'Ganesh Silks' }, { fromCache: false });
+    expect(getBusiness().name).toBe('Ganesh Silks');
+    push(null, { fromCache: true });
+    expect(getBusiness().name).toBe('Ganesh Silks');
+    stop();
+  });
+
+  test('printed documents are named with the business initials, never a fixed prefix', () => {
+    setBusinessForTests(GANESH);
+    expect(documentPrefix()).toBe('GT');
+    setBusinessForTests({});
+    expect(documentPrefix()).toBe('BILL');
   });
 
   test('normalizing keeps known fields only, trimmed, on top of the defaults', () => {
@@ -74,7 +118,7 @@ describe('business details', () => {
   test('saving stores the details in the business’s own settings document and uses them everywhere at once', async () => {
     const save = vi.spyOn(db, 'saveBusinessSettings').mockResolvedValue();
     setBusinessForTests({}, false);
-    expect(isBusinessConfigured()).toBe(true); // the test database is the original installation
+    expect(isBusinessConfigured()).toBe(false);
     await saveBusiness({ ...GANESH, gstin: '33abcde1234f1z5' });
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Ganesh Textiles', gstin: '33ABCDE1234F1Z5' }),

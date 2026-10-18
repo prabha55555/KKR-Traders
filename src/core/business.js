@@ -9,7 +9,7 @@
  * the device so the app starts — and prints — with them offline; loadBusiness() refreshes them from Firestore and
  * saveBusiness() writes them. Screens use the useBusiness() hook (src/hooks/useBusiness.js).
  */
-import { firebaseConfig } from '@/core/firebase';
+import { DEFAULT_MODULE_PLAN, isModulePlan, moduleInPlan } from '@/core/modules';
 import { storage } from '@/platform';
 
 /** Every setting with its value when nothing is entered (blank = left off the bills / messages). */
@@ -54,28 +54,13 @@ export const DEFAULT_BUSINESS = Object.freeze({
   shareLocation: '',
   /** phone numbers in shared messages — blank = the phone numbers above */
   sharePhones: '',
+  // ---- modules (administrator)
+  /** which modules this client has: 'basic' | 'processing' | 'all' (see core/modules.js) */
+  modulePlan: DEFAULT_MODULE_PLAN,
 });
 
-/** `logo` value meaning "the logo file that ships with the app" (what bills printed before Settings existed). */
+/** `logo` value meaning "the logo file that ships with the app" (a business may choose it on the Settings page). */
 export const BUNDLED_LOGO = 'bundled';
-
-/**
- * Databases that were in use before the Settings page existed: their details as they were hard-coded then, so those
- * businesses see no change until they edit Settings (the first Save stores them in Firestore). A new database starts
- * blank and is set up on the Settings page.
- */
-const LEGACY_DETAILS = {
-  'sriram-96e71': {
-    name: 'Santhamani Textiles',
-    logo: BUNDLED_LOGO,
-    monogram: 'SS',
-    address: 'No.16/1, 25A, Thirumalai Nagar South, 1st Street, TIRUPUR - 641 602.',
-    phones: '90872 93268, 9092779599',
-    paymentNo: '90872 93268, 9092779599',
-    shareLocation: 'Tirupur',
-    sharePhones: '90872 93268, 9092779599',
-  },
-};
 
 const CACHE_KEY = 'business_settings_v1';
 const FIELDS = Object.keys(DEFAULT_BUSINESS);
@@ -87,14 +72,11 @@ export function normalizeBusiness(values = {}) {
     if (values[k] === undefined || values[k] === null) return;
     out[k] = String(values[k]).trim();
   });
+  if (!isModulePlan(out.modulePlan)) out.modulePlan = DEFAULT_MODULE_PLAN;
   return out;
 }
 
-/** The legacy details of this database, or null for a new one. */
-export function legacyDetails(projectId = firebaseConfig.projectId) {
-  return LEGACY_DETAILS[projectId] ?? null;
-}
-
+// ------------------------------------------------------------------ the copy on this device (offline start)
 function readCache() {
   try {
     const raw = storage.get(CACHE_KEY);
@@ -103,23 +85,39 @@ function readCache() {
     return null;
   }
 }
+/**
+ * Keeps a copy of the SAVED details on this device. If it cannot be written (storage full — e.g. a large logo), the
+ * older copy is removed rather than left behind: an out-of-date copy must never come back on the next start.
+ */
 function writeCache(values) {
   try {
     storage.set(CACHE_KEY, JSON.stringify(values));
   } catch {
-    // a full / blocked storage only costs the offline copy
+    try {
+      storage.remove(CACHE_KEY);
+    } catch {
+      // storage blocked: nothing kept
+    }
   }
 }
 
-let current = normalizeBusiness(readCache() ?? legacyDetails() ?? {});
-/** true once the business has saved its own details (or a database copy was read) */
-let configured = Boolean(readCache()?.name);
+// ------------------------------------------------------------------ current details + listeners
+const cached = readCache();
+let current = normalizeBusiness(cached ?? {});
+/** true once the business has saved its details (a stored copy was read) */
+let configured = Boolean(cached?.name);
+/**
+ * Where the current details come from: 'device' (the copy on this device / nothing yet), 'database' (read from the
+ * business's database — the only state the Settings page may save from) or 'failed' (the database could not be read).
+ */
+let source = 'device';
 const listeners = new Set();
 let loading = null;
 
-function publish(values, isConfigured) {
+function publish(values, isConfigured, from) {
   current = normalizeBusiness(values);
   configured = isConfigured;
+  if (from) source = from;
   listeners.forEach((fn) => {
     try {
       fn(current);
@@ -133,9 +131,13 @@ function publish(values, isConfigured) {
 export function getBusiness() {
   return current;
 }
-/** False until the business has saved its details on the Settings page (a legacy database counts as set up). */
+/** False until the business details have been saved on the Settings page. */
 export function isBusinessConfigured() {
-  return configured || Boolean(legacyDetails());
+  return configured;
+}
+/** 'device' | 'database' | 'failed' — see `source` above. */
+export function businessSource() {
+  return source;
 }
 /** Subscribe to changes; returns the unsubscribe function. */
 export function subscribeBusiness(fn) {
@@ -143,9 +145,22 @@ export function subscribeBusiness(fn) {
   return () => listeners.delete(fn);
 }
 
+/** A stored settings document (or null = none saved yet) becomes the current details everywhere. */
+function applyStored(stored) {
+  if (stored) {
+    publish(stored, true, 'database');
+    writeCache(current);
+  } else {
+    // nothing saved for this business yet: blank (never another business's or built-in details)
+    publish({}, false, 'database');
+    writeCache(null);
+  }
+}
+
 /**
- * Reads the details from Firestore (once per call; concurrent calls share the read). No document yet: the legacy
- * details of this database, else blank. Offline / failed read: the device copy stays in use.
+ * Reads the details from the business's database (concurrent calls share the read) and makes them current
+ * everywhere. Resolves `{ ok: true }`, or `{ ok: false }` when the database could not be read — the copy on this device
+ * stays in use for bills, but the Settings page must not save from it (it may be out of date).
  */
 export function loadBusiness() {
   if (!loading) {
@@ -153,22 +168,49 @@ export function loadBusiness() {
       try {
         const { db } = await import('@/core/db');
         await db.init();
-        const stored = await db.getBusinessSettings();
-        if (stored) {
-          publish(stored, true);
-          writeCache(current);
-        } else {
-          publish(legacyDetails() ?? readCache() ?? {}, Boolean(legacyDetails()));
-        }
+        applyStored(await db.getBusinessSettings());
+        return { ok: true, values: current };
       } catch (e) {
         console.warn('Business settings could not be read; using the copy on this device.', e);
+        publish(current, configured, 'failed');
+        return { ok: false, values: current };
       }
-      return current;
     })().finally(() => {
       loading = null;
     });
   }
   return loading;
+}
+
+let stopWatching = null;
+/**
+ * Live updates: from now on every change to the business's settings document — saved in this tab, another tab or on
+ * another device — becomes current at once (titles, dashboard, menus, bills). Call once at start-up; returns the stop
+ * function. A snapshot that only comes from the offline cache never blanks the details.
+ */
+export function watchBusiness() {
+  if (stopWatching) return stopWatching;
+  let stop = () => {};
+  (async () => {
+    try {
+      const { db } = await import('@/core/db');
+      await db.init();
+      stop = db.watchBusinessSettings(
+        (stored, { fromCache }) => {
+          if (!stored && fromCache) return;
+          applyStored(stored);
+        },
+        (e) => console.warn('Live business settings updates stopped.', e),
+      );
+    } catch (e) {
+      console.warn('Live business settings updates are not available.', e);
+    }
+  })();
+  stopWatching = () => {
+    stop();
+    stopWatching = null;
+  };
+  return stopWatching;
 }
 
 /** Before printing / sharing: the details as stored (waits for a read in progress, else uses what is loaded). */
@@ -182,6 +224,9 @@ export function validateBusiness(values) {
   const v = normalizeBusiness(values);
   const errors = {};
   if (!v.name) errors.name = 'Please enter the business name.';
+  if (values?.modulePlan && !isModulePlan(String(values.modulePlan).trim())) {
+    errors.modulePlan = 'Please choose one of the module plans.';
+  }
   if (v.gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/i.test(v.gstin)) {
     errors.gstin = 'GST number should be 15 characters, like 33ABCDE1234F1Z5.';
   }
@@ -204,11 +249,16 @@ export async function saveBusiness(values) {
   clean.gstin = clean.gstin.toUpperCase();
   clean.bankIfsc = clean.bankIfsc.toUpperCase();
   const { db } = await import('@/core/db');
+  await db.init();
+  // the whole document is written (every field), so nothing old can survive next to the new details
   await db.saveBusinessSettings(clean);
   writeCache(clean);
-  publish(clean, true);
+  publish(clean, true, 'database');
   return clean;
 }
+
+/** Is this module in the client's plan? (menu, dashboard and addresses follow it; the dashboard is always on) */
+export const isModuleEnabled = (moduleId, b = current) => moduleInPlan(moduleId, b.modulePlan);
 
 // ------------------------------------------------------------------ what the bills and messages print
 /** Name as printed on bills and in shared messages (capitals). */
@@ -246,7 +296,10 @@ export function bankLines(b = current) {
   ].filter(Boolean);
 }
 
+/** File / document name prefix of printed bills and statements: the business's initials ("GT"), else "BILL". */
+export const documentPrefix = (b = current) => monogramOf(b).replace(/[^A-Z0-9]/gi, '') || 'BILL';
+
 /** Test helper: replace the current details (no Firestore). */
-export function setBusinessForTests(values, isConfigured = true) {
-  publish(values, isConfigured);
+export function setBusinessForTests(values, isConfigured = true, from = 'database') {
+  publish(values, isConfigured, from);
 }

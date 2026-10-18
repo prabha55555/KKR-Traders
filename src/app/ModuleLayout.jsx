@@ -31,11 +31,12 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '@/app/AuthProvider';
 import { VENDOR } from '@/core/branding';
-import { useBusiness } from '@/hooks/useBusiness';
+import { useBusiness, useModules } from '@/hooks/useBusiness';
 import { formatDateShort, todayISO } from '@/core/format';
 import { storage } from '@/platform';
 import { IconButton, cn, useFeedback } from '@/ui';
 import { BrandLockup, BrandMark } from './Brand';
+import { ModuleUnavailable } from './ModuleUnavailable';
 import { OfflineBanner } from './pwa';
 
 /**
@@ -195,6 +196,8 @@ const activeModuleId = (pathname) =>
 export function NavMenu({ onItemClick }) {
   const { pathname } = useLocation();
   const current = activeModuleId(pathname);
+  // only the modules in the client's plan (Settings page)
+  const enabled = useModules();
   const [open, setOpen] = useState(() => {
     const saved = readOpenGroups();
     return current ? { ...saved, [current]: true } : saved;
@@ -211,7 +214,7 @@ export function NavMenu({ onItemClick }) {
     });
   return (
     <nav className="flex-1 scrollbar-thin overflow-y-auto px-3 py-4" aria-label="Main navigation">
-      {NAV_CATEGORIES.map((category) => {
+      {NAV_CATEGORIES.filter((category) => enabled(category.id)).map((category) => {
         if (category.isDirect) {
           return (
             <NavLink
@@ -495,6 +498,8 @@ export function ModuleLayout({ module: key }) {
   const hasTabs = (module.items ?? []).some((i) => i.tab !== false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const { pathname } = useLocation();
+  // a module outside the client's plan is not reachable, not even by its address
+  const available = useModules()(key);
 
   useEffect(() => {
     setMobileDrawerOpen(false);
@@ -510,10 +515,10 @@ export function ModuleLayout({ module: key }) {
         <MobileHeader module={module} onOpenMenu={() => setMobileDrawerOpen(true)} />
         <OfflineBanner />
         <TopBar module={module} />
-        <main className={cn('flex-1 lg:pb-10', hasTabs ? 'pb-40' : 'pb-10')}>
-          <Outlet />
+        <main className={cn('flex-1 lg:pb-10', hasTabs && available ? 'pb-40' : 'pb-10')}>
+          {available ? <Outlet /> : <ModuleUnavailable moduleId={key} />}
         </main>
-        <BottomTabs module={module} />
+        {available ? <BottomTabs module={module} /> : null}
       </div>
     </div>
   );

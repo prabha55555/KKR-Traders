@@ -14,6 +14,7 @@ import {
   doc,
   getDoc as fbGetDoc,
   getDocs as fbGetDocs,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -1145,6 +1146,17 @@ export class Database {
   }
   async saveBusinessSettings(data) {
     await setDoc(this.ref('settings', 'business'), { ...data, updatedAt: serverTimestamp() });
+  }
+  /**
+   * Live updates of `settings/business`: `onData(details | null, { fromCache })` on every change (this tab, another tab,
+   * another device). Returns the function that stops listening.
+   */
+  watchBusinessSettings(onData, onError) {
+    return onSnapshot(
+      this.ref('settings', 'business'),
+      (snap) => onData(snap.exists() ? snap.data() : null, { fromCache: Boolean(snap.metadata?.fromCache) }),
+      (error) => onError?.(error),
+    );
   }
   /** `settings/login`: the app login chosen on the Settings page ({ username, passwordHash, salt, iterations }). */
   async getLoginSettings() {

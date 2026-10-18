@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
+import { lockAdmin } from '@/core/admin';
 import { SESSION_KEYS, isSessionExpired, verifyLogin } from '@/core/auth';
 import { db } from '@/core/db';
 import { storage } from '@/platform';
@@ -45,6 +46,8 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     Object.values(SESSION_KEYS).forEach((k) => storage.remove(k));
     db.invalidateAll();
+    // the administrator's Settings access ends with the session
+    lockAdmin();
     setSession({ ok: false, username: null });
   }, []);
 

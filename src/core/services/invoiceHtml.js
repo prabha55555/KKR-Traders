@@ -3,7 +3,14 @@
  * Pure string builder (no platform APIs) so it is unit-testable and renders in any browser (and in the print dialog).
  */
 import { VENDOR } from '@/core/branding';
-import { bankLines, billTermLines, getBusiness, monogramOf, printName } from '@/core/business';
+import {
+  bankLines,
+  billTermLines,
+  documentPrefix,
+  getBusiness,
+  monogramOf,
+  printName,
+} from '@/core/business';
 import { formatCurrency, formatDateIN, formatInvoiceNo, numberToWords, toNum } from '@/core/format';
 import { foldBreakdown, methodLabel, normalizeMethod } from '@/core/paymentMethods';
 const esc = (value) =>
@@ -391,7 +398,11 @@ export function buildInvoiceHtml(input) {
   if (input.invoice?.manualBillImage) {
     pages.push(manualBillPage(input));
   }
-  return wrap(`SS ${formatInvoiceNo(input.invoice.invoiceNo)}`, pages);
+  // document title = the business's initials + the invoice no ("GT 007")
+  return wrap(
+    `${documentPrefix(input.business ?? getBusiness())} ${formatInvoiceNo(input.invoice.invoiceNo)}`,
+    pages,
+  );
 }
 export function buildCombinedInvoiceHtml(input) {
   const pages = [
@@ -401,5 +412,9 @@ export function buildCombinedInvoiceHtml(input) {
   if (input.invoice?.manualBillImage) {
     pages.push(manualBillPage(input));
   }
-  return wrap(`SS ${formatInvoiceNo(input.invoice.invoiceNo)}`, pages);
+  // document title = the business's initials + the invoice no ("GT 007")
+  return wrap(
+    `${documentPrefix(input.business ?? getBusiness())} ${formatInvoiceNo(input.invoice.invoiceNo)}`,
+    pages,
+  );
 }

@@ -488,7 +488,11 @@ describe('statement HTML', () => {
   });
 });
 describe('WhatsApp text of the combined statement', () => {
-  const message = buildCombinedStatementMessage(statement(), SALES_LABELS);
+  // built per test: the business on it is the Settings of the test (applied before each test)
+  let message;
+  beforeEach(() => {
+    message = buildCombinedStatementMessage(statement(), SALES_LABELS);
+  });
   test('header, customer block and invoices (newest first) with their figures', () => {
     expect(message).toContain('*SANTHAMANI TEXTILES - ACCOUNT STATEMENT*');
     expect(message).toContain('*CUSTOMER DETAILS*');
