@@ -1,29 +1,15 @@
-import {
-  AlertCircle,
-  Banknote,
-  CheckCircle2,
-  Clock,
-  Landmark,
-  Plus,
-  Receipt,
-  Smartphone,
-  Trash2,
-} from 'lucide-react';
+import { AlertCircle, Banknote, CheckCircle2, Clock, Landmark, Plus, Receipt, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { CASH_LABEL } from '@/core/accountLabel';
 import { formatCurrency, formatDateIN } from '@/core/format';
-import { Badge, Button, EmptyState, Modal, useFeedback } from '@/ui';
+import { modeLabel } from '@/core/paymentMethods';
+import { Button, EmptyState, Modal, useFeedback } from '@/ui';
 
 import { calcBatchPaymentStats } from './dyeingLogic';
 import { deleteDyeingBatchPayment } from './dyeingService';
 
-export function DyeingPaymentHistoryModal({
-  open,
-  batch,
-  onClose,
-  onPaymentDeleted,
-  onOpenAddPayment,
-}) {
+export function DyeingPaymentHistoryModal({ open, batch, onClose, onPaymentDeleted, onOpenAddPayment }) {
   const { confirm, toast } = useFeedback();
   const [currentBatch, setCurrentBatch] = useState(batch);
   const [deletingId, setDeletingId] = useState(null);
@@ -47,7 +33,7 @@ export function DyeingPaymentHistoryModal({
     if (deletingId) return;
     const ok = await confirm({
       title: `Delete Payment of ₹${formatCurrency(payment.amount)}?`,
-      message: `Are you sure you want to remove this ${payment.mode || 'Cash'} payment recorded on ${formatDateIN(
+      message: `Are you sure you want to remove this ${modeLabel(payment.mode)} payment recorded on ${formatDateIN(
         payment.date,
       )}? The batch balance due will be restored.`,
       tone: 'danger',
@@ -73,27 +59,20 @@ export function DyeingPaymentHistoryModal({
     }
   };
 
+  // Stored modes are 'Cash' | 'Bank' | legacy 'UPI': everything but Cash is shown as Account.
   const getModeBadge = (mode, bankName) => {
-    if (mode === 'Bank') {
+    if (modeLabel(mode) === 'Account') {
       return (
         <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-800 ring-1 ring-blue-200">
           <Landmark className="size-3 text-blue-600" />
-          <span>Bank{bankName ? `: ${bankName}` : ''}</span>
-        </span>
-      );
-    }
-    if (mode === 'UPI') {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-800 ring-1 ring-purple-200">
-          <Smartphone className="size-3 text-purple-600" />
-          <span>UPI{bankName ? ` (${bankName})` : ''}</span>
+          <span>Account{bankName ? `: ${bankName}` : ''}</span>
         </span>
       );
     }
     return (
       <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 ring-1 ring-emerald-200">
         <Banknote className="size-3 text-emerald-600" />
-        <span>Cash in Hand</span>
+        <span>{CASH_LABEL}</span>
       </span>
     );
   };
@@ -102,12 +81,7 @@ export function DyeingPaymentHistoryModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={
-        <div className="flex items-center gap-2">
-          <Receipt className="size-5 text-brand-600" />
-          <span>Payment History — Batch #{batch.batchId}</span>
-        </div>
-      }
+      title={`Payment History — Batch #${batch.batchId}`}
       size="md"
       footer={
         <div className="flex w-full items-center justify-between gap-2">
@@ -132,15 +106,15 @@ export function DyeingPaymentHistoryModal({
     >
       <div className="space-y-4">
         {/* Dyer & Balance Header Card */}
-        <div className="rounded-xl border border-slate-200/90 bg-slate-50/80 p-3.5 space-y-3">
+        <div className="space-y-3 rounded-xl border border-slate-200/90 bg-slate-50/80 p-3.5">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                 Dye House / Mill
               </div>
-              <div className="font-bold text-slate-900 text-sm">{batch.processorName}</div>
+              <div className="text-sm font-bold text-slate-900">{batch.processorName}</div>
               {batch.processorPhone && (
-                <div className="text-xs font-mono text-slate-500 mt-0.5">{batch.processorPhone}</div>
+                <div className="mt-0.5 font-mono text-xs text-slate-500">{batch.processorPhone}</div>
               )}
             </div>
 
@@ -166,17 +140,17 @@ export function DyeingPaymentHistoryModal({
 
           <div className="grid grid-cols-3 gap-2 border-t border-slate-200/70 pt-2.5 text-xs">
             <div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total Charges</div>
-              <div className="font-bold text-slate-900 mt-0.5">₹{formatCurrency(stats.totalCharges)}</div>
+              <div className="text-[10px] tracking-wider text-slate-500 uppercase">Total Charges</div>
+              <div className="mt-0.5 font-bold text-slate-900">₹{formatCurrency(stats.totalCharges)}</div>
             </div>
             <div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total Paid</div>
-              <div className="font-bold text-emerald-700 mt-0.5">₹{formatCurrency(stats.totalPaid)}</div>
+              <div className="text-[10px] tracking-wider text-slate-500 uppercase">Total Paid</div>
+              <div className="mt-0.5 font-bold text-emerald-700">₹{formatCurrency(stats.totalPaid)}</div>
             </div>
             <div className="text-right">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Balance Due</div>
+              <div className="text-[10px] tracking-wider text-slate-500 uppercase">Balance Due</div>
               <div
-                className={`font-display font-extrabold mt-0.5 ${
+                className={`mt-0.5 font-display font-extrabold ${
                   stats.balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700'
                 }`}
               >
@@ -189,7 +163,7 @@ export function DyeingPaymentHistoryModal({
         {/* Payments List */}
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            <h4 className="text-xs font-bold tracking-wider text-slate-700 uppercase">
               Payments Log ({payments.length})
             </h4>
           </div>
@@ -198,7 +172,7 @@ export function DyeingPaymentHistoryModal({
             <EmptyState
               icon={Receipt}
               title="No payments recorded yet"
-              message="Record cash or bank payments made to the dyer for this processing batch."
+              message="Record cash or account payments made to the dyer for this processing batch."
               action={
                 onOpenAddPayment ? (
                   <Button
@@ -219,7 +193,7 @@ export function DyeingPaymentHistoryModal({
               {payments.map((p) => (
                 <div
                   key={p.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs transition hover:border-slate-300"
+                  className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs transition hover:border-slate-300 sm:flex-row sm:items-center"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -229,18 +203,18 @@ export function DyeingPaymentHistoryModal({
                       {getModeBadge(p.mode, p.bankAccountName)}
                     </div>
 
-                    <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
                       <span>Paid on {formatDateIN(p.date)}</span>
                       {p.reference && (
-                        <span className="font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
                           Ref: {p.reference}
                         </span>
                       )}
-                      {p.notes && <span className="italic text-slate-600">"{p.notes}"</span>}
+                      {p.notes && <span className="text-slate-600 italic">"{p.notes}"</span>}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end shrink-0">
+                  <div className="flex shrink-0 items-center justify-end">
                     <button
                       type="button"
                       disabled={deletingId === p.id}

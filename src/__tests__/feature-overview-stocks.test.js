@@ -1,16 +1,22 @@
 import { db } from '@/core/db';
 import {
+  buildStockMap,
   computeStocks,
   filterStocks,
   historyDate,
   historyInvoiceNo,
   historyTotal,
+  lookupStock,
   openingActions,
   OPENING_STOCK_INVALID,
   parseOpeningStockQty,
   stockTone,
 } from '@/features/overview/stocks/stocksLogic';
-import { loadStocks } from '@/features/overview/stocks/stocksService';
+import {
+  getStockQuantityMap,
+  invalidateStocksCache,
+  loadStocks,
+} from '@/features/overview/stocks/stocksService';
 const line = (description, qty, rate) => ({ description, qty, rate, amount: qty * rate });
 const purchase = (over) => ({
   invoiceNo: 'P-001',
@@ -19,7 +25,8 @@ const purchase = (over) => ({
   supplierPhone: '',
   supplierAddress: '',
   products: [],
-  subtotal: 0,
+  // no carried balance in these fixtures: the bill's own amount is its grand total
+  subtotal: over?.grandTotal ?? 0,
   grandTotal: 0,
   ...over,
 });
@@ -30,7 +37,8 @@ const sale = (over) => ({
   customerAddress: '',
   customerPhone: '',
   products: [],
-  subtotal: 0,
+  // no carried balance in these fixtures: the bill's own amount is its grand total
+  subtotal: over?.grandTotal ?? 0,
   previousBalance: 0,
   grandTotal: 0,
   amountPaid: 0,
@@ -78,7 +86,7 @@ afterEach(() => jest.restoreAllMocks());
 describe('computeStocks', () => {
   const { rows, summary } = computeStocks(purchases, sales, opening);
   const row = (d) => rows.find((r) => r.description === d);
-  test('available = opening + purchased - sold (no returns), per TRIMMED, case-sensitive description', () => {
+  test('available = opening + purchased - sold, per TRIMMED, case-sensitive description', () => {
     expect(row('Cotton Shirt')).toMatchObject({ opening: 5, purchased: 12.5, sold: 4, available: 13.5 });
     expect(row('cotton shirt')).toMatchObject({ opening: 0, purchased: 0, sold: 3, available: -3 });
     expect(row('Old Item')).toMatchObject({ opening: 2.5, purchased: 0, sold: 0, available: 2.5 });
@@ -188,7 +196,7 @@ describe('computeStocks', () => {
     ]);
     expect(row('T Shirt').purchaseHistory[0].amount).toBe(151.5);
   });
-  test('financial summary: sales and purchases at grand total, cash = amount paid, net = sales - purchases', () => {
+  test('financial summary: sales and purchases at each bill own amount, cash = amount paid, net = sales - purchases', () => {
     expect(summary).toEqual({
       totalSales: 2100.5,
       totalPurchases: 2000,
@@ -204,6 +212,14 @@ describe('computeStocks', () => {
     );
     expect(out.rows).toEqual([]);
     expect(out.summary).toMatchObject({ totalSales: 40, totalPurchases: 10, netProfitLoss: 30 });
+  });
+  test('carried previous balances are not counted again in the sales / purchase totals', () => {
+    const out = computeStocks(
+      [purchase({ subtotal: 100, previousBalance: 900, grandTotal: 1000, products: undefined })],
+      [sale({ subtotal: 50, previousBalance: 450, discountAmount: 5, grandTotal: 495, products: undefined })],
+      [],
+    );
+    expect(out.summary).toMatchObject({ totalPurchases: 100, totalSales: 45 });
   });
   test('legacy `date` is used when invoiceDate is missing', () => {
     const out = computeStocks(
@@ -266,5 +282,83 @@ describe('loadStocks', () => {
     const { rows, summary } = await loadStocks();
     expect(rows).toHaveLength(4);
     expect(summary.netProfitLoss).toBe(100.5);
+  });
+});
+describe('average purchase price (Sales Bill "Avg buy" chip = Stocks page Average Purchase Rate)', () => {
+  test('purchase returns are left out of the average but lower the purchased qty', () => {
+    const out = computeStocks(
+      [purchase({ products: [line('Yarn', 10, 100)] })],
+      [],
+      [],
+      [],
+      [],
+      [{ description: 'Yarn', qty: 2, rate: 100, invoiceNo: 'P-001', returnDate: '2026-09-05' }],
+    );
+    expect(out.rows[0]).toMatchObject({ description: 'Yarn', purchased: 8, avgPurchaseRate: 100 });
+  });
+  test('a product with opening stock only has no average (0)', () => {
+    const out = computeStocks([], [], [{ description: 'Old Yarn', qty: 7 }]);
+    expect(out.rows[0]).toMatchObject({ opening: 7, avgPurchaseRate: 0 });
+  });
+  test('purchase lines and finished dyeing receipts are weighted together', () => {
+    const out = computeStocks(
+      [purchase({ products: [line('Cotton Red', 10, 100)] })],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [
+        {
+          batchId: 'B-9',
+          status: 'COMPLETED',
+          batchDate: '2026-10-14',
+          input: { description: 'Grey', qty: 10, avgGreyRate: 90 },
+          output: [{ description: 'Cotton Red', qty: 10, unitCost: 130 }],
+        },
+      ],
+    );
+    expect(out.rows.find((r) => r.description === 'Cotton Red').avgPurchaseRate).toBe(115);
+  });
+});
+describe('stock lookup map', () => {
+  const rows = [
+    { description: 'cotton shirt', available: 1, avgPurchaseRate: 10 },
+    { description: 'Cotton Shirt', available: 2, avgPurchaseRate: 20 },
+    { description: 'Yarn 30s', available: 3, avgPurchaseRate: 0 },
+  ];
+  test('a case variant never overwrites the exact key of another row', () => {
+    const map = buildStockMap(rows);
+    expect(lookupStock(map, 'cotton shirt')).toMatchObject({ available: 1, avgPurchaseRate: 10 });
+    expect(lookupStock(map, ' Cotton Shirt ')).toMatchObject({ available: 2, avgPurchaseRate: 20 });
+    // the other order gives the same answer
+    const reversed = buildStockMap([...rows].reverse());
+    expect(lookupStock(reversed, 'cotton shirt')).toMatchObject({ available: 1 });
+    expect(lookupStock(reversed, 'Cotton Shirt')).toMatchObject({ available: 2 });
+  });
+  test('lower-case fallback for other casings; null for unknown / empty descriptions or no map', () => {
+    const map = buildStockMap(rows);
+    expect(lookupStock(map, 'YARN 30S')).toMatchObject({ available: 3 });
+    expect(lookupStock(map, 'Mystery')).toBeNull();
+    expect(lookupStock(map, '  ')).toBeNull();
+    expect(lookupStock(map, undefined)).toBeNull();
+    expect(lookupStock(null, 'Yarn 30s')).toBeNull();
+  });
+  test('getStockQuantityMap builds the map from the stock rows (with the average purchase rate)', async () => {
+    invalidateStocksCache();
+    jest
+      .spyOn(db, 'getAllPurchaseBills')
+      .mockResolvedValue([
+        purchase({ products: [line('cotton shirt', 1, 10), line('Cotton Shirt', 1, 20)] }),
+      ]);
+    jest.spyOn(db, 'getAllInvoices').mockResolvedValue([]);
+    jest.spyOn(db, 'getAllOpeningStocks').mockResolvedValue([]);
+    jest.spyOn(db, 'getAllProductMetadata').mockResolvedValue([]);
+    jest.spyOn(db, 'getAllReturns').mockResolvedValue([]);
+    jest.spyOn(db, 'getAllPurchaseReturns').mockResolvedValue([]);
+    const map = await getStockQuantityMap(true);
+    expect(lookupStock(map, 'cotton shirt').avgPurchaseRate).toBe(10);
+    expect(lookupStock(map, 'Cotton Shirt').avgPurchaseRate).toBe(20);
+    invalidateStocksCache();
   });
 });

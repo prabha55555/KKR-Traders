@@ -3,7 +3,8 @@
  * Pure string builder (no platform APIs) so it is unit-testable and renders in any browser (and in the print dialog).
  */
 import { COMPANY } from '@/core/branding';
-import { formatCurrency, formatDateIN, numberToWords } from '@/core/format';
+import { formatCurrency, formatDateIN, numberToWords, toNum } from '@/core/format';
+import { foldBreakdown, methodLabel, normalizeMethod } from '@/core/paymentMethods';
 const esc = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -67,19 +68,29 @@ const CSS = `
   .manual-bill-img-box { width: 100%; flex: 1; display: flex; justify-content: center; align-items: center; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; }
   .manual-bill-img { max-width: 100%; max-height: 800px; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 `;
-/** One page (ORIGINAL or COPY) of the invoice. */
+/**
+ * One page (ORIGINAL or COPY) of the invoice. `balanceReturns` = the returns settled against the balance (they lower
+ * the due); the rest were refunded in cash / bank and are only listed. Without it every return counts against the
+ * balance.
+ */
 export function invoiceBody(input) {
   const {
     invoice,
     totalReturns = 0,
-    adjustedBalanceDue = 0,
     returns = [],
     payments = [],
     accountBankName = '',
     copyType = 'BOTH',
     logoSrc = '',
   } = input;
-  const pb = invoice.paymentBreakdown;
+  const balanceReturns = input.balanceReturns ?? totalReturns;
+  const refundedReturns = Math.max(0, totalReturns - balanceReturns);
+  const balanceDue = toNum(invoice.balanceDue);
+  const dueShown =
+    balanceReturns > 0 ? toNum(input.adjustedBalanceDue ?? balanceDue - balanceReturns) : balanceDue;
+  const discount = toNum(invoice.discountAmount ?? invoice.discount);
+  // legacy bills may carry a separate UPI amount: it is printed as Account
+  const pb = foldBreakdown(invoice.paymentBreakdown);
   const showReturns = totalReturns > 0 && returns.length > 0;
   const showPayments = payments && payments.length > 0;
   const productRows = invoice.products
@@ -108,12 +119,9 @@ export function invoiceBody(input) {
     .join('');
   const paymentRows = (payments || [])
     .map((p, i) => {
-      const rawMethod = (p.paymentMethod || 'cash').toLowerCase();
       let methodText = 'Cash in Hand';
-      if (rawMethod === 'account') {
+      if (normalizeMethod(p.paymentMethod) === 'account') {
         methodText = p.bankAccountName ? `Account: ${esc(p.bankAccountName)}` : 'Bank Account';
-      } else if (rawMethod === 'upi') {
-        methodText = p.bankAccountName ? `UPI (${esc(p.bankAccountName)})` : 'UPI';
       }
       const typeBadge = p.paymentType === 'additional' ? ' (Additional)' : '';
       return `
@@ -125,9 +133,16 @@ export function invoiceBody(input) {
         </tr>`;
     })
     .join('');
-  const accountLabel = accountBankName ? `Account Paid (${esc(accountBankName)}):` : 'Account Paid:';
-  const legacyMethod =
-    invoice.paymentMethod === 'cash' ? 'CASH' : invoice.paymentMethod === 'upi' ? 'UPI' : 'ACCOUNT';
+  const accountPaidLabel = accountBankName ? `Account Paid (${esc(accountBankName)}):` : 'Account Paid:';
+  const legacyIsCash = normalizeMethod(invoice.paymentMethod) === 'cash';
+  const legacyMethod = methodLabel(invoice.paymentMethod).toUpperCase();
+  let returnNote = '';
+  if (balanceReturns > 0) {
+    returnNote = `This invoice has processed returns amounting to Rs. ${formatCurrency(balanceReturns)}. The balance due has been adjusted accordingly.`;
+  }
+  if (refundedReturns > 0) {
+    returnNote += `${returnNote ? ' ' : ''}Returns of Rs. ${formatCurrency(refundedReturns)} were refunded to the customer.`;
+  }
   return `
   <div class="watermark">${esc(COMPANY.monogram)} ${esc(invoice.invoiceNo)}</div>
   <div class="invoice-container">
@@ -223,7 +238,7 @@ export function invoiceBody(input) {
       <div class="amount-in-words">
         <p><strong>Amount in words:</strong></p>
         <p style="margin-bottom: 12px; font-style: italic;">${numberToWords(invoice.grandTotal)}</p>
-        ${COMPANY.gpay ? `<p style="margin: 0; font-weight: bold; font-size: 13px;">G-pay No : ${esc(COMPANY.gpay)}</p>` : ''}
+        ${COMPANY.paymentNo ? `<p style="margin: 0; font-weight: bold; font-size: 13px;">Payment No : ${esc(COMPANY.paymentNo)}</p>` : ''}
       </div>
       <div class="payment-calculation">
         <h3>PAYMENT SUMMARY</h3>
@@ -234,35 +249,40 @@ export function invoiceBody(input) {
             ? `<div class="payment-row"><span>Opening Balance:</span><span>Rs. ${formatCurrency(invoice.manualPreviousBalance)}</span></div>`
             : ''
         }
+        ${
+          discount
+            ? `<div class="payment-row"><span>Discount:</span><span>-Rs. ${formatCurrency(discount)}</span></div>`
+            : ''
+        }
         <div class="payment-row total"><span>Total Amount:</span><span>Rs. ${formatCurrency(invoice.grandTotal)}</span></div>
         ${
           pb
             ? `
         <div class="payment-row"><span>Cash Paid:</span><span>Rs. ${formatCurrency(pb.cash || 0)}</span></div>
-        <div class="payment-row"><span>UPI Paid:</span><span>Rs. ${formatCurrency(pb.upi || 0)}</span></div>
-        <div class="payment-row"><span>${accountLabel}</span><span>Rs. ${formatCurrency(pb.account || 0)}</span></div>
+        <div class="payment-row"><span>${accountPaidLabel}</span><span>Rs. ${formatCurrency(pb.account || 0)}</span></div>
         <div class="payment-row total-paid"><span>Total Amount Paid:</span><span>Rs. ${formatCurrency(invoice.amountPaid)}</span></div>`
             : `
         <div class="payment-row"><span>Amount Paid:</span><span>Rs. ${formatCurrency(invoice.amountPaid)}</span></div>
-        <div class="payment-row"><span>Payment Method:</span><span style="font-weight: bold; color: ${invoice.paymentMethod === 'cash' ? '#27ae60' : '#3498db'};">${legacyMethod}</span></div>`
+        <div class="payment-row"><span>Payment Method:</span><span style="font-weight: bold; color: ${legacyIsCash ? '#27ae60' : '#3498db'};">${legacyMethod}</span></div>`
         }
         ${
-          totalReturns > 0
-            ? `<div class="payment-row"><span>Return Amount:</span><span class="amount-return">-Rs. ${formatCurrency(totalReturns)}</span></div>`
+          balanceReturns > 0
+            ? `<div class="payment-row"><span>Return Amount:</span><span class="amount-return">-Rs. ${formatCurrency(balanceReturns)}</span></div>`
+            : ''
+        }
+        ${
+          refundedReturns > 0
+            ? `<div class="payment-row"><span>Returns (refunded):</span><span>Rs. ${formatCurrency(refundedReturns)}</span></div>`
             : ''
         }
         <div class="payment-row" style="font-weight: bold; color: #111;">
-          <span>${totalReturns > 0 ? 'Adjusted Balance Due:' : 'Balance Due:'}</span>
-          <span class="${adjustedBalanceDue > 0 ? 'amount-negative' : 'amount-positive'}">Rs. ${formatCurrency(totalReturns > 0 ? adjustedBalanceDue : invoice.balanceDue)}</span>
+          <span>${balanceReturns > 0 ? 'Adjusted Balance Due:' : 'Balance Due:'}</span>
+          <span class="${dueShown > 0 ? 'amount-negative' : 'amount-positive'}">Rs. ${formatCurrency(dueShown)}</span>
         </div>
       </div>
     </div>
 
-    ${
-      totalReturns > 0
-        ? `<div class="return-box"><strong>RETURN INFORMATION:</strong> This invoice has processed returns amounting to Rs. ${formatCurrency(totalReturns)}. The balance due has been adjusted accordingly.</div>`
-        : ''
-    }
+    ${returnNote ? `<div class="return-box"><strong>RETURN INFORMATION:</strong> ${returnNote}</div>` : ''}
 
     <div class="signature-section">
       <div class="declaration">

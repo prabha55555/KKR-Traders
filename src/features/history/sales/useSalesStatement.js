@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFeedback } from '@/ui';
+import { statementState } from '../lib/statement';
 import { isUserError } from '../lib/types';
 import {
   exportCombinedStatement,
@@ -14,6 +15,8 @@ export function useSalesStatement() {
   const [state, setState] = useState({ status: 'idle' });
   const [busy, setBusy] = useState(null);
   const lastQuery = useRef('');
+  /** the ledger party on screen (picked or the only match): a refresh rebuilds exactly that party's statement */
+  const lastParty = useRef(null);
   const generate = useCallback(async () => {
     const customerName = query.trim();
     if (!customerName) {
@@ -21,19 +24,37 @@ export function useSalesStatement() {
       return;
     }
     lastQuery.current = customerName;
+    lastParty.current = null;
     setState({ status: 'loading' });
     try {
-      const statement = await loadCustomerStatement(customerName);
-      setState(statement ? { status: 'ready', statement } : { status: 'empty', query: customerName });
+      const result = await loadCustomerStatement(customerName);
+      lastParty.current = result?.partyKey ?? null;
+      setState(statementState(result, customerName));
     } catch (error) {
       console.error('Error searching customer invoices:', error);
       setState({ status: 'error' });
       toast('Error', 'Error searching customer invoices.', 'error');
     }
   }, [query, toast]);
+  /** One of several matching parties was picked. */
+  const choose = useCallback(
+    async (partyKey) => {
+      lastParty.current = partyKey;
+      setState({ status: 'loading' });
+      try {
+        setState(statementState(await loadCustomerStatement(lastQuery.current, partyKey), lastQuery.current));
+      } catch (error) {
+        console.error('Error loading customer statement:', error);
+        setState({ status: 'error' });
+        toast('Error', 'Error searching customer invoices.', 'error');
+      }
+    },
+    [toast],
+  );
   const clear = useCallback(() => {
     setQuery('');
     lastQuery.current = '';
+    lastParty.current = null;
     setState({ status: 'idle' });
   }, []);
   /** After a payment / return changed the numbers: silently rebuild the statement that is on screen. */
@@ -41,8 +62,8 @@ export function useSalesStatement() {
     const customerName = lastQuery.current;
     if (!customerName) return;
     try {
-      const statement = await loadCustomerStatement(customerName);
-      setState(statement ? { status: 'ready', statement } : { status: 'empty', query: customerName });
+      const result = await loadCustomerStatement(customerName, lastParty.current ?? undefined);
+      setState(statementState(result, customerName));
     } catch (error) {
       console.error('Error refreshing customer statement:', error);
     }
@@ -93,6 +114,7 @@ export function useSalesStatement() {
     state,
     busy,
     generate,
+    choose,
     clear,
     refresh,
     downloadPdf,

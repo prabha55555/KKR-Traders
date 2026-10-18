@@ -1,11 +1,14 @@
 /**
  * Available stock + financial summary (port of `loadStocks` / the search handler in js/stocks.js).
  *
- * available = opening stock + purchased qty - sold qty. Sales RETURNS and purchase returns are NOT part of it (the web
- * page never loaded them). Products are matched by their TRIMMED description, case-sensitively — "Cotton" and "COTTON"
- * are two stock rows, unlike the revenue page which upper-cases.
+ * available = opening stock + purchased qty - sold qty, where purchase returns lower `purchased`, sales returns lower
+ * `sold`, fabric issued to dyeing / combing counts as sold and their finished receipts as purchased. Products are matched by their TRIMMED description,
+ * case-sensitively — "Cotton" and "COTTON" are two stock rows, unlike the revenue page which upper-cases.
+ * avgPurchaseRate = weighted average rate of the positive purchase entries (purchase-bill lines + dyeing / combing
+ * receipts at their unit cost); purchase returns and opening stock (no price) are left out.
  */
 import { formatDateIN, toNum } from '@/core/format';
+import { PURCHASE_LEDGER, SALES_LEDGER, billAmount } from '@/core/ledger';
 const round3 = (n) => Math.round(n * 1000) / 1000;
 const round2 = (n) => Number(n.toFixed(2));
 const newAccumulator = (opening = 0) => ({
@@ -64,7 +67,8 @@ export function computeStocks(
   let cashReceived = 0;
   let totalPurchases = 0;
   purchaseBills.forEach((bill) => {
-    totalPurchases += toNum(bill.grandTotal);
+    // the bill's own amount: grandTotal also carries the supplier's previous balance, which would be counted again
+    totalPurchases += billAmount(bill, PURCHASE_LEDGER);
     if (!bill.products || !Array.isArray(bill.products)) return;
     bill.products.forEach((product) => {
       if (!product.description) return;
@@ -105,7 +109,8 @@ export function computeStocks(
   }
 
   salesInvoices.forEach((invoice) => {
-    totalSales += toNum(invoice.grandTotal);
+    // the invoice's own amount: grandTotal also carries the customer's previous balance, which would be counted again
+    totalSales += billAmount(invoice, SALES_LEDGER);
     cashReceived += toNum(invoice.amountPaid);
     if (!invoice.products || !Array.isArray(invoice.products)) return;
     invoice.products.forEach((product) => {
@@ -274,6 +279,37 @@ export function computeStocks(
     rows,
     summary: { totalSales, totalPurchases, cashReceived, netProfitLoss: totalSales - totalPurchases },
   };
+}
+/**
+ * Lookup Map for the bill screens (Sales / Purchase Bill, dyeing / combing pickers): each row under its trimmed
+ * description, plus a lower-case fallback key that never replaces another row's exact key (when two rows differ only
+ * by case, the exact casing always finds its own row; the lower-case key goes to the first row that claims it).
+ */
+export function buildStockMap(rows) {
+  const map = new Map();
+  (rows || []).forEach((r) => {
+    const key = (r.description || '').trim();
+    if (!key) return;
+    map.set(key, {
+      available: r.available,
+      minStockLevel: r.minStockLevel || 0,
+      avgPurchaseRate: r.avgPurchaseRate || 0,
+      purchased: r.purchased || 0,
+      purchaseHistory: r.purchaseHistory || [],
+    });
+  });
+  // fallbacks after every exact key is in, so a fallback can never shadow a real description
+  Array.from(map.entries()).forEach(([key, info]) => {
+    const lower = key.toLowerCase();
+    if (!map.has(lower)) map.set(lower, info);
+  });
+  return map;
+}
+/** The stock-map entry of a description: exact (trimmed) key first, then the lower-case fallback; null if unknown. */
+export function lookupStock(stockMap, description) {
+  const key = String(description ?? '').trim();
+  if (!key || !stockMap) return null;
+  return stockMap.get(key) ?? stockMap.get(key.toLowerCase()) ?? null;
 }
 /** Case-insensitive substring of the description. (The web page did not trim the term; trailing spaces from keyboards are ignored here.) */
 export function filterStocks(rows, term) {

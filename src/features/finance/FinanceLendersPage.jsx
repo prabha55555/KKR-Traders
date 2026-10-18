@@ -23,7 +23,6 @@ import ShowMore from '../overview/components/ShowMore';
 import FloatingAddButton from '../overview/components/FloatingAddButton';
 import { usePagedRows } from '../overview/components/paging';
 import { updateLenderWithReferences } from './financeLogic';
-import FinanceNavTabs from './FinanceNavTabs';
 
 export default function FinanceLendersPage() {
   const { toast, confirm } = useFeedback();
@@ -226,7 +225,6 @@ export default function FinanceLendersPage() {
         </>
       }
     >
-      <FinanceNavTabs />
       <FilterBar
         text={searchTerm}
         onTextChange={setSearchTerm}

@@ -8,6 +8,7 @@ import {
 import { filterByDate, getDateWiseStatistics, groupInvoicesByDate } from '@/features/history/lib/grouping';
 import { indexByInvoiceNo, latestInvoiceNoPerParty, sumReturnAmounts } from '@/features/history/lib/lookups';
 import { EMPTY_FILTERS } from '@/features/history/lib/types';
+import { SALES_LEDGER } from '@/core/ledger';
 const row = (invoiceNo, invoiceDate, partyName = 'SLN TEX') => ({ invoiceNo, invoiceDate, partyName });
 const party = (r) => r.partyName;
 const f = (over) => ({ ...EMPTY_FILTERS, ...over });
@@ -173,19 +174,40 @@ describe('lookups', () => {
       sumReturnAmounts([{ returnAmount: 10.5 }, { returnAmount: '4.5' }, { returnAmount: 'oops' }]),
     ).toBe(15);
   });
+  // parties are the ledger's (phone first, names case-insensitive); "latest" = last bill in ledger order
+  const bill = (invoiceNo, invoiceDate, customerName, customerPhone = '') => ({
+    invoiceNo,
+    invoiceDate,
+    customerName,
+    customerPhone,
+  });
   test('latest invoice per party: newest date, then highest number — over ALL invoices', () => {
-    const latest = latestInvoiceNoPerParty(ROWS, party);
-    expect(latest.get('SLN TEX')).toBe('003');
-    expect(latest.get('Ravi Garments')).toBe('002');
-    expect(latest.get('ravi garments')).toBe('011');
-    expect(latest.get('Kumar & Sons')).toBe('010');
+    const latest = latestInvoiceNoPerParty(SALES_LEDGER, [
+      bill('001', '2026-09-01', 'SLN TEX'),
+      bill('002', '2026-09-01', 'Ravi Garments'),
+      bill('003', '2026-09-15', 'SLN TEX'),
+      bill('010', '2026-10-03', 'Kumar & Sons'),
+      bill('011', '2026-10-03', 'ravi garments'),
+    ]);
+    // 'Ravi Garments' and 'ravi garments' are one ledger party: only its newest bill (#011) is the latest
+    expect([...latest].sort()).toEqual(['003', '010', '011']);
   });
   test('same date: the higher invoice number is the latest', () => {
-    const latest = latestInvoiceNoPerParty(
-      [row('005', '2026-05-01'), row('007', '2026-05-01'), row('006', '2026-05-01')],
-      party,
-    );
-    expect(latest.get('SLN TEX')).toBe('007');
+    const latest = latestInvoiceNoPerParty(SALES_LEDGER, [
+      bill('005', '2026-05-01', 'SLN TEX'),
+      bill('007', '2026-05-01', 'SLN TEX'),
+      bill('006', '2026-05-01', 'SLN TEX'),
+    ]);
+    expect([...latest]).toEqual(['007']);
+  });
+  test('same name, different phones = two parties, each with its own latest bill; numbers restart yearly', () => {
+    const latest = latestInvoiceNoPerParty(SALES_LEDGER, [
+      bill('250', '2026-03-30', 'Ravi', '9000000001'),
+      bill('1', '2026-04-02', 'Ravi', '9000000001'),
+      bill('2', '2026-04-03', 'Ravi', '9000000002'),
+    ]);
+    // ledger order is by date first, so #1 of the new financial year is newer than #250
+    expect([...latest].sort()).toEqual(['1', '2']);
   });
 });
 describe('time helpers', () => {

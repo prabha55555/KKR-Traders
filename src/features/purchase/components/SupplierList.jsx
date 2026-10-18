@@ -22,9 +22,7 @@ export const SUPPLIER_COLUMNS = [
   },
   { key: 'phone', header: 'Phone', render: (s) => <RevealablePhone phone={s.phone} /> },
   { key: 'address', header: 'Address', className: 'max-w-xs text-slate-600', value: (s) => s.address || '—' },
-  num('openingBalance', 'Opening Balance', (s) =>
-    formatRupees(s.firstBillPreviousBalance + s.totalManualAdjustments),
-  ),
+  num('openingBalance', 'Opening Balance', (s) => formatRupees(s.openingBalance)),
   {
     key: 'bills',
     header: 'Bills',
@@ -62,12 +60,12 @@ export function SupplierList({ suppliers, empty }) {
   if (suppliers.length === 0)
     return <div className="rounded-2xl border border-line bg-white shadow-card">{empty}</div>;
   if (isExpanded) {
-    return <DataTable columns={SUPPLIER_COLUMNS} rows={suppliers} rowKey={(s) => s.name} dense />;
+    return <DataTable columns={SUPPLIER_COLUMNS} rows={suppliers} rowKey={(s) => s.key} dense />;
   }
   return (
     <div className="grid gap-3.5 sm:grid-cols-2">
       {suppliers.map((s, i) => (
-        <div key={s.name} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+        <div key={s.key} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
           <SupplierSummaryCard supplier={s} />
         </div>
       ))}

@@ -1,5 +1,5 @@
 /**
- * AddPaymentSheet – "Add Payment - Invoice #x": cash / UPI / account split + payment date (addPayment dialog).
+ * AddPaymentSheet – "Add Payment - Invoice #x": Cash / Account split + payment date (addPayment dialog).
  * Validation and save errors are shown inside the sheet.
  *
  * Props:
@@ -7,18 +7,20 @@
  *   title?                 default `Add Payment - Invoice #<no>`
  *   invalidAmountMessage?  shown when no amount was entered (default: the sales wording)
  *   mode?                  'sales' | 'purchase' (default: 'sales')
- *   onSubmit({ cash, upi, account, bankAccountId, paymentDate }) => Promise<string | null>
- *                          string = inline error, null = saved (the caller closes the sheet)
+ *   onSubmit({ cash, account, bankAccountId, paymentDate }) => Promise<string | null>
+ *                          string = inline error, null = saved (the caller closes the sheet);
+ *                          bankAccountId is set only when there is an Account amount
  */
-import { AlertTriangle, Banknote, Check, Landmark, Smartphone } from 'lucide-react';
+import { AlertTriangle, Banknote, Check, Landmark } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { accountLabel } from '@/core/accountLabel';
 import { formatCurrency, todayISO } from '@/core/format';
 import { Button, DateField, NumberField, SelectField } from '@/ui';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 import { parsePaymentAmounts, totalOf, validatePaymentInput } from '../lib/payments';
 import { HistorySheet } from './HistorySheet';
 
-const EMPTY = { cash: '0', upi: '0', account: '0', bankAccountId: '' };
+const EMPTY = { cash: '0', account: '0', bankAccountId: '' };
 
 export function AddPaymentSheet({
   open,
@@ -52,16 +54,14 @@ export function AddPaymentSheet({
   const cashBalance = liveBalances?.cashBalance ?? 0;
 
   const amounts = parsePaymentAmounts(values);
-  const cashAmount = parseFloat(values.cash) || 0;
-  const upiAmount = parseFloat(values.upi) || 0;
-  const accountAmount = parseFloat(values.account) || 0;
-  const bankAmount = upiAmount + accountAmount;
+  const cashAmount = amounts.cash;
+  const accountAmount = amounts.account;
 
   const selectedBankId = values.bankAccountId || bankAccounts[0]?.id || '';
   const selectedBank = bankAccounts.find((b) => b.id === selectedBankId);
 
   const isCashOverdraft = mode === 'purchase' && cashAmount > cashBalance;
-  const isBankOverdraft = mode === 'purchase' && selectedBank && bankAmount > selectedBank.currentBalance;
+  const isBankOverdraft = mode === 'purchase' && selectedBank && accountAmount > selectedBank.currentBalance;
 
   const set = (key) => (v) => setValues((cur) => ({ ...cur, [key]: v }));
 
@@ -75,7 +75,7 @@ export function AddPaymentSheet({
     setError(null);
     setBusy(true);
     try {
-      const finalBankId = selectedBankId || null;
+      const finalBankId = accountAmount > 0 ? selectedBankId || null : null;
       const failure = await onSubmit({ ...amounts, bankAccountId: finalBankId, paymentDate });
       if (failure) setError(failure);
     } finally {
@@ -125,7 +125,7 @@ export function AddPaymentSheet({
           </div>
         ) : null}
 
-        <div className="grid grid-cols-3 gap-3 rounded-2xl border border-line bg-slate-50/70 p-3">
+        <div className="grid grid-cols-2 gap-3 rounded-2xl border border-line bg-slate-50/70 p-3">
           <NumberField
             label={
               <span className="flex items-center gap-1 text-xs font-semibold">
@@ -139,16 +139,6 @@ export function AddPaymentSheet({
           <NumberField
             label={
               <span className="flex items-center gap-1 text-xs font-semibold">
-                <Smartphone className="size-3.5 text-sky-600" aria-hidden /> UPI
-              </span>
-            }
-            aria-label="UPI amount"
-            value={values.upi}
-            onChange={set('upi')}
-          />
-          <NumberField
-            label={
-              <span className="flex items-center gap-1 text-xs font-semibold">
                 <Landmark className="size-3.5 text-violet-600" aria-hidden /> ACCOUNT
               </span>
             }
@@ -156,7 +146,7 @@ export function AddPaymentSheet({
             value={values.account}
             onChange={set('account')}
           />
-          <div className="col-span-3 flex items-center justify-between rounded-xl border border-gold-200 bg-gold-50/70 px-3.5 py-2.5 text-sm font-bold">
+          <div className="col-span-2 flex items-center justify-between rounded-xl border border-gold-200 bg-gold-50/70 px-3.5 py-2.5 text-sm font-bold">
             <span className="text-slate-700">Total:</span>
             <span
               className="font-display text-lg font-extrabold text-brand-800 tabular-nums"
@@ -197,20 +187,16 @@ export function AddPaymentSheet({
           </div>
         )}
 
-        {/* Bank Account Selection for UPI / Account */}
-        {(upiAmount > 0 || accountAmount > 0) && bankAccounts.length > 0 && (
+        {/* Bank Account Selection for the Account amount */}
+        {accountAmount > 0 && bankAccounts.length > 0 && (
           <div className="space-y-1.5 rounded-xl border border-line bg-brand-50/50 p-2.5">
             <SelectField
-              label={
-                mode === 'purchase'
-                  ? 'Deduct payment from Bank Account'
-                  : 'Deposit received payment to Bank Account'
-              }
+              label={mode === 'purchase' ? 'Pay from Account' : 'Deposit received payment to Account'}
               value={selectedBankId}
               onChange={(bankAccountId) => setValues((cur) => ({ ...cur, bankAccountId }))}
               options={bankAccounts.map((a) => ({
                 value: a.id,
-                label: `${a.accountName} (${a.bankName || a.accountType}) • Balance: ₹${formatCurrency(a.currentBalance)}`,
+                label: `${accountLabel(a)} • Balance: ₹${formatCurrency(a.currentBalance)}`,
               }))}
             />
             {selectedBank && (
@@ -225,7 +211,7 @@ export function AddPaymentSheet({
               <div className="flex items-center gap-1.5 pt-1 text-[11px] font-semibold text-amber-700">
                 <AlertTriangle className="size-3.5 shrink-0" />
                 <span>
-                  Bank payment (₹{formatCurrency(bankAmount)}) exceeds available balance (₹
+                  Account payment (₹{formatCurrency(accountAmount)}) exceeds available balance (₹
                   {formatCurrency(selectedBank.currentBalance)}).
                 </span>
               </div>

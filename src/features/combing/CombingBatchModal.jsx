@@ -18,17 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { ProductDescriptionInput } from '@/components/bill';
 import { formatCurrency, todayISO } from '@/core/format';
-import {
-  Badge,
-  Button,
-  Card,
-  DateField,
-  Modal,
-  NumberField,
-  TextField,
-  cn,
-  useFeedback,
-} from '@/ui';
+import { Badge, Button, Card, DateField, Modal, NumberField, TextField, cn, useFeedback } from '@/ui';
 
 import {
   COMBING_STATUS,
@@ -212,7 +202,7 @@ export function CombingBatchModal({
             {initialBatch ? `Edit Combing Batch #${form.batchId}` : 'New Combing & Processing Batch'}
           </span>
           <Badge
-            variant={form.status === COMBING_STATUS.COMPLETED ? 'success' : 'warning'}
+            tone={form.status === COMBING_STATUS.COMPLETED ? 'success' : 'warning'}
             className="ml-2 font-mono text-xs"
           >
             {form.status === COMBING_STATUS.COMPLETED ? 'Completed' : 'In Process'}
@@ -220,16 +210,16 @@ export function CombingBatchModal({
         </div>
       }
       footer={
-        <div className="flex flex-col gap-3 w-full sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:border-0 sm:bg-transparent sm:p-0">
             {totals.totalBatchCost > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-slate-500 font-medium">Estimated Batch Value:</span>
+                <span className="font-medium text-slate-500">Estimated Batch Value:</span>
                 <strong className="font-mono text-base font-extrabold text-indigo-900">
                   {rupees(totals.totalBatchCost)}
                 </strong>
                 <span className="text-slate-400">|</span>
-                <span className="text-slate-500 font-medium">Cost / Unit:</span>
+                <span className="font-medium text-slate-500">Cost / Unit:</span>
                 <strong className="font-mono text-sm font-bold text-slate-800">
                   {rupees(totals.costPerUnitBeforeLoss)}
                 </strong>
@@ -246,7 +236,7 @@ export function CombingBatchModal({
               variant="ghost"
               onClick={onClose}
               disabled={saving}
-              className="justify-center text-slate-600 hover:text-slate-900 py-2 sm:py-1.5"
+              className="justify-center py-2 text-slate-600 hover:text-slate-900 sm:py-1.5"
             >
               Cancel
             </Button>
@@ -255,7 +245,7 @@ export function CombingBatchModal({
               icon={Save}
               loading={saving}
               onClick={handleSave}
-              className="justify-center text-xs sm:text-sm py-2 sm:py-1.5 px-5 font-semibold"
+              className="justify-center px-5 py-2 text-xs font-semibold sm:py-1.5 sm:text-sm"
             >
               Save Batch
             </Button>
@@ -263,9 +253,9 @@ export function CombingBatchModal({
         </div>
       }
     >
-      <div className="space-y-6 max-h-[75vh] overflow-y-auto px-1 pr-2">
+      <div className="max-h-[75vh] space-y-6 overflow-y-auto px-1 pr-2">
         {/* Top: Batch Basic Info */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
           <TextField
             label="Batch Number *"
             value={form.batchId}
@@ -292,7 +282,7 @@ export function CombingBatchModal({
         />
 
         {/* Section 1: Raw Material Issued (Dyed Fabric from stock) */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-4">
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <div className="flex items-center gap-2">
               <Package className="size-4 text-brand-600" />
@@ -333,7 +323,7 @@ export function CombingBatchModal({
               <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 transition">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="size-4 text-amber-600 shrink-0" />
+                    <Sparkles className="size-4 shrink-0 text-amber-600" />
                     <div>
                       <span className="font-semibold text-slate-700">Calculated Average Fabric Cost: </span>
                       <strong className="font-mono text-sm font-extrabold text-amber-950">
@@ -353,7 +343,7 @@ export function CombingBatchModal({
                     <button
                       type="button"
                       onClick={() => setShowHistoryBreakdown((prev) => !prev)}
-                      className="inline-flex items-center gap-1 font-semibold text-brand-700 hover:text-brand-900 underline text-xs"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 underline hover:text-brand-900"
                     >
                       <span>{showHistoryBreakdown ? 'Hide Source Details' : 'View Source History'}</span>
                       {showHistoryBreakdown ? (
@@ -378,11 +368,11 @@ export function CombingBatchModal({
                           <th className="p-2 text-right">Total Cost</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
+                      <tbody className="divide-y divide-slate-100 font-mono text-slate-700">
                         {fabricRateDetails.history.map((h, idx) => (
                           <tr key={idx} className="hover:bg-amber-50/40">
                             <td className="p-2 font-sans font-medium text-slate-900">{h.sourceName}</td>
-                            <td className="p-2 text-slate-500 text-[11px]">{h.date || '—'}</td>
+                            <td className="p-2 text-[11px] text-slate-500">{h.date || '—'}</td>
                             <td className="p-2 text-right">{h.qty}</td>
                             <td className="p-2 text-right">{rupees(h.rate)}</td>
                             <td className="p-2 text-right font-semibold">{rupees(h.amount)}</td>
@@ -408,7 +398,7 @@ export function CombingBatchModal({
             )}
 
             {/* Quantity, Rate and Combing Cost */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <NumberField
                 label="Fabric Quantity Dispatched *"
                 value={form.input.qty}
@@ -435,22 +425,22 @@ export function CombingBatchModal({
             </div>
 
             {/* Financial Summary Strip */}
-            <div className="rounded-lg bg-slate-50 p-3 text-xs border border-slate-200">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center sm:text-left">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+              <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3 sm:text-left">
                 <div>
-                  <span className="text-slate-500 block">Total Fabric Value</span>
+                  <span className="block text-slate-500">Total Fabric Value</span>
                   <span className="font-mono text-sm font-bold text-slate-800">
                     {rupees(totals.totalFabricCost)}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Total Combing Charges</span>
+                  <span className="block text-slate-500">Total Combing Charges</span>
                   <span className="font-mono text-sm font-bold text-indigo-700">
                     {rupees(totals.totalProcessingCost)}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Combined Total Cost</span>
+                  <span className="block text-slate-500">Combined Total Cost</span>
                   <span className="font-mono text-sm font-extrabold text-emerald-800">
                     {rupees(totals.totalBatchCost)}
                   </span>
@@ -461,7 +451,7 @@ export function CombingBatchModal({
         </div>
 
         {/* Section 2: Expected Output Specification */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-4">
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <div className="flex items-center gap-2">
               <TrendingUp className="size-4 text-emerald-600" />
@@ -491,7 +481,7 @@ export function CombingBatchModal({
                   <button
                     type="button"
                     onClick={() => removeOutputRow(idx)}
-                    className="rounded-lg p-2.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition mb-0.5"
+                    className="mb-0.5 rounded-lg p-2.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
                     title="Remove product"
                   >
                     <Trash2 className="size-4" />
@@ -513,13 +503,13 @@ export function CombingBatchModal({
             </div>
 
             {/* Note regarding weight loss */}
-            <div className="rounded-lg bg-indigo-50/60 p-3 text-xs text-indigo-900 border border-indigo-100 flex items-start gap-2">
-              <Info className="size-4 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-xs text-indigo-900">
+              <Info className="mt-0.5 size-4 shrink-0 text-indigo-600" />
               <span>
-                <strong>Note on Weight Loss:</strong> Weight loss cannot be predicted at dispatch. When the fabric
-                returns from the combing mill, click the <strong>Complete</strong> button on the batch card to record
-                the actual weight loss % or finished quantity received. True manufactured cost will be calculated
-                automatically and updated to stock.
+                <strong>Note on Weight Loss:</strong> Weight loss cannot be predicted at dispatch. When the
+                fabric returns from the combing mill, click the <strong>Complete</strong> button on the batch
+                card to record the actual weight loss % or finished quantity received. True manufactured cost
+                will be calculated automatically and updated to stock.
               </span>
             </div>
           </div>

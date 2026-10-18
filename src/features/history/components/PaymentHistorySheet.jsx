@@ -9,38 +9,25 @@
  *   onUndoAll()         undo all payments (the caller confirms)
  *   onAddPayment?()     "Add Payment" footer button – only pass it when the invoice may take another payment
  */
-import { Banknote, Landmark, Plus, Smartphone, Undo2 } from 'lucide-react';
+import { Banknote, Landmark, Plus, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { CASH_LABEL, accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
+import { normalizeMethod } from '@/core/paymentMethods';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { Button, EmptyState } from '@/ui';
 import { sumPaymentAmounts } from '../lib/lookups';
 import { sortPaymentsByDate } from '../lib/payments';
 import { HistorySheet } from './HistorySheet';
 
+/** Cash, or Account with its bank (legacy UPI / bank payments are Account; no stored bank = the first account). */
 function PaymentMethodBadge({ payment, bankMap, defaultBank }) {
-  const rawMethod = payment.paymentMethod?.toLowerCase() || 'cash';
-  const bank = payment.bankAccountId ? bankMap.get(payment.bankAccountId) : null;
-  const activeBank = bank || (rawMethod === 'account' ? defaultBank : null);
-
-  if (rawMethod === 'account') {
-    const accName = activeBank ? activeBank.accountName : 'Bank Account';
-    const bankDesc = activeBank?.bankName || activeBank?.accountType || '';
+  if (normalizeMethod(payment.paymentMethod) === 'account') {
+    const bank = (payment.bankAccountId ? bankMap.get(payment.bankAccountId) : null) || defaultBank;
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 ring-1 ring-blue-200">
         <Landmark className="size-3.5 text-blue-600" />
-        <span>Account: {accName}</span>
-        {bankDesc && <span className="font-medium text-blue-600/80">({bankDesc})</span>}
-      </span>
-    );
-  }
-
-  if (rawMethod === 'upi') {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-lg bg-purple-50 px-2.5 py-1 text-xs font-bold text-purple-800 ring-1 ring-purple-200">
-        <Smartphone className="size-3.5 text-purple-600" />
-        <span>UPI</span>
-        {activeBank && <span className="font-medium text-purple-600/80">({activeBank.accountName})</span>}
+        <span>Account: {accountLabel(bank)}</span>
       </span>
     );
   }
@@ -48,7 +35,7 @@ function PaymentMethodBadge({ payment, bankMap, defaultBank }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 ring-1 ring-emerald-200">
       <Banknote className="size-3.5 text-emerald-600" />
-      <span>Cash in Hand</span>
+      <span>{CASH_LABEL}</span>
     </span>
   );
 }

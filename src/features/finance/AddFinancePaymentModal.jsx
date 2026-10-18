@@ -1,5 +1,6 @@
 import { AlertTriangle, Banknote, Building2, Save } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
+import { accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { Button, Modal, NumberField, DateField, SelectField, useFeedback } from '@/ui';
 import { formatCurrency, todayISO } from '@/core/format';
@@ -61,6 +62,10 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.amount || parseFloat(form.amount) <= 0) return;
+    if (!isCash && !(form.sourceAccount || bankAccounts[0]?.id)) {
+      toast('No Bank Account', 'Add a bank account in Bank & Cash Balances, or pay in Cash.', 'error');
+      return;
+    }
 
     const isDuplicate = record.payments?.some(
       (p) => p.date === form.date && parseFloat(p.amount) === parseFloat(form.amount),
@@ -97,32 +102,13 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
     }
   };
 
+  // Cash or Account only (older payments stored as 'UPI' are shown as Account)
   const paymentModeOptions = [
-    {
-      value: 'Cash',
-      label: `Cash • Drawer: ₹${formatCurrency(cashBalance)}`,
-    },
-    {
-      value: 'UPI',
-      label: 'UPI (Bank Account)',
-    },
-    {
-      value: 'Account',
-      label: 'Account Transfer (Bank)',
-    },
+    { value: 'Cash', label: 'Cash' },
+    { value: 'Account', label: 'Account' },
   ];
 
-  const bankAccountOptions = bankAccounts.map((a) => ({
-    value: a.id,
-    label: `${a.accountName} (${a.bankName || a.accountType}) • Balance: ₹${formatCurrency(a.currentBalance)}`,
-  }));
-
-  const cashOption = [
-    {
-      value: 'cash',
-      label: `Cash in Hand (Physical Cash) • Available: ₹${formatCurrency(cashBalance)}`,
-    },
-  ];
+  const bankAccountOptions = bankAccounts.map((a) => ({ value: a.id, label: accountLabel(a) }));
 
   return (
     <Modal
@@ -221,18 +207,10 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
           options={paymentModeOptions}
         />
 
-        {isCash ? (
-          <SelectField
-            label="Deduct / Pay From"
-            value="cash"
-            onChange={() => {}}
-            disabled
-            options={cashOption}
-          />
-        ) : (
+        {!isCash && (
           <div className="space-y-1">
             <SelectField
-              label="Deduct from Bank Account"
+              label="Pay From Bank Account"
               value={form.sourceAccount}
               onChange={(v) => setForm((f) => ({ ...f, sourceAccount: v }))}
               options={bankAccountOptions}
@@ -269,7 +247,7 @@ export default function AddFinancePaymentModal({ record, onClose, onSave }) {
               ) : (
                 <>
                   <Building2 className="size-4 text-brand-700" />
-                  <span>Available in {selectedBank?.accountName || 'Bank Account'}:</span>
+                  <span>Available in {selectedBank ? accountLabel(selectedBank) : 'Bank Account'}:</span>
                 </>
               )}
             </span>

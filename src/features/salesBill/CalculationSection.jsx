@@ -3,7 +3,7 @@
  * payment methods, total paid and the new balance due. Rendered by the shared BillTotalsPanel.
  *
  * Props
- *  - form: the sales form (previousBalance, manualPreviousBalance, discountAmount, cash, upi, account,
+ *  - form: the sales form (previousBalance, manualPreviousBalance, discountAmount, cash, account, bankAccountId,
  *          additionalPaymentsTotal)
  *  - totals: result of salesFormTotals(form)  { subtotal, grandTotal, totalPaid, balanceDue }
  *  - onChange(patch)            merged into the form

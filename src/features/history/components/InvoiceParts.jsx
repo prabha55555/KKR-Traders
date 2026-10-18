@@ -2,6 +2,8 @@
  * Building blocks shared by the invoice card and the invoice detail sheet.
  *
  * InvoiceSummaryBox({ invoice })                       – bill, previous balance, discount, total, paid split, returns, balance.
+ *                                                        Only returns settled against the balance lower the due; refunded
+ *                                                        returns are listed ("Returns (refunded)") without changing it.
  * InvoiceProducts({ invoice })                         – Product / Qty / Rate list ("View Details").
  * InvoiceHistoryLinks({ invoice, onViewPayments, onViewReturns })
  *                                                      – "Payment History (₹x)" / "Return History (₹x)" rows.
@@ -27,16 +29,16 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { formatCurrency } from '@/core/format';
+import { methodLabel } from '@/core/paymentMethods';
 import { Badge, Button, cn } from '@/ui';
 import { additionalPaymentsLabel, splitPayments } from '../lib/payments';
+import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from '../lib/statement';
 
 const rs = (amount) => `₹${formatCurrency(amount)}`;
 
-const dueOf = (invoice) => (invoice.totalReturns > 0 ? invoice.adjustedBalanceDue : invoice.balanceDue);
-
 /** Paid / Part paid / Unpaid – purely a visual reading of the invoice figures. */
 export function InvoiceStatusBadge({ invoice, className }) {
-  const due = Number(dueOf(invoice)) || 0;
+  const due = invoiceDue(invoice);
   if (due <= 0) {
     return (
       <Badge tone="success" className={className}>
@@ -120,9 +122,9 @@ export function InvoiceSummaryBox({ invoice }) {
   const { payments } = invoice;
   const split = useMemo(() => splitPayments(payments), [payments]);
   const additional = additionalPaymentsLabel(split.additional);
-  const hasReturns = invoice.totalReturns > 0;
-  const due = hasReturns ? invoice.adjustedBalanceDue : invoice.balanceDue;
-  const settled = (Number(due) || 0) <= 0;
+  const adjusted = balanceReturnsOf(invoice);
+  const refunded = refundedReturnsOf(invoice);
+  const due = invoiceDue(invoice);
 
   return (
     <div className="my-3 overflow-hidden rounded-xl border border-line bg-slate-50/70">
@@ -164,15 +166,18 @@ export function InvoiceSummaryBox({ invoice }) {
               {rs(invoice.amountPaid)}
               {invoice.legacyPaymentMethod && payments.length === 0 ? (
                 <span className="rounded-md bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                  {invoice.legacyPaymentMethod.toUpperCase()}
+                  {methodLabel(invoice.legacyPaymentMethod).toUpperCase()}
                 </span>
               ) : null}
             </span>
           </div>
         </div>
 
-        {hasReturns ? (
-          <Line label="Return Amount:" value={`-${rs(invoice.totalReturns)}`} valueClassName="text-red-600" />
+        {adjusted > 0 ? (
+          <Line label="Return Amount:" value={`-${rs(adjusted)}`} valueClassName="text-red-600" />
+        ) : null}
+        {refunded > 0 ? (
+          <Line label="Returns (refunded):" value={rs(refunded)} valueClassName="text-amber-700" />
         ) : null}
       </div>
       <div
@@ -181,7 +186,7 @@ export function InvoiceSummaryBox({ invoice }) {
           'border-red-200 bg-red-50 text-red-600',
         )}
       >
-        <span className="text-sm">{hasReturns ? 'Current Adjusted Balance Due:' : 'Balance Due:'}</span>
+        <span className="text-sm">{adjusted > 0 ? 'Current Adjusted Balance Due:' : 'Balance Due:'}</span>
         <span className="font-display text-lg font-extrabold tabular-nums">{rs(due)}</span>
       </div>
     </div>

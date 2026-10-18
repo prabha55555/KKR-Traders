@@ -1,53 +1,48 @@
-import { Building2, Save } from 'lucide-react';
+import { Save } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { Button, Modal, TextField, NumberField, SelectField, Grid } from '@/ui';
+
+import { accountLabel } from '@/core/accountLabel';
+import { Button, Modal, TextField, NumberField, Grid } from '@/ui';
 
 const FORM_ID = 'bank-account-form';
 
+/**
+ * Create / edit a bank account: just a Bank Name and an Opening Balance. The name is stored in BOTH `accountName`
+ * and `bankName` (many readers show `accountName`). Editing keeps every other field of an older account
+ * (account number, type, notes) and only rewrites the name pair when the user actually renames it.
+ */
 export default function BankAccountModal({ account, onClose, onSave, saving }) {
-  const [form, setForm] = useState({
-    accountName: '',
-    bankName: '',
-    accountNumber: '',
-    accountType: 'Current',
-    openingBalance: '',
-    notes: '',
-  });
+  const initialName = account ? accountLabel(account) : '';
+  const [form, setForm] = useState({ bankName: '', openingBalance: '0' });
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (account) {
-      setForm({
-        accountName: account.accountName || '',
-        bankName: account.bankName || '',
-        accountNumber: account.accountNumber || '',
-        accountType: account.accountType || 'Current',
-        openingBalance: account.openingBalance !== undefined ? String(account.openingBalance) : '',
-        notes: account.notes || '',
-      });
-    } else {
-      setForm({
-        accountName: '',
-        bankName: '',
-        accountNumber: '',
-        accountType: 'Current',
-        openingBalance: '0',
-        notes: '',
-      });
-    }
+    setForm({
+      bankName: account ? accountLabel(account) : '',
+      openingBalance: account && account.openingBalance !== undefined ? String(account.openingBalance) : '0',
+    });
+    setError('');
   }, [account]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.accountName.trim()) return;
-    onSave({
-      ...(account || {}),
-      accountName: form.accountName.trim(),
-      bankName: form.bankName.trim(),
-      accountNumber: form.accountNumber.trim(),
-      accountType: form.accountType,
-      openingBalance: parseFloat(form.openingBalance) || 0,
-      notes: form.notes.trim(),
-    });
+    const name = form.bankName.trim();
+    if (!name) {
+      setError('Enter the bank name');
+      return;
+    }
+    const openingBalance = parseFloat(form.openingBalance) || 0;
+    if (account) {
+      // the page passes the account with its computed balance figures: never store those
+      const { currentBalance, inflows, outflows, ...stored } = account;
+      onSave({
+        ...stored,
+        openingBalance,
+        ...(name !== initialName ? { accountName: name, bankName: name } : {}),
+      });
+    } else {
+      onSave({ accountName: name, bankName: name, openingBalance });
+    }
   };
 
   const editing = !!account?.id;
@@ -77,50 +72,27 @@ export default function BankAccountModal({ account, onClose, onSave, saving }) {
       }
     >
       <form id={FORM_ID} onSubmit={handleSubmit} className="space-y-4">
-        <Grid>
-          <TextField
-            label="Account Display Name"
-            placeholder="e.g. SBI Current A/c, HDFC Main"
-            value={form.accountName}
-            onChange={(accountName) => setForm((prev) => ({ ...prev, accountName }))}
-            required
-            autoFocus
-          />
+        <Grid cols={{ base: 1, sm: 2 }}>
           <TextField
             label="Bank Name"
-            placeholder="e.g. State Bank of India, HDFC"
+            placeholder="e.g. SBI, HDFC"
             value={form.bankName}
-            onChange={(bankName) => setForm((prev) => ({ ...prev, bankName }))}
-          />
-          <TextField
-            label="Account Number (or last 4 digits)"
-            placeholder="e.g. 9876 or full account number"
-            value={form.accountNumber}
-            onChange={(accountNumber) => setForm((prev) => ({ ...prev, accountNumber }))}
-          />
-          <SelectField
-            label="Account Type"
-            value={form.accountType}
-            onChange={(accountType) => setForm((prev) => ({ ...prev, accountType }))}
-            options={[
-              { value: 'Current', label: 'Current Account' },
-              { value: 'Savings', label: 'Savings Account' },
-              { value: 'Overdraft', label: 'Overdraft (OD/CC) Account' },
-            ]}
+            onChange={(bankName) => {
+              setForm((prev) => ({ ...prev, bankName }));
+              setError('');
+            }}
+            error={error}
+            required
+            autoFocus
           />
           <NumberField
             label="Opening Balance (₹)"
             placeholder="0.00"
             value={form.openingBalance}
             onChange={(openingBalance) => setForm((prev) => ({ ...prev, openingBalance }))}
-            allowNegative={form.accountType === 'Overdraft'}
+            hint="Use a minus sign for an overdraft (OD/CC) account."
+            allowNegative
             required
-          />
-          <TextField
-            label="Notes / Branch (optional)"
-            placeholder="e.g. Main Branch, used for vendor payments"
-            value={form.notes}
-            onChange={(notes) => setForm((prev) => ({ ...prev, notes }))}
           />
         </Grid>
       </form>

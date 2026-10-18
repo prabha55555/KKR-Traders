@@ -1,44 +1,42 @@
 import {
-  ArrowDownLeft,
-  ArrowRightLeft,
-  ArrowUpRight,
   Banknote,
   Building2,
   CalendarDays,
-  CreditCard,
   Edit,
   Eye,
   History,
   Landmark,
   Plus,
   PlusCircle,
-  RefreshCw,
   RotateCcw,
+  Scale,
   Sigma,
   Trash2,
-  Wallet,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, toNum } from '@/core/format';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
-import { Badge, Button, DataTable, EmptyState, IconButton, Page, useFeedback } from '@/ui';
+import { Badge, Button, DataTable, EmptyState, Page, RefreshButton, useFeedback } from '@/ui';
 
 import FilterBar from '../overview/components/FilterBar';
 import FloatingAddButton from '../overview/components/FloatingAddButton';
 import InkStat from '../overview/components/InkStat';
 import KpiRow from '../overview/components/KpiRow';
-import RefreshButton from '../overview/components/RefreshButton';
 import SkeletonRows from '../overview/components/SkeletonRows';
 
-import { computeAccountBalances, getRecordTimestamp, toDateKey } from './accountsLogic';
+import {
+  BALANCE_ADJUSTMENT,
+  computeAccountBalances,
+  getRecordTimestamp,
+  toDateKey,
+  txDirection,
+} from './accountsLogic';
 import AddAdditionalAmountModal from './AddAdditionalAmountModal';
 import BankAccountModal from './BankAccountModal';
 import BankAccountDetailModal from './BankAccountDetailModal';
-import CashOpeningModal from './CashOpeningModal';
-import FundTransferModal from './FundTransferModal';
-import FinanceNavTabs from './FinanceNavTabs';
 
 const rs = (n) => {
   const val = toNum(n);
@@ -46,6 +44,19 @@ const rs = (n) => {
     return `-₹${formatCurrency(Math.abs(val))}`;
   }
   return `₹${formatCurrency(val)}`;
+};
+
+// Entries table look per direction (see txDirection): added from outside, removed to outside, or a legacy transfer
+const DIRECTION_STYLE = {
+  in: { tone: 'success', sign: '+', text: 'text-emerald-700' },
+  out: { tone: 'warning', sign: '-', text: 'text-rose-700' },
+  transfer: { tone: 'info', sign: '', text: 'text-indigo-700' },
+};
+
+// The bank name of an older account whose display name differs from it ('Current A/c' at 'SBI'); '' otherwise
+const legacyBankName = (account) => {
+  const bank = String(account?.bankName || '').trim();
+  return bank && bank.toLowerCase() !== accountLabel(account).toLowerCase() ? bank : '';
 };
 
 export default function BankAccountsPage() {
@@ -66,9 +77,7 @@ export default function BankAccountsPage() {
   // Modals state
   const [editingAccount, setEditingAccount] = useState(null);
   const [viewingAccount, setViewingAccount] = useState(null);
-  const [editingCash, setEditingCash] = useState(false);
-  const [showTransfer, setShowTransfer] = useState(false);
-  const [additionalAmountTarget, setAdditionalAmountTarget] = useState(null); // null | { accountId, mode }
+  const [additionalAmountTarget, setAdditionalAmountTarget] = useState(null); // null | { accountId, mode: 'in'|'out'|'set' }
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('accounts'); // 'accounts' | 'transactions'
   const [txDateFilter, setTxDateFilter] = useState('');
@@ -143,7 +152,7 @@ export default function BankAccountsPage() {
     return balances.bankAccounts.find((b) => b.id === viewingAccount.id) || viewingAccount;
   }, [viewingAccount, balances]);
 
-  // Sort internal transfers descending (most recent first at top)
+  // Sort entries descending (most recent first at top)
   const sortedAccountTransactions = useMemo(() => {
     return [...accountTransactions].sort((a, b) => {
       const dateA = toDateKey(a.date || a.createdAt);
@@ -176,7 +185,7 @@ export default function BankAccountsPage() {
   const handleDeleteAccount = async (account) => {
     const ok = await confirm({
       title: 'Delete Bank Account?',
-      message: `Are you sure you want to delete ${account.accountName}? Past transaction records will remain safe.`,
+      message: `Are you sure you want to delete ${accountLabel(account)}? Past transaction records will remain safe.`,
       tone: 'danger',
     });
     if (!ok) return;
@@ -191,39 +200,7 @@ export default function BankAccountsPage() {
     }
   };
 
-  // Handle Update Cash Opening
-  const handleSaveCash = async (openingBalance) => {
-    setSaving(true);
-    try {
-      await db.saveCashSettings({ openingBalance });
-      setEditingCash(false);
-      toast('Success', 'Cash in hand opening balance updated', 'success');
-      refresh();
-    } catch (err) {
-      console.error(err);
-      toast('Error', 'Failed to update cash balance', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Handle Record Fund Transfer
-  const handleSaveTransfer = async (txData) => {
-    setSaving(true);
-    try {
-      await db.saveAccountTransaction(txData);
-      setShowTransfer(false);
-      toast('Success', 'Transfer recorded successfully', 'success');
-      refresh();
-    } catch (err) {
-      console.error(err);
-      toast('Error', 'Failed to record transfer', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Handle Save Additional Amount or Manual Deduction
+  // Handle Save Additional Amount, Manual Deduction or cash Edit Balance
   const handleSaveAdditionalAmount = async (txData) => {
     setSaving(true);
     try {
@@ -231,9 +208,11 @@ export default function BankAccountsPage() {
       setAdditionalAmountTarget(null);
       toast(
         'Success',
-        txData.type === 'Manual Deduction'
-          ? 'Manual deduction recorded'
-          : 'Additional amount added successfully',
+        txData.type === BALANCE_ADJUSTMENT
+          ? `Cash balance updated to ${rs(txData.newBalance)}`
+          : txData.type === 'Manual Deduction'
+            ? 'Manual deduction recorded'
+            : 'Additional amount added successfully',
         'success',
       );
       refresh();
@@ -248,12 +227,31 @@ export default function BankAccountsPage() {
   // Account lookup helper
   const getAccountLabel = (id) => {
     if (!id || id === 'external' || id === 'manual') return 'External / Self';
-    if (id === 'cash') return 'Cash in Hand';
+    if (id === 'cash') return CASH_LABEL;
     const acc = bankAccounts.find((a) => a.id === id);
-    return acc ? acc.accountName : id;
+    return acc ? accountLabel(acc) : 'Deleted Bank Account';
   };
 
-  // Filtered internal transfers and entries (datewise + keyword search)
+  // Undo = delete the account_transactions doc (its effect on every balance disappears with it)
+  const handleUndoEntry = async (t) => {
+    const ok = await confirm({
+      title: 'Undo Entry?',
+      message: `Undo this ${t.type || 'entry'} of ${rs(t.amount)}? This will reverse the effect and restore your balances.`,
+      tone: 'danger',
+      confirmText: 'Undo Entry',
+    });
+    if (!ok) return;
+    try {
+      await db.deleteAccountTransaction(t.id);
+      toast('Undone!', 'Entry reversed and balances restored successfully.', 'success');
+      refresh();
+    } catch (err) {
+      console.error(err);
+      toast('Error', 'Failed to undo the entry', 'error');
+    }
+  };
+
+  // Filtered entries (datewise + keyword search)
   const filteredAccountTransactions = useMemo(() => {
     const q = txSearchFilter.trim().toLowerCase();
     return sortedAccountTransactions.filter((t) => {
@@ -289,19 +287,7 @@ export default function BankAccountsPage() {
     {
       key: 'type',
       header: 'Type',
-      render: (t) => (
-        <Badge
-          tone={
-            t.type === 'Deposit' || t.type === 'Additional Amount'
-              ? 'success'
-              : t.type === 'Withdrawal' || t.type === 'Manual Deduction'
-                ? 'warning'
-                : 'purple'
-          }
-        >
-          {t.type}
-        </Badge>
-      ),
+      render: (t) => <Badge tone={DIRECTION_STYLE[txDirection(t)].tone}>{t.type || 'Entry'}</Badge>,
     },
     {
       key: 'from',
@@ -333,24 +319,15 @@ export default function BankAccountsPage() {
       key: 'amount',
       header: 'Amount',
       align: 'right',
-      render: (t) => (
-        <span
-          className={`font-bold tabular-nums ${
-            t.type === 'Deposit' || t.type === 'Additional Amount'
-              ? 'text-emerald-700'
-              : t.type === 'Withdrawal' || t.type === 'Manual Deduction'
-                ? 'text-rose-700'
-                : 'text-indigo-700'
-          }`}
-        >
-          {t.type === 'Deposit' || t.type === 'Additional Amount'
-            ? '+'
-            : t.type === 'Withdrawal' || t.type === 'Manual Deduction'
-              ? '-'
-              : ''}
-          {rs(t.amount)}
-        </span>
-      ),
+      render: (t) => {
+        const style = DIRECTION_STYLE[txDirection(t)];
+        return (
+          <span className={`font-bold tabular-nums ${style.text}`}>
+            {style.sign}
+            {rs(t.amount)}
+          </span>
+        );
+      },
     },
     { key: 'notes', header: 'Notes', render: (t) => t.notes || '-' },
     {
@@ -358,29 +335,15 @@ export default function BankAccountsPage() {
       header: 'Undo / Revert',
       align: 'center',
       render: (t) => (
-        <button
-          type="button"
-          onClick={async () => {
-            const ok = await confirm({
-              title: 'Undo Entry?',
-              message: `Undo this ${t.type || 'entry'} of ${rs(
-                t.amount,
-              )}? This will reverse the effect and restore your balances.`,
-              tone: 'danger',
-              confirmText: 'Undo Entry',
-            });
-            if (ok) {
-              await db.deleteAccountTransaction(t.id);
-              toast('Undone!', 'Entry reversed and balances restored successfully.', 'success');
-              refresh();
-            }
-          }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-600 shadow-2xs transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
-          title="Undo this transaction and restore balances"
+        <Button
+          size="sm"
+          variant="outlineDanger"
+          icon={RotateCcw}
+          onClick={() => handleUndoEntry(t)}
+          title="Undo this entry and restore balances"
         >
-          <RotateCcw className="size-3 text-rose-500" />
-          <span>Undo</span>
-        </button>
+          Undo
+        </Button>
       ),
     },
   ];
@@ -407,16 +370,6 @@ export default function BankAccountsPage() {
             <span className="sm:hidden">+ Add</span>
           </Button>
           <Button
-            variant="secondary"
-            size="sm"
-            icon={ArrowRightLeft}
-            onClick={() => setShowTransfer(true)}
-            className="bg-brand-900 text-xs font-semibold text-white shadow-sm hover:bg-brand-800 sm:text-sm"
-          >
-            <span className="hidden sm:inline">Transfer Funds</span>
-            <span className="sm:hidden">Transfer</span>
-          </Button>
-          <Button
             variant="primary"
             size="sm"
             icon={Plus}
@@ -425,13 +378,10 @@ export default function BankAccountsPage() {
           >
             Add Bank Account
           </Button>
-          <RefreshButton onClick={refresh} loading={refreshing} />
+          <RefreshButton onClick={refresh} refreshing={refreshing} />
         </div>
       }
     >
-      {/* ----------------- TOP TABS ----------------- */}
-      <FinanceNavTabs />
-
       {/* ----------------- KPI ROW ----------------- */}
       <KpiRow cols={3} className="grid-cols-1 sm:grid-cols-3">
         <InkStat label="Total Available Funds" value={rs(balances.totalAvailableFunds)} icon={Sigma} />
@@ -447,15 +397,7 @@ export default function BankAccountsPage() {
           </div>
         </div>
         <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/20 to-emerald-50/40 p-4 shadow-lift sm:p-5">
-          <div className="flex items-center justify-between text-xs font-bold tracking-wider text-emerald-800 uppercase">
-            <span>Cash in Hand</span>
-            <IconButton
-              size="xs"
-              icon={Edit}
-              title="Edit Opening Cash"
-              onClick={() => setEditingCash(true)}
-            />
-          </div>
+          <div className="text-xs font-bold tracking-wider text-emerald-800 uppercase">Cash in Hand</div>
           <div className="mt-2 font-display text-2xl font-extrabold text-emerald-700 sm:text-3xl">
             {rs(balances.cashBalance)}
           </div>
@@ -465,7 +407,7 @@ export default function BankAccountsPage() {
         </div>
       </KpiRow>
 
-      {/* ----------------- SUB-TABS: ACCOUNTS VS TRANSFERS ----------------- */}
+      {/* ----------------- SUB-TABS: ACCOUNTS VS ENTRIES ----------------- */}
       <div className="no-scrollbar -mx-4 mb-4 flex items-center gap-2 overflow-x-auto border-b border-line px-4 pb-2 sm:mx-0 sm:px-0">
         <button
           type="button"
@@ -489,7 +431,7 @@ export default function BankAccountsPage() {
           }`}
         >
           <History className="size-3.5 sm:size-4" />
-          Transfers & Entries ({accountTransactions.length})
+          Entries ({accountTransactions.length})
         </button>
       </div>
 
@@ -510,17 +452,20 @@ export default function BankAccountsPage() {
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-200 sm:size-10">
                         <Building2 className="size-4.5 sm:size-5" />
                       </div>
-                      <div>
-                        <h4 className="font-display text-sm font-bold text-slate-900 sm:text-base">
-                          {account.accountName}
+                      <div className="min-w-0">
+                        <h4 className="font-display text-sm font-bold break-words text-slate-900 sm:text-base">
+                          {accountLabel(account)}
                         </h4>
-                        <p className="text-[11px] font-semibold text-blue-700 sm:text-xs">
-                          {account.bankName || 'Bank'}{' '}
-                          {account.accountNumber ? `(• • • • ${account.accountNumber})` : ''}
-                        </p>
+                        {(legacyBankName(account) || account.accountNumber) && (
+                          <p className="text-[11px] font-semibold text-blue-700 sm:text-xs">
+                            {legacyBankName(account)}
+                            {legacyBankName(account) && account.accountNumber ? ' ' : ''}
+                            {account.accountNumber ? `(• • • • ${account.accountNumber})` : ''}
+                          </p>
+                        )}
                       </div>
                     </div>
-                    <Badge tone="brand">{account.accountType}</Badge>
+                    {account.accountType && <Badge tone="brand">{account.accountType}</Badge>}
                   </div>
 
                   <div className="mt-4 rounded-xl border border-blue-200/60 bg-gradient-to-br from-blue-50/70 via-slate-50 to-blue-50/30 p-3 sm:mt-5 sm:p-3.5">
@@ -544,37 +489,37 @@ export default function BankAccountsPage() {
                 <div className="mt-3.5 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-3 sm:mt-4 sm:gap-2">
                   <Button
                     variant="ghost"
-                    size="xs"
+                    size="sm"
                     icon={PlusCircle}
                     onClick={() => setAdditionalAmountTarget({ accountId: account.id, mode: 'in' })}
-                    className="rounded-lg border-0 px-2.5 py-1 text-xs font-semibold text-emerald-700 shadow-none hover:bg-emerald-50 hover:text-emerald-800"
+                    className="text-xs font-semibold text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
                   >
                     + Add Amount
                   </Button>
                   <Button
                     variant="ghost"
-                    size="xs"
+                    size="sm"
                     icon={Eye}
                     onClick={() => setViewingAccount(account)}
-                    className="rounded-lg border-0 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-none hover:bg-slate-100 hover:text-brand-900"
+                    className="text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-900"
                   >
                     View Details
                   </Button>
                   <Button
                     variant="ghost"
-                    size="xs"
+                    size="sm"
                     icon={Edit}
                     onClick={() => setEditingAccount(account)}
-                    className="rounded-lg border-0 px-2.5 py-1 text-xs font-semibold text-blue-600 shadow-none hover:bg-blue-50 hover:text-blue-800"
+                    className="text-xs font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-800"
                   >
                     Edit
                   </Button>
                   <Button
                     variant="ghost"
-                    size="xs"
+                    size="sm"
                     icon={Trash2}
                     onClick={() => handleDeleteAccount(account)}
-                    className="rounded-lg border-0 px-2.5 py-1 text-xs font-semibold text-red-600 shadow-none hover:bg-red-50 hover:text-red-800"
+                    className="text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-800"
                   >
                     Delete
                   </Button>
@@ -657,30 +602,30 @@ export default function BankAccountsPage() {
             <div className="mt-3.5 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-3 sm:mt-4 sm:gap-2">
               <Button
                 variant="ghost"
-                size="xs"
+                size="sm"
                 icon={PlusCircle}
                 onClick={() => setAdditionalAmountTarget({ accountId: 'cash', mode: 'in' })}
-                className="rounded-lg border-0 px-2.5 py-1 text-xs font-semibold text-emerald-700 shadow-none hover:bg-emerald-50 hover:text-emerald-800"
+                className="text-xs font-semibold text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
               >
                 + Add Cash
               </Button>
               <Button
                 variant="ghost"
-                size="xs"
+                size="sm"
                 icon={Eye}
                 onClick={() => setViewingAccount(balances.cashAccount)}
-                className="rounded-lg border-0 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-none hover:bg-slate-100 hover:text-brand-900"
+                className="text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-900"
               >
                 View Details
               </Button>
               <Button
                 variant="ghost"
-                size="xs"
-                icon={Edit}
-                onClick={() => setEditingCash(true)}
-                className="rounded-lg border-0 px-2.5 py-1 text-xs font-semibold text-blue-600 shadow-none hover:bg-blue-50 hover:text-blue-800"
+                size="sm"
+                icon={Scale}
+                onClick={() => setAdditionalAmountTarget({ accountId: 'cash', mode: 'set' })}
+                className="text-xs font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-800"
               >
-                Adjust Opening
+                Edit Balance
               </Button>
             </div>
           </div>
@@ -693,7 +638,7 @@ export default function BankAccountsPage() {
             onDateChange={setTxDateFilter}
             text={txSearchFilter}
             onTextChange={setTxSearchFilter}
-            textPlaceholder="Search transfers by account, type, note or amount..."
+            textPlaceholder="Search entries by account, type, note or amount..."
             onClear={() => {
               setTxDateFilter('');
               setTxSearchFilter('');
@@ -702,27 +647,27 @@ export default function BankAccountsPage() {
 
           {sortedAccountTransactions.length === 0 ? (
             <EmptyState
-              title="No Internal Transfers Recorded"
-              message="Record cash deposits to bank, cash withdrawals, or bank-to-bank transfers."
+              title="No Entries Yet"
+              message="Amounts you add, deduct or correct by hand (and their Undo) are listed here."
               action={
                 <Button
                   variant="primary"
                   size="sm"
-                  icon={ArrowRightLeft}
-                  onClick={() => setShowTransfer(true)}
+                  icon={PlusCircle}
+                  onClick={() => setAdditionalAmountTarget({ accountId: 'cash', mode: 'in' })}
                 >
-                  Record Transfer
+                  + Add Amount
                 </Button>
               }
             />
           ) : filteredAccountTransactions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
               <CalendarDays className="mx-auto size-8 text-slate-400" />
-              <p className="mt-2 text-sm font-semibold text-slate-700">No transfers match your filters</p>
+              <p className="mt-2 text-sm font-semibold text-slate-700">No entries match your filters</p>
               <p className="mt-0.5 text-xs text-slate-500">Try selecting a different date or search query.</p>
               <Button
                 variant="outline"
-                size="xs"
+                size="sm"
                 onClick={() => {
                   setTxDateFilter('');
                   setTxSearchFilter('');
@@ -737,85 +682,53 @@ export default function BankAccountsPage() {
               columns={txColumns}
               rows={filteredAccountTransactions}
               rowKey={(t) => t.id}
-              renderCard={(t) => (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          tone={
-                            t.type === 'Deposit' || t.type === 'Additional Amount'
-                              ? 'success'
-                              : t.type === 'Withdrawal' || t.type === 'Manual Deduction'
-                                ? 'warning'
-                                : 'purple'
-                          }
+              renderCard={(t) => {
+                const style = DIRECTION_STYLE[txDirection(t)];
+                return (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Badge tone={style.tone}>{t.type || 'Entry'}</Badge>
+                          <span className="text-xs text-slate-500">
+                            {formatDateShort(t.date || t.createdAt)}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs font-semibold text-slate-700">
+                          {t.fromAccount
+                            ? getAccountLabel(t.fromAccount)
+                            : `Self / ${t.category || 'Addition'}`}{' '}
+                          →{' '}
+                          {t.toAccount ? getAccountLabel(t.toAccount) : `Self / ${t.category || 'Deduction'}`}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+                        <div className={`font-display text-base font-extrabold ${style.text}`}>
+                          {style.sign}
+                          {rs(t.amount)}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outlineDanger"
+                          icon={RotateCcw}
+                          onClick={() => handleUndoEntry(t)}
+                          title="Undo this entry and restore balances"
                         >
-                          {t.type}
-                        </Badge>
-                        <span className="text-xs text-slate-500">
-                          {formatDateShort(t.date || t.createdAt)}
-                        </span>
-                      </div>
-                      <div className="mt-2 text-xs font-semibold text-slate-700">
-                        {t.fromAccount
-                          ? getAccountLabel(t.fromAccount)
-                          : `Self / ${t.category || 'Addition'}`}{' '}
-                        → {t.toAccount ? getAccountLabel(t.toAccount) : `Self / ${t.category || 'Deduction'}`}
+                          Undo
+                        </Button>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div
-                        className={`font-display text-base font-extrabold ${
-                          t.type === 'Deposit' || t.type === 'Additional Amount'
-                            ? 'text-emerald-600'
-                            : t.type === 'Withdrawal' || t.type === 'Manual Deduction'
-                              ? 'text-rose-600'
-                              : 'text-indigo-600'
-                        }`}
-                      >
-                        {t.type === 'Deposit' || t.type === 'Additional Amount'
-                          ? '+'
-                          : t.type === 'Withdrawal' || t.type === 'Manual Deduction'
-                            ? '-'
-                            : ''}
-                        {rs(t.amount)}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const ok = await confirm({
-                            title: 'Undo Entry?',
-                            message: `Undo this ${t.type || 'entry'} of ${rs(
-                              t.amount,
-                            )}? This will reverse the effect and restore your balances.`,
-                            tone: 'danger',
-                            confirmText: 'Undo Entry',
-                          });
-                          if (ok) {
-                            await db.deleteAccountTransaction(t.id);
-                            toast('Undone!', 'Entry reversed and balances restored successfully.', 'success');
-                            refresh();
-                          }
-                        }}
-                        className="mt-1 ml-auto inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-0.5 text-xs font-semibold text-rose-600 shadow-2xs transition hover:bg-rose-50 hover:text-rose-700"
-                        title="Undo this entry and restore balances"
-                      >
-                        <RotateCcw className="size-3 text-rose-500" />
-                        <span>Undo</span>
-                      </button>
-                    </div>
+                    {t.notes && <div className="mt-0.5 text-xs text-slate-500 italic">{t.notes}</div>}
                   </div>
-                  {t.notes && <div className="mt-0.5 text-xs text-slate-500 italic">{t.notes}</div>}
-                </div>
-              )}
+                );
+              }}
             />
           )}
         </div>
       )}
 
       {/* Floating Add for mobile */}
-      <FloatingAddButton onClick={() => setEditingAccount({})} title="Add Bank Account" />
+      <FloatingAddButton onClick={() => setEditingAccount({})} label="Add Bank Account" />
 
       {/* MODALS */}
       {viewingAccount && activeViewingAccount && (
@@ -839,10 +752,14 @@ export default function BankAccountsPage() {
             setViewingAccount(null);
             setEditingAccount(acc);
           }}
-          onTransfer={() => {
-            setViewingAccount(null);
-            setShowTransfer(true);
-          }}
+          onEditBalance={
+            activeViewingAccount.id === 'cash'
+              ? () => {
+                  setViewingAccount(null);
+                  setAdditionalAmountTarget({ accountId: 'cash', mode: 'set' });
+                }
+              : undefined
+          }
           onAddAmount={() => {
             const accId = activeViewingAccount.id;
             setViewingAccount(null);
@@ -861,27 +778,10 @@ export default function BankAccountsPage() {
         />
       )}
 
-      {editingCash && (
-        <CashOpeningModal
-          currentOpening={cashSettings?.openingBalance || 0}
-          saving={saving}
-          onClose={() => setEditingCash(false)}
-          onSave={handleSaveCash}
-        />
-      )}
-
-      {showTransfer && (
-        <FundTransferModal
-          accounts={bankAccounts}
-          saving={saving}
-          onClose={() => setShowTransfer(false)}
-          onSave={handleSaveTransfer}
-        />
-      )}
-
       {additionalAmountTarget && (
         <AddAdditionalAmountModal
           accounts={bankAccounts}
+          cashBalance={balances.cashBalance}
           initialAccountId={additionalAmountTarget.accountId}
           initialMode={additionalAmountTarget.mode || 'in'}
           saving={saving}

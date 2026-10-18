@@ -5,7 +5,7 @@ import { useShortcuts } from '@/hooks/useShortcuts';
 import { db } from '@/core/db';
 import { buildAcknowledgementMessage, validatePurchaseBill } from '@/core/services/purchaseBill';
 import { shareAcknowledgement, validateAcknowledgement } from '../acknowledgement';
-import { MIN_SUPPLIER_PHONE_LENGTH } from '../purchaseCreate';
+import { MIN_SUPPLIER_PHONE_LENGTH, previousBalanceFor } from '../purchaseCreate';
 import { loadPurchaseForEdit, purchaseEditTotals, savePurchaseEdit } from '../purchaseEdit';
 /** The web waited 500 ms after the last keystroke before looking the supplier up. */
 const PHONE_LOOKUP_DELAY_MS = 500;
@@ -41,6 +41,27 @@ export function usePurchaseEditForm(invoiceNo) {
   useEffect(() => {
     void load();
   }, [load]);
+  // Moving the bill to another date or supplier changes its place in the ledger: re-read what it carries in.
+  const supplierName = form?.supplierName;
+  const supplierPhone = form?.supplierPhone;
+  const invoiceDate = form?.invoiceDate;
+  const editedNo = form?.invoiceNo;
+  useEffect(() => {
+    if (editedNo === undefined) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      previousBalanceFor({ supplierName, supplierPhone, invoiceNo: editedNo, invoiceDate })
+        .then((value) => {
+          if (!cancelled && value !== null)
+            setForm((f) => (!f || f.previousBalance === value ? f : { ...f, previousBalance: value }));
+        })
+        .catch((e) => console.error('Error calculating previous balance:', e));
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [supplierName, supplierPhone, invoiceDate, editedNo]);
   useEffect(
     () => () => {
       if (phoneTimer.current) clearTimeout(phoneTimer.current);

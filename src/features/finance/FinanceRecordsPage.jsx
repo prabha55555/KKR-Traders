@@ -15,6 +15,7 @@ import {
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 
+import { accountLabel, accountLabelWithBank } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, toNum } from '@/core/format';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
@@ -30,7 +31,6 @@ import { calculateFinanceStats, emptyFinanceForm, validateFinanceForm } from './
 import FinanceFormModal from './FinanceFormModal';
 import AddFinancePaymentModal from './AddFinancePaymentModal';
 import FinancePaymentHistoryModal from './FinancePaymentHistoryModal';
-import FinanceNavTabs from './FinanceNavTabs';
 import { todayISO } from '@/core/format';
 
 const rs = (n) => `Rs. ${formatCurrency(n)}`;
@@ -277,10 +277,10 @@ export default function FinanceRecordsPage() {
         ) : (
           <span
             className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200"
-            title={bank ? `${bank.accountName} (${bank.bankName || ''})` : 'Bank Account'}
+            title={bank ? accountLabelWithBank(bank) : 'Bank Account'}
           >
             <Building2 className="size-3.5" />
-            {bank ? bank.accountName : 'Bank Account'}
+            {bank ? accountLabel(bank) : 'Bank Account'}
           </span>
         );
       },
@@ -450,7 +450,9 @@ export default function FinanceRecordsPage() {
                       ) : (
                         <span className="flex items-center gap-1 font-semibold text-blue-700">
                           <Building2 className="size-3.5" />{' '}
-                          {bankMap[e.depositAccount]?.accountName || 'Bank Account'}
+                          {bankMap[e.depositAccount]
+                            ? accountLabel(bankMap[e.depositAccount])
+                            : 'Bank Account'}
                         </span>
                       )}
                     </div>
@@ -527,13 +529,11 @@ export default function FinanceRecordsPage() {
         </Button>
       }
     >
-      {/* Top navigation tabs */}
-      <FinanceNavTabs />
       <KpiRow cols={4}>
         <InkStat icon={Landmark} label="Total Principal" value={rs(totals.principal)} />
-        <InkStat icon={Sigma} label="Total Interest" value={rs(totals.interest)} tint="amber" />
-        <InkStat icon={CreditCard} label="Total Paid" value={rs(totals.paid)} tint="blue" />
-        <InkStat icon={Sigma} label="Balance Payable" value={rs(totals.balance)} tint="emerald" />
+        <InkStat icon={Sigma} label="Total Interest" value={rs(totals.interest)} />
+        <InkStat icon={CreditCard} label="Total Paid" value={rs(totals.paid)} />
+        <InkStat icon={Sigma} label="Balance Payable" value={rs(totals.balance)} />
       </KpiRow>
 
       {totals.overdue > 0 && (
@@ -561,6 +561,7 @@ export default function FinanceRecordsPage() {
         text={searchTerm}
         onTextChange={setSearchTerm}
         textPlaceholder="Search by Lender or Phone..."
+        dateLabel="Interest as of"
         onClear={() => {
           setSearchTerm('');
           setCalcDate('');

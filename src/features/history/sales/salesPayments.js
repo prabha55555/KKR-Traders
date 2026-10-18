@@ -1,30 +1,32 @@
 /**
- * Sales payments from the history screen: add (cash/UPI/account split), undo one, undo all.
- * Field updates are ported exactly from invoice-history.js addPayment / undoPayment / undoAllPayments.
+ * Sales payments from the history screen: add (cash / account split), undo one, undo all.
+ * Field updates are ported from invoice-history.js addPayment / undoPayment / undoAllPayments. A stored split may still
+ * carry a legacy `upi` amount: it is folded into Account whenever the split is rewritten (never counted twice).
  */
 import { db } from '@/core/db';
 import { updateSubsequentInvoices } from '@/core/billing';
+import { foldBreakdown } from '@/core/paymentMethods';
 import { sumPaymentAmounts } from '../lib/lookups';
 import { paymentTimestamp, totalOf } from '../lib/payments';
 import { userError } from '../lib/types';
 /**
  * The invoice after an additional payment: amountPaid grows, balanceDue = grandTotal - amountPaid and the
- * cash/upi/account breakdown grows per method.
+ * cash / account breakdown grows per method (a legacy `upi` amount is folded into account and its key dropped).
  *
  * PARITY NOTE: the stored `adjustedBalanceDue` is NOT refreshed here (the web did not either). The screens derive
  * the adjusted balance from the returns, so they stay correct; only readers of the stored field see an older value.
  */
 export function applyAdditionalPayment(invoice, amounts) {
-  const current = invoice.paymentBreakdown ?? { cash: 0, upi: 0, account: 0 };
+  const current = foldBreakdown(invoice.paymentBreakdown) ?? { cash: 0, account: 0 };
+  const added = foldBreakdown(amounts);
   const newAmountPaid = invoice.amountPaid + totalOf(amounts);
   const updated = {
     ...invoice,
     amountPaid: newAmountPaid,
     balanceDue: invoice.grandTotal - newAmountPaid,
     paymentBreakdown: {
-      cash: (current.cash || 0) + amounts.cash,
-      upi: (current.upi || 0) + amounts.upi,
-      account: (current.account || 0) + amounts.account,
+      cash: current.cash + added.cash,
+      account: current.account + added.account,
     },
   };
   if (amounts.bankAccountId) {
@@ -32,19 +34,23 @@ export function applyAdditionalPayment(invoice, amounts) {
   }
   return updated;
 }
-/** One payment document per method with an amount (order cash, upi, account), paymentType 'additional'. */
+/**
+ * One payment document per method with an amount (order cash, account), paymentType 'additional'. The bank account
+ * goes on the Account document only (a cash payment never touches a bank).
+ */
 export function buildAdditionalPaymentRecords(invoiceNo, amounts, paymentDate) {
-  return ['cash', 'upi', 'account']
-    .filter((method) => amounts[method] > 0)
+  const split = foldBreakdown(amounts);
+  return ['cash', 'account']
+    .filter((method) => split[method] > 0)
     .map((method) => {
       const rec = {
         invoiceNo,
         paymentDate,
-        amount: amounts[method],
+        amount: split[method],
         paymentMethod: method,
         paymentType: 'additional',
       };
-      if (amounts.bankAccountId) {
+      if (method === 'account' && amounts.bankAccountId) {
         rec.bankAccountId = amounts.bankAccountId;
       }
       return rec;
@@ -59,7 +65,7 @@ export function applyUndoAllPayments(invoice) {
     ...invoice,
     amountPaid: 0,
     balanceDue: invoice.grandTotal,
-    paymentBreakdown: { cash: 0, upi: 0, account: 0 },
+    paymentBreakdown: { cash: 0, account: 0 },
   };
 }
 /**
@@ -83,12 +89,9 @@ export function findPayment(payments, paymentId) {
   );
 }
 /**
- * Undo one payment. `db.deletePayment` removes the payment document and then lowers amountPaid, recomputes balanceDue
- * and re-computes later invoices (db.updateInvoiceAfterPaymentDeletion) — the web page relied on exactly that.
- *
- * PARITY NOTE: db.updateInvoiceAfterPaymentDeletion takes the amount off the breakdown entry named by the invoice's
- * legacy `paymentMethod` (default 'cash'), not the undone payment's own method. Undoing a UPI/account payment
- * therefore leaves paymentBreakdown.upi/account too high and cash too low (floored at 0); amountPaid/balanceDue are right.
+ * Undo one payment. `db.deletePayment` removes the payment document and then lowers amountPaid, recomputes balanceDue,
+ * takes the amount off the deleted payment's own method in the (folded) cash / account split and re-computes later
+ * invoices (db.updateInvoiceAfterPaymentDeletion).
  */
 export async function undoSalesPayment(invoiceNo, paymentId) {
   const payments = await db.getPaymentsByInvoice(invoiceNo);
@@ -112,7 +115,8 @@ export async function undoAllSalesPayments(invoiceNo) {
   const invoice = await db.getInvoice(invoiceNo);
   if (!invoice) throw userError('Invoice not found!');
   const total = sumPaymentAmounts(payments);
-  for (const payment of payments) await db.deletePayment(payment.id);
+  // one ledger sync at the end instead of one per payment
+  for (const payment of payments) await db.deletePayment(payment.id, { syncLedger: false });
   await db.saveInvoice(applyUndoAllPayments(invoice));
   await updateSubsequentInvoices(invoice.customerName, invoiceNo);
   return { count: payments.length, total };

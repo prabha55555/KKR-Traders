@@ -1,3 +1,4 @@
+import { getDoc } from 'firebase/firestore';
 import { db } from '@/core/db';
 import {
   additionalPaymentsLabel,
@@ -29,7 +30,7 @@ const invoice = (over = {}) => ({
   subtotal: 1000,
   previousBalance: 0,
   grandTotal: 1000,
-  paymentBreakdown: { cash: 300, upi: 0, account: 0 },
+  paymentBreakdown: { cash: 300, account: 0 },
   amountPaid: 300,
   balanceDue: 700,
   totalReturns: 0,
@@ -40,34 +41,36 @@ const pay = (over) => ({ id: 'p', paymentDate: '2026-10-01', amount: 0, ...over 
 afterEach(() => jest.restoreAllMocks());
 describe('add-payment input', () => {
   test('amounts are parsed with the web coercion (blank / junk = 0)', () => {
-    expect(parsePaymentAmounts({ cash: '100.5', upi: '', account: 'x' })).toEqual({
-      cash: 100.5,
-      upi: 0,
-      account: 0,
-    });
+    expect(parsePaymentAmounts({ cash: '100.5', account: 'x' })).toEqual({ cash: 100.5, account: 0 });
+    // only Cash and Account exist: a stray legacy `upi` field is not read from the form
+    expect(parsePaymentAmounts({ cash: '', upi: '50', account: '20' })).toEqual({ cash: 0, account: 20 });
   });
   test('validation order: amount first, then date; same wording as the web', () => {
-    const none = { cash: 0, upi: 0, account: 0 };
+    const none = { cash: 0, account: 0 };
     expect(validatePaymentInput(none, '')).toEqual({
       title: 'Warning',
       message: 'Please enter a valid payment amount in at least one payment method.',
     });
-    expect(validatePaymentInput({ ...none, upi: 10 }, '')).toEqual({
+    expect(validatePaymentInput({ ...none, account: 10 }, '')).toEqual({
       title: 'Warning',
       message: 'Please select a payment date.',
     });
-    expect(validatePaymentInput({ ...none, upi: 10 }, '2026-10-03')).toBeNull();
+    expect(validatePaymentInput({ ...none, account: 10 }, '2026-10-03')).toBeNull();
   });
   test('payment timestamp = picked day + current local time', () => {
     expect(paymentTimestamp('2026-10-03', new Date(2026, 9, 5, 10, 20, 30))).toBe('2026-10-03T10:20:30');
     expect(paymentTimestamp('', new Date())).toBe('');
   });
   test('success message lists only the methods used', () => {
-    expect(paymentSuccessMessage({ cash: 500, upi: 250.5, account: 0 })).toBe(
-      'Payment of ₹750.50 added successfully!\nBreakdown: Cash: ₹500.00, UPI: ₹250.50',
+    expect(paymentSuccessMessage({ cash: 500, account: 250.5 })).toBe(
+      'Payment of ₹750.50 added successfully!\nBreakdown: Cash: ₹500.00, Account: ₹250.50',
     );
-    expect(paymentSuccessMessage({ cash: 0, upi: 0, account: 1234 })).toBe(
+    expect(paymentSuccessMessage({ cash: 0, account: 1234 })).toBe(
       'Payment of ₹1,234.00 added successfully!\nBreakdown: Account: ₹1,234.00',
+    );
+    // legacy shape with an upi amount: counted as Account
+    expect(paymentSuccessMessage({ cash: 0, upi: 100, account: 50 })).toBe(
+      'Payment of ₹150.00 added successfully!\nBreakdown: Account: ₹150.00',
     );
   });
 });
@@ -88,14 +91,16 @@ describe('payment summaries', () => {
     expect(additionalPaymentsLabel([payments[1]])).toBe('₹100.00');
     expect(additionalPaymentsLabel([payments[1], payments[2]])).toBe('100.00 + 50.50 = ₹150.50');
   });
-  test('method label', () => {
-    expect(paymentMethodLabel({ paymentMethod: 'upi' })).toBe('UPI');
+  test('method label: Cash / Account (legacy UPI / bank are Account)', () => {
+    expect(paymentMethodLabel({ paymentMethod: 'upi' })).toBe('ACCOUNT');
+    expect(paymentMethodLabel({ paymentMethod: 'bank' })).toBe('ACCOUNT');
+    expect(paymentMethodLabel({ paymentMethod: 'cash' })).toBe('CASH');
     expect(paymentMethodLabel({}, 'CASH')).toBe('CASH');
     expect(paymentMethodLabel({})).toBe('N/A');
   });
 });
 describe('generatePaymentTableData (statement payment table)', () => {
-  test('invoice row, payments oldest first with running balance, then returns', () => {
+  test('invoice row, payments oldest first with running balance, then the balance-settled returns', () => {
     const rows = generatePaymentTableData(
       [
         pay({
@@ -113,8 +118,23 @@ describe('generatePaymentTableData (statement payment table)', () => {
     expect(rows).toEqual([
       ['4/10/2026', 'Invoice - Goods/Services', '1,000.00', '1,000.00'],
       ['1/10/2026', 'Payment - Initial (CASH)', '-Rs. 300.00', '700.00'],
-      ['3/10/2026', 'Payment - Additional (UPI)', '-Rs. 200.00', '500.00'],
+      ['3/10/2026', 'Payment - Additional (ACCOUNT)', '-Rs. 200.00', '500.00'],
       ['Multiple Dates', 'Product Returns', '-Rs. 100.00', '400.00'],
+    ]);
+  });
+  test('refunded returns are listed but do not lower the running balance', () => {
+    const rows = generatePaymentTableData(
+      [pay({ paymentType: 'initial', paymentDate: '2026-10-01', amount: 300, paymentMethod: 'cash' })],
+      1000,
+      0,
+      '2026-10-04',
+      'Invoice - Goods/Services',
+      250,
+    );
+    expect(rows).toEqual([
+      ['4/10/2026', 'Invoice - Goods/Services', '1,000.00', '1,000.00'],
+      ['1/10/2026', 'Payment - Initial (CASH)', '-Rs. 300.00', '700.00'],
+      ['Multiple Dates', 'Product Returns (refunded)', 'Rs. 250.00', '700.00'],
     ]);
   });
   test('no payments and no returns: only the invoice row; method defaults to CASH', () => {
@@ -135,35 +155,36 @@ describe('generatePaymentTableData (statement payment table)', () => {
     expect(list.map((p) => p.id)).toEqual(['2', '1']);
   });
 });
-describe('sales payment field updates (exactly what the web wrote)', () => {
+describe('sales payment field updates', () => {
   test('add: amountPaid grows, balanceDue = grandTotal - amountPaid, breakdown grows per method', () => {
     const base = invoice();
-    const next = applyAdditionalPayment(base, { cash: 100, upi: 50, account: 0 });
+    const next = applyAdditionalPayment(base, { cash: 100, account: 50 });
     expect(next).toMatchObject({
       amountPaid: 450,
       balanceDue: 550,
-      paymentBreakdown: { cash: 400, upi: 50, account: 0 },
       adjustedBalanceDue: 700, // PARITY: not refreshed
     });
+    expect(next.paymentBreakdown).toEqual({ cash: 400, account: 50 });
     expect(base.amountPaid).toBe(300);
-    expect(base.paymentBreakdown).toEqual({ cash: 300, upi: 0, account: 0 });
+    expect(base.paymentBreakdown).toEqual({ cash: 300, account: 0 });
+  });
+  test('add on a legacy breakdown with a UPI amount: folded into Account, the upi key is gone', () => {
+    const next = applyAdditionalPayment(invoice({ paymentBreakdown: { cash: 100, upi: 200, account: 0 } }), {
+      cash: 0,
+      account: 50,
+    });
+    expect(next.paymentBreakdown).toEqual({ cash: 100, account: 250 });
   });
   test('add on an invoice without a breakdown starts from zeros', () => {
     const next = applyAdditionalPayment(
       invoice({ paymentBreakdown: undefined, amountPaid: 0, balanceDue: 1000 }),
-      {
-        cash: 0,
-        upi: 0,
-        account: 200,
-      },
+      { cash: 0, account: 200 },
     );
-    expect(next.paymentBreakdown).toEqual({ cash: 0, upi: 0, account: 200 });
+    expect(next.paymentBreakdown).toEqual({ cash: 0, account: 200 });
     expect(next.balanceDue).toBe(800);
   });
-  test('records: one per method with an amount, cash/upi/account order, paymentType additional', () => {
-    expect(
-      buildAdditionalPaymentRecords('003', { cash: 100, upi: 0, account: 40 }, '2026-10-03T10:20:30'),
-    ).toEqual([
+  test('records: one per method with an amount, cash/account order, paymentType additional', () => {
+    expect(buildAdditionalPaymentRecords('003', { cash: 100, account: 40 }, '2026-10-03T10:20:30')).toEqual([
       {
         invoiceNo: '003',
         paymentDate: '2026-10-03T10:20:30',
@@ -180,16 +201,24 @@ describe('sales payment field updates (exactly what the web wrote)', () => {
       },
     ]);
   });
-  test('undo all: nothing paid, balance back to the grand total, breakdown zeroed', () => {
+  test('records: the bank account goes on the Account document only', () => {
     expect(
-      applyUndoAllPayments(
-        invoice({ amountPaid: 450, balanceDue: 550, paymentBreakdown: { cash: 400, upi: 50, account: 0 } }),
-      ),
-    ).toMatchObject({
-      amountPaid: 0,
-      balanceDue: 1000,
-      paymentBreakdown: { cash: 0, upi: 0, account: 0 },
-    });
+      buildAdditionalPaymentRecords(
+        '003',
+        { cash: 100, account: 40, bankAccountId: 'hdfc' },
+        '2026-10-03T10:20:30',
+      ).map((r) => [r.paymentMethod, r.bankAccountId]),
+    ).toEqual([
+      ['cash', undefined],
+      ['account', 'hdfc'],
+    ]);
+  });
+  test('undo all: nothing paid, balance back to the grand total, breakdown zeroed', () => {
+    const next = applyUndoAllPayments(
+      invoice({ amountPaid: 450, balanceDue: 550, paymentBreakdown: { cash: 400, upi: 50, account: 0 } }),
+    );
+    expect(next).toMatchObject({ amountPaid: 0, balanceDue: 1000 });
+    expect(next.paymentBreakdown).toEqual({ cash: 0, account: 0 });
   });
 });
 describe('addSalesPayment', () => {
@@ -211,18 +240,15 @@ describe('addSalesPayment', () => {
     jest.spyOn(db, 'updateSubsequentInvoices').mockImplementation(async (name, no) => {
       events.push(`subsequent:${name}:${no}`);
     });
-    await addSalesPayment(
-      '003',
-      { cash: 100, upi: 50, account: 0 },
-      '2026-10-03',
-      new Date(2026, 9, 5, 10, 20, 30),
-    );
-    expect(events).toEqual(['saveInvoice', 'savePayment:cash', 'savePayment:upi', 'subsequent:SLN TEX:003']);
-    expect(saved[0]).toMatchObject({
-      amountPaid: 450,
-      balanceDue: 550,
-      paymentBreakdown: { cash: 400, upi: 50, account: 0 },
-    });
+    await addSalesPayment('003', { cash: 100, account: 50 }, '2026-10-03', new Date(2026, 9, 5, 10, 20, 30));
+    expect(events).toEqual([
+      'saveInvoice',
+      'savePayment:cash',
+      'savePayment:account',
+      'subsequent:SLN TEX:003',
+    ]);
+    expect(saved[0]).toMatchObject({ amountPaid: 450, balanceDue: 550 });
+    expect(saved[0].paymentBreakdown).toEqual({ cash: 400, account: 50 });
     expect(records).toEqual([
       {
         invoiceNo: '003',
@@ -235,7 +261,7 @@ describe('addSalesPayment', () => {
         invoiceNo: '003',
         paymentDate: '2026-10-03T10:20:30',
         amount: 50,
-        paymentMethod: 'upi',
+        paymentMethod: 'account',
         paymentType: 'additional',
       },
     ]);
@@ -243,7 +269,7 @@ describe('addSalesPayment', () => {
   test('unknown invoice -> user-facing "Invoice not found!" and nothing is written', async () => {
     jest.spyOn(db, 'getInvoice').mockResolvedValue(null);
     const save = jest.spyOn(db, 'saveInvoice');
-    const error = await addSalesPayment('999', { cash: 1, upi: 0, account: 0 }, '2026-10-03').catch((e) => e);
+    const error = await addSalesPayment('999', { cash: 1, account: 0 }, '2026-10-03').catch((e) => e);
     expect(isUserError(error)).toBe(true);
     expect(error.message).toBe('Invoice not found!');
     expect(save).not.toHaveBeenCalled();
@@ -322,10 +348,10 @@ describe('undo payments', () => {
     expect(saved[0]).toMatchObject({
       amountPaid: 0,
       balanceDue: 1000,
-      paymentBreakdown: { cash: 0, upi: 0, account: 0 },
       totalReturns: 20,
       adjustedBalanceDue: 530, // PARITY: left as it was
     });
+    expect(saved[0].paymentBreakdown).toEqual({ cash: 0, account: 0 });
   });
   test('undo all with no payments does nothing', async () => {
     jest.spyOn(db, 'getPaymentsByInvoice').mockResolvedValue([]);
@@ -334,25 +360,56 @@ describe('undo payments', () => {
     expect(del).not.toHaveBeenCalled();
   });
 });
-describe('db.updateInvoiceAfterPaymentDeletion (what "undo one" relies on)', () => {
-  test('PARITY: the amount comes off the breakdown entry named by the invoice legacy paymentMethod (default cash), not the undone payment method', async () => {
+describe('db.updateInvoiceAfterPaymentDeletion / deletePayment (what "undo one" relies on)', () => {
+  const capture = (stored) => {
     const saved = [];
-    jest
-      .spyOn(db, 'getInvoice')
-      .mockResolvedValue(
-        invoice({ amountPaid: 400, balanceDue: 600, paymentBreakdown: { cash: 300, upi: 100, account: 0 } }),
-      );
+    jest.spyOn(db, 'getInvoice').mockResolvedValue(stored);
     jest.spyOn(db, 'saveInvoice').mockImplementation(async (i) => {
       saved.push(i);
       return i.invoiceNo;
     });
-    const subsequent = jest.spyOn(db, 'updateSubsequentInvoices').mockResolvedValue();
-    await db.updateInvoiceAfterPaymentDeletion('003', 100); // e.g. the UPI payment of 100 was undone
-    expect(saved[0]).toMatchObject({
-      amountPaid: 300,
-      balanceDue: 700,
-      paymentBreakdown: { cash: 200, upi: 100, account: 0 },
+    const sync = jest.spyOn(db, 'syncSalesLedger').mockResolvedValue(null);
+    return { saved, sync };
+  };
+  test("the amount comes off the deleted payment's OWN method; a legacy upi amount is folded into Account", async () => {
+    const { saved, sync } = capture(
+      invoice({ amountPaid: 400, balanceDue: 600, paymentBreakdown: { cash: 300, upi: 100, account: 0 } }),
+    );
+    // e.g. the (legacy) UPI payment of 100 was undone
+    await db.updateInvoiceAfterPaymentDeletion('003', 100, { paymentMethod: 'upi' });
+    expect(saved[0]).toMatchObject({ amountPaid: 300, balanceDue: 700 });
+    expect(saved[0].paymentBreakdown).toEqual({ cash: 300, account: 0 });
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(sync.mock.calls[0][0]).toMatchObject({ customerName: 'SLN TEX', invoiceNo: '003' });
+  });
+  test('a cash payment comes off cash; never below 0', async () => {
+    const { saved } = capture(
+      invoice({ amountPaid: 400, balanceDue: 600, paymentBreakdown: { cash: 50, account: 350 } }),
+    );
+    await db.updateInvoiceAfterPaymentDeletion('003', 100, { paymentMethod: 'cash' });
+    expect(saved[0].paymentBreakdown).toEqual({ cash: 0, account: 350 });
+    expect(saved[0]).toMatchObject({ amountPaid: 300, balanceDue: 700 });
+  });
+  test("without a method (older callers) the invoice's legacy paymentMethod decides, else cash", async () => {
+    const { saved } = capture(
+      invoice({
+        amountPaid: 400,
+        balanceDue: 600,
+        paymentMethod: 'gpay',
+        paymentBreakdown: { cash: 300, account: 100 },
+      }),
+    );
+    await db.updateInvoiceAfterPaymentDeletion('003', 100, { syncLedger: false });
+    expect(saved[0].paymentBreakdown).toEqual({ cash: 300, account: 0 });
+  });
+  test('deletePayment passes the stored payment method through', async () => {
+    jest.spyOn(db, 'ref').mockReturnValue({});
+    jest.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ invoiceNo: '003', amount: 100, paymentMethod: 'account' }),
     });
-    expect(subsequent).toHaveBeenCalledWith('SLN TEX', '003');
+    const update = jest.spyOn(db, 'updateInvoiceAfterPaymentDeletion').mockResolvedValue();
+    await db.deletePayment('p1', { syncLedger: false });
+    expect(update).toHaveBeenCalledWith('003', 100, { syncLedger: false, paymentMethod: 'account' });
   });
 });

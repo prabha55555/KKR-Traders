@@ -1,5 +1,5 @@
 /** Display values of one customer row — shared by the phone cards and the desktop table so both always agree. */
-import { formatRupees } from '@/core/format';
+import { formatRupees, toNum } from '@/core/format';
 import { customerBalance } from './aggregate';
 import { balanceTone } from './display';
 import { canSendReminder } from './reminder';
@@ -8,7 +8,11 @@ export function buildRowModel(customer) {
   const balance = customerBalance(customer);
   return {
     invoices: String(customer.totalInvoices),
-    openingBalance: formatRupees(customer.firstInvoicePreviousBalance + customer.totalManualAdjustments),
+    // the party's ledger opening plus any opening-balance entries typed on its bills
+    openingBalance: formatRupees(
+      toNum(customer.openingBalance ?? customer.firstInvoicePreviousBalance) +
+        toNum(customer.totalManualAdjustments),
+    ),
     amount: formatRupees(customer.totalCurrentBillAmount),
     paid: formatRupees(customer.amountPaid),
     discount: formatRupees(customer.totalDiscountAmount),

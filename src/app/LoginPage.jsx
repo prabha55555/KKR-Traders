@@ -194,9 +194,11 @@ export default function LoginPage() {
           <p className="mt-8 text-center text-xs text-slate-400">
             &copy; {new Date().getFullYear()} {COMPANY.displayName}. All rights reserved.
           </p>
-          <p className="mt-1 text-center text-[11px] font-medium tracking-wide text-gold-700">
-            {COMPANY.tagline}
-          </p>
+          {COMPANY.tagline ? (
+            <p className="mt-1 text-center text-[11px] font-medium tracking-wide text-gold-700">
+              {COMPANY.tagline}
+            </p>
+          ) : null}
         </form>
       </main>
     </div>

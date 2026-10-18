@@ -1,6 +1,13 @@
 import { useMemo } from 'react';
 import { formatCurrency, toNum } from '@/core/format';
-import { isWithinRange } from '../dashboardAnalytics';
+import { PURCHASE_LEDGER, SALES_LEDGER } from '@/core/ledger';
+import {
+  isWithinRange,
+  partyOfBill,
+  purchaseBillValue,
+  purchasePaid,
+  salesBillValue,
+} from '../dashboardAnalytics';
 
 const rupees = (n) => {
   const num = typeof n === 'number' ? n : parseFloat(String(n || 0));
@@ -18,22 +25,27 @@ export function DashboardInsights({ data, rangeKey, dateRanges }) {
     const supMap = new Map();
     const prodMap = new Map();
     const avgCost = data.avgCostLookup || (() => 0);
+    // parties as the ledger groups them (phone first), so two customers sharing a name are not merged
+    const customerOf = partyOfBill(SALES_LEDGER, data.salesBills);
+    const supplierOf = partyOfBill(PURCHASE_LEDGER, data.purchaseBills);
 
     (data.salesBills || []).forEach((bill) => {
       const d = bill.invoiceDate || bill.date || bill.timestamp;
       if (isWithinRange(d, range)) {
         // Customer aggregation
-        if (bill.customerName) {
-          const c = custMap.get(bill.customerName) || {
-            name: bill.customerName,
+        const party = customerOf.get(bill);
+        if (party) {
+          const c = custMap.get(party.key) || {
+            key: party.key,
+            name: party.name,
             sales: 0,
             paid: 0,
             invoices: 0,
           };
-          c.sales += toNum(bill.grandTotal);
+          c.sales += salesBillValue(bill);
           c.paid += toNum(bill.amountPaid);
           c.invoices++;
-          custMap.set(bill.customerName, c);
+          custMap.set(party.key, c);
         }
 
         // Product aggregation
@@ -58,17 +70,19 @@ export function DashboardInsights({ data, rangeKey, dateRanges }) {
       const d = bill.invoiceDate || bill.date || bill.timestamp;
       if (isWithinRange(d, range)) {
         // Supplier aggregation
-        if (bill.supplierName) {
-          const s = supMap.get(bill.supplierName) || {
-            name: bill.supplierName,
+        const party = supplierOf.get(bill);
+        if (party) {
+          const s = supMap.get(party.key) || {
+            key: party.key,
+            name: party.name,
             purchases: 0,
             paid: 0,
             bills: 0,
           };
-          s.purchases += toNum(bill.grandTotal);
-          s.paid += toNum(bill.payment?.totalPaid || bill.amountPaid);
+          s.purchases += purchaseBillValue(bill);
+          s.paid += purchasePaid(bill);
           s.bills++;
-          supMap.set(bill.supplierName, s);
+          supMap.set(party.key, s);
         }
       }
     });
@@ -89,7 +103,7 @@ export function DashboardInsights({ data, rangeKey, dateRanges }) {
   return (
     <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Top Customers */}
-      <div className="bg-surface flex flex-col rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col rounded-xl border border-line bg-white p-4 shadow-sm">
         <h3 className="mb-4 text-lg font-bold text-slate-800">Top Customers</h3>
         <div className="flex-1 overflow-auto">
           {topCustomers.length === 0 ? (
@@ -104,7 +118,7 @@ export function DashboardInsights({ data, rangeKey, dateRanges }) {
               </thead>
               <tbody>
                 {topCustomers.map((c) => (
-                  <tr key={c.name} className="border-b border-slate-100 last:border-0">
+                  <tr key={c.key} className="border-b border-slate-100 last:border-0">
                     <td className="py-2 font-medium text-slate-700">{c.name}</td>
                     <td className="py-2 text-right font-bold text-slate-800">{rupees(c.sales)}</td>
                   </tr>
@@ -116,7 +130,7 @@ export function DashboardInsights({ data, rangeKey, dateRanges }) {
       </div>
 
       {/* Top Suppliers */}
-      <div className="bg-surface flex flex-col rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col rounded-xl border border-line bg-white p-4 shadow-sm">
         <h3 className="mb-4 text-lg font-bold text-slate-800">Top Suppliers</h3>
         <div className="flex-1 overflow-auto">
           {topSuppliers.length === 0 ? (
@@ -131,7 +145,7 @@ export function DashboardInsights({ data, rangeKey, dateRanges }) {
               </thead>
               <tbody>
                 {topSuppliers.map((s) => (
-                  <tr key={s.name} className="border-b border-slate-100 last:border-0">
+                  <tr key={s.key} className="border-b border-slate-100 last:border-0">
                     <td className="py-2 font-medium text-slate-700">{s.name}</td>
                     <td className="py-2 text-right font-bold text-slate-800">{rupees(s.purchases)}</td>
                   </tr>
@@ -143,7 +157,7 @@ export function DashboardInsights({ data, rangeKey, dateRanges }) {
       </div>
 
       {/* Top Products */}
-      <div className="bg-surface flex flex-col rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col rounded-xl border border-line bg-white p-4 shadow-sm">
         <h3 className="mb-4 text-lg font-bold text-slate-800">Top Selling Products</h3>
         <div className="flex-1 overflow-auto">
           {topProducts.length === 0 ? (

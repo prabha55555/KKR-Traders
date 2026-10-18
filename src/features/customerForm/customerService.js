@@ -32,11 +32,23 @@ export async function updateCustomer(original, input) {
   if (phoneChanged && (await db.getCustomer(draft.phone))) {
     return { ok: false, errors: { phone: CUSTOMER_MESSAGES.edit.duplicate } };
   }
-  const args = [original.name ?? '', draft.name, draft.phone, draft.address];
-  if (draft.openingBalance !== undefined) {
-    args.push(draft.openingBalance);
-  }
-  await db.updateCustomerDetails(...args);
+  // the customer's ledger takes a NEW opening balance only when it was actually changed on the form (an untouched
+  // field must never reset an opening the bills already carry)
+  const openingChanged =
+    draft.openingBalance !== undefined &&
+    String(draft.openingBalance).trim() !== '' &&
+    Number(draft.openingBalance) !== Number(original.openingBalance ?? 0);
+  await db.updateCustomerDetails(
+    original.name ?? '',
+    draft.name,
+    draft.phone,
+    draft.address,
+    draft.openingBalance,
+    {
+      oldPhone: originalPhone,
+      newOpening: openingChanged ? Number(draft.openingBalance) : undefined,
+    },
+  );
   if (phoneChanged && originalPhone) {
     try {
       await db.deleteCustomerDoc(originalPhone);

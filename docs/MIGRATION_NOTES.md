@@ -31,27 +31,48 @@ comment and a unit test pinning the current behaviour.
 ## 2. Fixed / changed relative to the web app
 
 * **Previous balance ledger (sales + purchase)** — `src/core/ledger.js`. Every bill of a customer / supplier is one
-  link in a running-balance chain, ordered by bill date, then bill number (numbers restart each financial year), then
-  creation time: `previousBalance` = closing balance (balance due − returns) of the bill before it; the first bill
-  keeps its stored previous balance (the opening). Previously the web app trusted each bill's *stored* balance, so a
-  payment / return / edit / delete on an older bill only reached later bills after the user re-saved them by hand.
+  link in a running-balance chain, ordered by bill date, then the running bill number (numbers restart each financial
+  year), then the whole number text, then creation time:
+  `previousBalance` = closing balance of the bill before it (balance due − returns settled against the balance); the
+  first bill starts from the party's **opening balance**. Previously the web app trusted each bill's *stored* balance,
+  so a payment / return / edit / delete on an older bill only reached later bills after the user re-saved them by hand.
   * **New bill** (sales + purchase): the previous balance is computed from the ledger at the bill's date and number —
     not from stored figures — so it is right even when older bills were never refreshed. It is re-read when the
-    customer / supplier, the bill number or the date changes, and a back-dated bill gets the balance of the bill
-    before its date. A party without bills starts from its `openingBalance` (customer or supplier record).
-  * **Any change** — save, edit, history payment / undo, return / undo, delete to and restore from the recycle bin —
-    re-syncs that party's whole chain from fresh Firestore reads (`db.syncSalesLedger` / `db.syncPurchaseLedger`) and
-    writes, in one atomic batch, only the derived fields that are off (`previousBalance`, `grandTotal`, `balanceDue`,
-    `totalReturns`, `adjustedBalanceDue`; for purchases also the nested `payment.balanceDue`). A bill moved to another
-    party re-syncs the old party too; deleting a party's first bill passes its opening balance to the next one.
-  * **Editing an old bill** loads its previous balance from the ledger (stale stored figures are replaced; if the
-    ledger cannot be read the stored figure is kept). After saving, the screen shows the value the sync stored.
-  * Behaviour changes worth knowing: old invoices of a party are corrected the first time anything of that party
-    changes (they may have carried inflated / stale balances because of the web quirks); `balanceDue` no longer has
-    returns subtracted (they are in `adjustedBalanceDue`, as everywhere else); purchase bills gain the top-level
-    `balanceDue` so the original web app reads the right figure too. Per-bill "Opening Balance" entries are still
-    added on top of the carried balance — if they were ever typed in to *compensate* a wrong carried balance, those
-    bills now count it twice and should be cleared.
+    customer / supplier, the bill number or the date changes (also while editing a bill), and a back-dated bill gets
+    the balance of the bill before its date. A party without bills starts from its `openingBalance` (customer or
+    supplier record). If the ledger cannot be read the screen keeps its value and says so (never a silent 0).
+  * **Any change** — save, edit, history payment / undo, return / undo, delete to and restore from the recycle bin,
+    customer / supplier rename — re-syncs that party's whole chain from fresh Firestore reads (`db.syncSalesLedger` /
+    `db.syncPurchaseLedger`) and writes, in atomic batches by document id, only the derived fields that are off
+    (`ledgerOpening`, `previousBalance`, `grandTotal`, `balanceDue`, `totalReturns`, `adjustedBalanceDue`; for
+    purchases also the nested `payment.balanceDue`). A bill moved to another party re-syncs the old party too.
+  * **Opening balance is a property of the party**, stamped on every bill as `ledgerOpening` (first time: the stored
+    previous balance of the party's first bill). It is taken from the bills as they were *before* each change, so
+    moving the first bill's date, back-dating a bill, deleting the first bill or restoring it never turns a carried
+    balance into the opening (that would count it twice).
+  * **Who is the same party**: phones compare by their last 10 digits; a bill without a phone joins a customer only
+    when no *other* phone uses that name, so two customers who share a name are never merged (phone-less walk-in
+    bills of a shared name form their own chain).
+  * **Returns refunded in cash / bank** (`settlementType: 'refund'`) are listed in `totalReturns` but no longer lower
+    the balance due or the carried balance — the money was handed over (the cash/bank ledger books it); only
+    "adjust against balance" returns reduce what is owed.
+  * **Purchase totals are no longer clamped at 0**: an advance / overpayment to a supplier is carried into the next
+    bill as a negative previous balance (the web silently dropped it), like sales always did.
+  * **Editing an old bill** loads its previous balance from the ledger (if the ledger cannot be read the stored figure
+    is kept). Older bills paid when written but without "initial" payment records (sales and purchase) now show that
+    payment in the edit form — before, pressing Update erased it and raised every later balance. After saving, the
+    screen shows the value the sync stored, and a saved new bill re-reads it before Generate / Share.
+  * **Overwrite / restore safety**: confirming "overwrite" for a number that belongs to a different bill (e.g. last
+    financial year's `001`) first moves that bill — with its payments and returns — to the recycle bin; restoring a
+    bill whose number is used again is refused with a message instead of silently replacing the newer bill.
+  * Bill saves no longer wipe the customer's / supplier's `openingBalance` (the record is merged, not replaced).
+  * Behaviour changes worth knowing: old bills of a party are corrected the first time anything of that party changes
+    (they may have carried inflated / stale balances because of the web quirks); `balanceDue` no longer has returns
+    subtracted (they are in `adjustedBalanceDue`); purchase bills gain the top-level `balanceDue` so the original web
+    app reads the right figure too. Per-bill "Opening Balance" entries are still added on top of the carried balance —
+    if they were ever typed in to *compensate* a wrong carried balance, those bills now count it twice and should be
+    cleared. **If the original web app is still used on the same database, retire it**: its own recompute
+    (`Utils.updateSubsequentInvoices`) would keep rewriting the same invoices with the old, double-counting rules.
 
 * **WhatsApp statement text** — the web source had corrupted characters (U+FFFD and `?` where emoji used to be). The
   message was rebuilt with proper emoji; the wording and numbers are unchanged.

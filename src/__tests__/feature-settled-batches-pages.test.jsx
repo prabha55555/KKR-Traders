@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter, MemoryRouter } from 'react-router';
+import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import DyeingNavTabs from '@/features/dyeing/DyeingNavTabs';
-import CombingNavTabs from '@/features/combing/CombingNavTabs';
 import DyeingSettledPage from '@/features/dyeing/DyeingSettledPage';
 import CombingSettledPage from '@/features/combing/CombingSettledPage';
+import DyeingPage from '@/features/dyeing/DyeingPage';
+import CombingPage from '@/features/combing/CombingPage';
+import CombingDetailsPage from '@/features/combing/CombingDetailsPage';
+import { db } from '@/core/db';
 import * as dyeingService from '@/features/dyeing/dyeingService';
 import * as combingService from '@/features/combing/combingService';
 import { FeedbackProvider } from '@/ui/Feedback';
@@ -17,53 +19,9 @@ function renderWithProviders(ui) {
   );
 }
 
-describe('Settled Batches Pages and Navigation Tabs', () => {
+describe('Settled Batches Pages', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-  });
-
-  describe('DyeingNavTabs & CombingNavTabs', () => {
-    it('renders DyeingNavTabs with badge counts and correct links', () => {
-      renderWithProviders(
-        <DyeingNavTabs
-          counts={{
-            ongoing: 3,
-            settled: 7,
-            dyers: 4,
-          }}
-        />,
-      );
-
-      expect(screen.getByText('Ongoing Batches')).toBeInTheDocument();
-      expect(screen.getByText('3')).toBeInTheDocument();
-
-      expect(screen.getByText('Settled Batches')).toBeInTheDocument();
-      expect(screen.getByText('7')).toBeInTheDocument();
-
-      expect(screen.getByText('Dyeing Details')).toBeInTheDocument();
-      expect(screen.getByText('4')).toBeInTheDocument();
-    });
-
-    it('renders CombingNavTabs with badge counts and correct links', () => {
-      renderWithProviders(
-        <CombingNavTabs
-          counts={{
-            ongoing: 2,
-            settled: 5,
-            processors: 3,
-          }}
-        />,
-      );
-
-      expect(screen.getByText('Ongoing Batches')).toBeInTheDocument();
-      expect(screen.getByText('2')).toBeInTheDocument();
-
-      expect(screen.getByText('Settled Batches')).toBeInTheDocument();
-      expect(screen.getByText('5')).toBeInTheDocument();
-
-      expect(screen.getByText('Combating Details')).toBeInTheDocument();
-      expect(screen.getByText('3')).toBeInTheDocument();
-    });
   });
 
   describe('DyeingSettledPage', () => {
@@ -201,6 +159,69 @@ describe('Settled Batches Pages and Navigation Tabs', () => {
       // Ongoing batch CB-ONGOING-1 should not appear on Settled page
       expect(screen.queryByText('#CB-ONGOING-1')).not.toBeInTheDocument();
       expect(screen.getByText(/Combed Grey Roll/i)).toBeInTheDocument();
+    });
+  });
+  describe('Ongoing pages and directory (simplified headers)', () => {
+    const ongoing = {
+      batchId: 'DB-ONGOING-9',
+      status: 'IN_PROCESS',
+      processorName: 'Vasanth Dyers',
+      input: { qty: 100 },
+      totalDyeingCost: 2000,
+      payments: [{ id: 'p1', amount: 500, mode: 'UPI' }],
+    };
+    const settled = { batchId: 'DB-SETTLED-9', status: 'COMPLETED', totalDyeingCost: 0, payments: [] };
+
+    it('DyeingPage shows a plain page header and no Settled link card / In Process badge', async () => {
+      vi.spyOn(dyeingService, 'loadDyeingData').mockResolvedValue({
+        batches: [ongoing, settled],
+        shortcuts: [],
+        bankAccounts: [],
+        stockMap: new Map(),
+        purchaseBills: [],
+        dyers: [],
+      });
+
+      renderWithProviders(<DyeingPage />);
+
+      await waitFor(() => expect(screen.getByText('#DB-ONGOING-9')).toBeInTheDocument());
+      expect(screen.getByRole('heading', { level: 1, name: 'Dyeing & Processing' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument();
+      expect(screen.queryByText(/View Settled Page/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('In Process')).not.toBeInTheDocument();
+      // StatCard subtext merged into the label (legacy UPI payment counts as paid)
+      expect(screen.getByText(/Dyeing Charges · Paid ₹500/)).toBeInTheDocument();
+    });
+
+    it('CombingPage renders with the plain header', async () => {
+      vi.spyOn(combingService, 'loadCombingData').mockResolvedValue({
+        batches: [],
+        shortcuts: [],
+        stockMap: new Map(),
+        processors: [],
+        dyeingBatches: [],
+        purchaseBills: [],
+      });
+
+      renderWithProviders(<CombingPage />);
+
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1, name: 'Combing & Processing' })).toBeInTheDocument(),
+      );
+      expect(screen.getByText('No ongoing combing batches')).toBeInTheDocument();
+    });
+
+    it('CombingDetailsPage is titled Combing Units (no "Combating" typo)', async () => {
+      vi.spyOn(combingService, 'getAllProcessorsList').mockResolvedValue([
+        { id: 'm1', processorName: 'Coimbatore Combing Mills', ownerName: 'Ravi', phone: '9876543210' },
+      ]);
+      vi.spyOn(db, 'getAllCombingBatches').mockResolvedValue([]);
+
+      renderWithProviders(<CombingDetailsPage />);
+
+      await waitFor(() => expect(screen.getByText('Coimbatore Combing Mills')).toBeInTheDocument());
+      expect(screen.getByRole('heading', { level: 1, name: 'Combing Units' })).toBeInTheDocument();
+      expect(screen.queryByText(/Combating/i)).not.toBeInTheDocument();
     });
   });
 });

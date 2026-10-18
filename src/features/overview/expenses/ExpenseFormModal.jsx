@@ -1,6 +1,7 @@
 import { AlertTriangle, Banknote, Building2, Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { CASH_LABEL, accountLabel } from '@/core/accountLabel';
 import { formatCurrency } from '@/core/format';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 import { Button, DateField, Modal, NumberField, SelectField, TextArea } from '@/ui';
@@ -35,14 +36,9 @@ export default function ExpenseFormModal({ form, onChange, saving, onClose, onSa
   const isOverdrawn = liveBalances !== null && amount > 0 && amount > availableBalance;
 
   const paymentOptions = [
-    {
-      value: 'cash',
-      label: `Cash in Hand (Drawer) • Available: ₹${formatCurrency(cashBalance)}`,
-    },
-    ...bankAccounts.map((a) => ({
-      value: a.id,
-      label: `${a.accountName} (${a.bankName || a.accountType}) • Balance: ₹${formatCurrency(a.currentBalance)}`,
-    })),
+    // names only: the balance of the chosen source is shown in the row under the select
+    { value: 'cash', label: CASH_LABEL },
+    ...bankAccounts.map((a) => ({ value: a.id, label: accountLabel(a) })),
   ];
 
   return (
@@ -109,9 +105,7 @@ export default function ExpenseFormModal({ form, onChange, saving, onClose, onSa
                   ) : (
                     <Building2 className="size-3.5 text-brand-700" />
                   )}
-                  {isCash
-                    ? 'Available in Cash Drawer:'
-                    : `Available in ${selectedBank?.accountName || 'Bank'}:`}
+                  {isCash ? 'Available in Cash Drawer:' : `Available in ${accountLabel(selectedBank)}:`}
                 </span>
                 <span className="font-display text-[12px] font-extrabold tabular-nums">
                   ₹{formatCurrency(availableBalance)}

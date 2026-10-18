@@ -1,6 +1,8 @@
 /** Adapts Firestore purchase documents to the generic history view-model (`../lib/types`). */
 import { purchaseAmountPaid, purchaseBalanceDue } from '@/core/billing';
 import { toNum } from '@/core/format';
+import { PURCHASE_LEDGER, balanceReturnsTotal, billAmount } from '@/core/ledger';
+import { foldBreakdown, normalizeMethod } from '@/core/paymentMethods';
 import { compareNewestFirst } from '../lib/filters';
 import { indexByInvoiceNo, latestInvoiceNoPerParty, sumReturnAmounts } from '../lib/lookups';
 import { toHistoryPayment, toHistoryReturn } from '../sales/salesModel';
@@ -15,7 +17,9 @@ export const PURCHASE_LABELS = {
  *
  * Purchase bills keep payment data in a nested `payment` object (new bills) and/or top-level `amountPaid` /
  * `balanceDue` (edited / legacy bills): both are read through the shared hybrid helpers, like the web page did.
- * The adjusted balance is derived from the returns collection, not from the stored `adjustedBalanceDue`.
+ * Returns as in the sales view (toHistoryInvoice): `adjustedBalanceDue = balanceDue - balanceReturns` (returns settled
+ * against the balance only; refunds are listed but leave the balance alone). The payment split is folded to
+ * { cash, account }.
  *
  * PARITY NOTE: the web card showed `payment.balanceDue || balanceDue` for bills without returns and
  * `payment.balanceDue (if defined) - returns` for bills with returns. The two only differ for a bill whose nested
@@ -23,7 +27,9 @@ export const PURCHASE_LABELS = {
  */
 export function toHistoryPurchase(bill, payments, returns, canAddPayment) {
   const totalReturns = sumReturnAmounts(returns);
+  const balanceReturns = balanceReturnsTotal(returns);
   const balanceDue = purchaseBalanceDue(bill);
+  const ownAmount = billAmount(bill, PURCHASE_LEDGER);
   return {
     invoiceNo: bill.invoiceNo,
     invoiceDate: bill.invoiceDate,
@@ -31,21 +37,25 @@ export function toHistoryPurchase(bill, payments, returns, canAddPayment) {
     partyPhone: bill.supplierPhone,
     partyAddress: bill.supplierAddress,
     products: bill.products ?? [],
-    // the card prints `subtotal || grandTotal` as "Current Bill Amount"
-    subtotal: toNum(bill.subtotal) || toNum(bill.grandTotal),
+    // "Current Bill Amount": the stored subtotal, else rebuilt like the ledger does (products, or the total minus the
+    // carried balance) — never the grand total, which already contains the previous balance
+    subtotal: ownAmount - toNum(bill.manualPreviousBalance) + PURCHASE_LEDGER.discount(bill),
     previousBalance: toNum(bill.previousBalance) + toNum(bill.manualPreviousBalance),
     // purchase.js stores `discount`; `discountAmount` is the older name — the card read `discountAmount || discount`
     discountAmount: toNum(bill.discountAmount) || toNum(bill.discount),
     grandTotal: bill.grandTotal,
+    billAmount: ownAmount,
     amountPaid: purchaseAmountPaid(bill),
     balanceDue,
-    paymentBreakdown: bill.paymentBreakdown,
-    legacyPaymentMethod: bill.paymentMethod || undefined,
+    paymentBreakdown: foldBreakdown(bill.paymentBreakdown) ?? undefined,
+    legacyPaymentMethod: bill.paymentMethod ? normalizeMethod(bill.paymentMethod) : undefined,
     bankAccountId: bill.bankAccountId || bill.payment?.bankAccountId,
     payments: payments.map((p) => toHistoryPayment(p, bill.bankAccountId || bill.payment?.bankAccountId)),
-    returns: returns.map((r) => toHistoryReturn(r, bill.bankAccountId || bill.payment?.bankAccountId)),
+    returns: returns.map((r) => toHistoryReturn(r)),
     totalReturns,
-    adjustedBalanceDue: balanceDue - totalReturns,
+    balanceReturns,
+    refundedReturns: totalReturns - balanceReturns,
+    adjustedBalanceDue: balanceDue - balanceReturns,
     manualBillImage: bill.manualBillImage || null,
     hasManualBillImage: Boolean(bill.manualBillImage),
     canAddPayment,
@@ -54,19 +64,20 @@ export function toHistoryPurchase(bill, payments, returns, canAddPayment) {
 }
 /**
  * Everything the screen needs from one load: payments / returns are indexed once, and "Add Payment" is enabled on the
- * newest bill of each supplier only (computed over ALL bills, not the filtered list).
+ * newest bill (ledger order) of each supplier only — suppliers grouped like the ledger (phone first), over ALL bills,
+ * not the filtered list.
  */
 export function buildPurchaseHistoryData(bills, returns, payments) {
   const returnsByInvoice = indexByInvoiceNo(returns);
   const paymentsByInvoice = indexByInvoiceNo(payments);
-  const latest = latestInvoiceNoPerParty(bills, (b) => b.supplierName);
+  const latest = latestInvoiceNoPerParty(PURCHASE_LEDGER, bills);
   const list = bills
     .map((bill) =>
       toHistoryPurchase(
         bill,
         paymentsByInvoice.get(bill.invoiceNo) ?? [],
         returnsByInvoice.get(bill.invoiceNo) ?? [],
-        latest.get(bill.supplierName) === bill.invoiceNo,
+        latest.has(bill.invoiceNo),
       ),
     )
     .sort(compareNewestFirst);

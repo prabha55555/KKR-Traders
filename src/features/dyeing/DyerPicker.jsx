@@ -42,9 +42,7 @@ export function DyerPicker({
     setHighlight(-1);
     onDyeingNameChange(val);
 
-    const match = dyers.find(
-      (d) => (d.dyeingName || '').trim().toLowerCase() === val.trim().toLowerCase(),
-    );
+    const match = dyers.find((d) => (d.dyeingName || '').trim().toLowerCase() === val.trim().toLowerCase());
     if (match) {
       onSelect(match);
     }
@@ -83,7 +81,7 @@ export function DyerPicker({
             Dye House & Processing Unit Details
           </h3>
           {isSavedDyer && (
-            <Badge tone="success" className="gap-1 text-[11px] py-0.5 px-2">
+            <Badge tone="success" className="gap-1 px-2 py-0.5 text-[11px]">
               <Check className="size-3" /> Saved Dyer
             </Badge>
           )}
@@ -92,7 +90,7 @@ export function DyerPicker({
           to="/dyeing/details"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-800 transition"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 transition hover:text-brand-800"
         >
           <Users className="size-3.5" />
           <span>Manage Dyers Directory</span>
@@ -100,7 +98,7 @@ export function DyerPicker({
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* 1. Dyeing Name with Autocomplete */}
         <div className="relative">
           <TextField
@@ -140,15 +138,15 @@ export function DyerPicker({
                   }}
                   className={cn(
                     'group flex cursor-pointer flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition',
-                    i === highlight ? 'bg-brand-50 text-brand-900' : 'hover:bg-slate-100 text-slate-800',
+                    i === highlight ? 'bg-brand-50 text-brand-900' : 'text-slate-800 hover:bg-slate-100',
                   )}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-brand-900 group-hover:text-brand-700">
+                    <span className="text-sm font-bold text-brand-900 group-hover:text-brand-700">
                       {d.dyeingName}
                     </span>
                     {d.phone && (
-                      <span className="font-mono text-xs text-slate-500 font-semibold">{d.phone}</span>
+                      <span className="font-mono text-xs font-semibold text-slate-500">{d.phone}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-slate-600">
@@ -158,8 +156,8 @@ export function DyerPicker({
                       </span>
                     )}
                     {d.address && (
-                      <span className="flex items-center gap-1 truncate text-slate-500 max-w-[180px]">
-                        <MapPin className="size-3 text-slate-400 shrink-0" /> {d.address}
+                      <span className="flex max-w-[180px] items-center gap-1 truncate text-slate-500">
+                        <MapPin className="size-3 shrink-0 text-slate-400" /> {d.address}
                       </span>
                     )}
                   </div>
@@ -199,11 +197,11 @@ export function DyerPicker({
       </div>
 
       {!isSavedDyer && (
-        <div className="flex items-center gap-1.5 text-xs text-slate-500 pt-1">
-          <Info className="size-3.5 text-slate-400 shrink-0" />
+        <div className="flex items-center gap-1.5 pt-1 text-xs text-slate-500">
+          <Info className="size-3.5 shrink-0 text-slate-400" />
           <span>
             Select a dyeing unit above to load owner, phone, and address from your directory.{' '}
-            <Link to="/dyeing/details" target="_blank" className="text-brand-700 underline font-semibold">
+            <Link to="/dyeing/details" target="_blank" className="font-semibold text-brand-700 underline">
               Manage Dyers
             </Link>
           </span>

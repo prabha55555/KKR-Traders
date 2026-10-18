@@ -4,6 +4,7 @@
  */
 import { purchaseAmountPaid, purchaseBalanceDue } from '@/core/billing';
 import { formatCurrency, formatDateIN, toISODate } from '@/core/format';
+import { methodLabel } from '@/core/paymentMethods';
 const DAY_MS = 1000 * 60 * 60 * 24;
 export const BIN_CONFIG = {
   sales: {
@@ -131,11 +132,8 @@ export function computeBinStats(items, itemType, now) {
     oldestDays: times.length ? daysAgo(new Date(Math.min(...times)), now) : null,
   };
 }
-const METHOD_LABELS = { cash: 'Cash', upi: 'UPI', account: 'Account', bank: 'Account' };
-export function paymentMethodLabel(method) {
-  const m = String(method || 'cash').toLowerCase();
-  return METHOD_LABELS[m] ?? String(method);
-}
+/** 'Cash' or 'Account' (legacy UPI / GPay / bank payments are shown as Account). */
+export const paymentMethodLabel = (method) => methodLabel(method);
 /**
  * Content of the "View Details" dialog, with the web fallbacks ('N/A', `|| 0`).
  * Returns null for an item type the bin has no preview for ("Preview not available for this item type.").

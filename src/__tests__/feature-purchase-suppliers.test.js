@@ -29,19 +29,23 @@ const bill = (over) => ({
   ...over,
 });
 afterEach(() => jest.restoreAllMocks());
-// getAllPurchaseBills returns newest first
+// getAllPurchaseBills returns newest first; stored the way the ledger sync leaves them (carried balances)
 const bills = [
   bill({
     invoiceNo: 'P-12',
+    invoiceDate: '2026-10-05',
     supplierName: ' ABC Mills ',
-    grandTotal: 1050,
+    subtotal: 1000,
+    previousBalance: 60,
     discount: 50,
-    payment: { cash: 300, upi: 0, account: 100, totalPaid: 400, balanceDue: 650 },
+    grandTotal: 1010,
+    payment: { cash: 300, account: 100, totalPaid: 400, balanceDue: 610 },
   }),
   bill({
     invoiceNo: '9',
-    supplierPhone: '9111111111',
+    invoiceDate: '2026-09-01',
     supplierAddress: 'Old address',
+    subtotal: 500,
     grandTotal: 500,
     amountPaid: 500,
     balanceDue: 0,
@@ -51,51 +55,155 @@ const bills = [
     supplierName: 'XYZ Tex',
     supplierPhone: '9222222222',
     supplierAddress: '',
+    subtotal: 200,
     grandTotal: 200,
     payment: { cash: 0, upi: 0, account: 0, totalPaid: 0, balanceDue: 200 },
   }),
-  bill({ invoiceNo: '055', supplierName: '', grandTotal: 999 }),
+  bill({ invoiceNo: '055', supplierName: '', supplierPhone: '', subtotal: 999, grandTotal: 999 }),
   bill({
     invoiceNo: '020',
+    invoiceDate: '2026-09-20',
+    subtotal: 100,
     grandTotal: 100,
     amountPaid: 40,
     balanceDue: 60,
     payment: { cash: 40, upi: 0, account: 0, totalPaid: 40, balanceDue: 60 },
   }),
 ];
-describe('aggregateSuppliers (processSupplierData)', () => {
+const unpaid = (over) => bill({ payment: { cash: 0, account: 0, totalPaid: 0 }, ...over });
+describe('aggregateSuppliers (processSupplierData on the supplier ledger)', () => {
   const result = aggregateSuppliers(bills);
-  test('groups by trimmed supplier name, skips bills without one, sorts by name', () => {
+  test('groups by ledger party, skips bills without a name and a phone, sorts by name', () => {
     expect(result.map((s) => s.name)).toEqual(['ABC Mills', 'XYZ Tex']);
+    expect(result.map((s) => s.key)).toEqual(['p:9000000001', 'p:9222222222']);
   });
-  test('adds up bills, amount, paid, discount and balance reading the hybrid schema', () => {
+  test("amount = the bills' own amounts, paid = stored paid, balance = ledger closing of the latest bill", () => {
     const abc = result[0];
     expect(abc.totalBills).toBe(3);
-    expect(abc.totalAmount).toBe(1650);
-    expect(abc.totalPaid).toBe(940); // nested 400 + top-level 500 + nested 40
+    expect(abc.totalAmount).toBe(1550); // 500 + 100 + (1000 - 50): no carried balance
+    expect(abc.totalPaid).toBe(940); // top-level 500 + nested 40 + nested 400
     expect(abc.totalDiscount).toBe(50);
-    expect(abc.balanceDue).toBe(710); // nested 650 + top-level 0 + nested 60
+    expect(abc.openingBalance).toBe(0);
+    expect(abc.balanceDue).toBe(610); // 0 -> 60 -> 610 (not 0 + 60 + 610)
+    expect(abc.lastInvoiceDate).toBe('2026-10-05');
     expect(result[1]).toMatchObject({ totalBills: 1, totalAmount: 200, totalPaid: 0, balanceDue: 200 });
   });
-  test('phone/address come from the first (newest) bill seen', () => {
+  test('phone/address come from the latest bill (address falls back to older bills)', () => {
     expect(result[0].phone).toBe('9000000001');
     expect(result[0].address).toBe('Coimbatore');
   });
   test('invoice numbers: P- stripped, zero padded, newest number first', () => {
     expect(result[0].invoiceNos).toEqual(['020', '012', '009']);
+    expect(result[0].allInvoiceNumbers).toEqual(['020', '012', '009']);
   });
   test('tolerates garbage input', () => {
     expect(aggregateSuppliers(null)).toEqual([]);
     expect(aggregateSuppliers(undefined)).toEqual([]);
-    expect(aggregateSuppliers([null, bill({ supplierName: undefined })])).toEqual([]);
+    expect(aggregateSuppliers([null, bill({ supplierName: undefined, supplierPhone: '' })])).toEqual([]);
   });
-  test('PARITY: a nested balanceDue of 0 falls back to the top-level field (differs from purchaseBalanceDue)', () => {
+  test('carried balances are counted once and an advance stays negative (no floor at 0)', () => {
+    // P-1 1000 unpaid, P-2 500 unpaid, P-3 200 paid 2000: stored balanceDue 1000, 1500, -300
+    const mill = [
+      bill({
+        invoiceNo: 'P-3',
+        invoiceDate: '2026-10-03',
+        supplierName: 'Mill',
+        subtotal: 200,
+        previousBalance: 1500,
+        grandTotal: 1700,
+        payment: { cash: 2000, account: 0, totalPaid: 2000, balanceDue: -300 },
+      }),
+      unpaid({
+        invoiceNo: 'P-2',
+        invoiceDate: '2026-10-02',
+        supplierName: 'Mill',
+        subtotal: 500,
+        previousBalance: 1000,
+        grandTotal: 1500,
+      }),
+      unpaid({
+        invoiceNo: 'P-1',
+        invoiceDate: '2026-10-01',
+        supplierName: 'Mill',
+        subtotal: 1000,
+        grandTotal: 1000,
+      }),
+    ];
+    const [s] = aggregateSuppliers(mill);
+    expect(s.totalAmount).toBe(1700);
+    expect(s.balanceDue).toBe(-300);
+    expect(supplierStats([s]).totalBalance).toBe(-300);
+  });
+  test('only balance-settled returns lower the balance; refunds are still listed as returns', () => {
+    const one = [unpaid({ invoiceNo: '001', subtotal: 1000, grandTotal: 1000 })];
+    const returns = [
+      { invoiceNo: '001', returnAmount: 100 }, // legacy: settled on the balance
+      { invoiceNo: '001', returnAmount: 300, settlementType: 'refund', refundMethod: 'cash' },
+    ];
+    expect(aggregateSuppliers(one, returns)[0]).toMatchObject({ totalReturns: 400, balanceDue: 900 });
+  });
+  test("opening balance is the ledger opening; a bill's opening-balance entry is part of its amount", () => {
+    const opened = [
+      unpaid({
+        invoiceNo: '001',
+        subtotal: 100,
+        previousBalance: 250,
+        manualPreviousBalance: 30,
+        grandTotal: 380,
+      }),
+    ];
+    const [s] = aggregateSuppliers(opened);
+    expect(s.openingBalance).toBe(250);
+    expect(s.totalAmount).toBe(130);
+    expect(s.balanceDue).toBe(380); // 250 + 130 - 0
+  });
+  test('same name with different phones = two suppliers; same phone typed differently = one', () => {
+    const list = aggregateSuppliers([
+      unpaid({ invoiceNo: '001', supplierName: 'Ravi', supplierPhone: '9000000001', subtotal: 100 }),
+      unpaid({ invoiceNo: '002', supplierName: 'Ravi', supplierPhone: '9000000002', subtotal: 100 }),
+      unpaid({
+        invoiceNo: '003',
+        invoiceDate: '2026-10-02',
+        supplierName: 'ravi ',
+        supplierPhone: '+91 90000 00001',
+        subtotal: 50,
+      }),
+    ]);
+    expect(list.map((s) => [s.phone, s.totalBills, s.balanceDue])).toEqual([
+      ['+91 90000 00001', 2, 150],
+      ['9000000002', 1, 100],
+    ]);
+  });
+  test('directory suppliers without bills are listed with zeros; ones with bills are not duplicated', () => {
+    const list = aggregateSuppliers(
+      bills,
+      [],
+      [
+        { phone: '9000000001', name: 'ABC Mills', address: 'X' },
+        { phone: '9333333333', name: 'New Supplier', address: 'Erode' },
+        { phone: '', name: '  ' },
+      ],
+    );
+    expect(list.map((s) => s.name)).toEqual(['ABC Mills', 'New Supplier', 'XYZ Tex']);
+    expect(list[1]).toMatchObject({ key: 'p:9333333333', totalBills: 0, balanceDue: 0, address: 'Erode' });
+  });
+  test('a directory supplier joins the phone-less bills of its name', () => {
+    const list = aggregateSuppliers(
+      [unpaid({ supplierName: 'Old Mill', supplierPhone: '', subtotal: 100 })],
+      [],
+      [{ phone: '9444444444', name: 'Old Mill', address: 'Salem' }],
+    );
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ phone: '9444444444', address: 'Coimbatore', balanceDue: 100 });
+  });
+  test('legacy: a nested balanceDue of 0 with a stale top-level field follows the stored paid amount', () => {
     const stale = bill({
+      subtotal: 100,
       grandTotal: 100,
       balanceDue: 70,
       payment: { cash: 100, upi: 0, account: 0, totalPaid: 100, balanceDue: 0 },
     });
-    expect(aggregateSuppliers([stale])[0].balanceDue).toBe(70);
+    expect(aggregateSuppliers([stale])[0].balanceDue).toBe(0);
     expect(purchaseBalanceDue(stale)).toBe(0);
   });
 });
@@ -104,10 +212,10 @@ describe('supplierStats', () => {
     expect(supplierStats(aggregateSuppliers(bills))).toEqual({
       totalSuppliers: 2,
       totalBills: 4,
-      totalAmount: 1850,
+      totalAmount: 1750,
       totalPaid: 940,
       totalDiscount: 50,
-      totalBalance: 910,
+      totalBalance: 810,
     });
   });
   test('empty list', () => {

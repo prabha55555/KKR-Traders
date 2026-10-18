@@ -1,6 +1,7 @@
-import { AlertTriangle, Banknote, Landmark, Save, Smartphone } from 'lucide-react';
+import { AlertTriangle, Banknote, Landmark, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { accountLabel } from '@/core/accountLabel';
 import { formatCurrency, todayISO } from '@/core/format';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 import { Button, DateField, Modal, NumberField, SelectField, TextField, useFeedback } from '@/ui';
@@ -22,7 +23,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
   const [form, setForm] = useState({
     date: todayISO(),
     amount: '',
-    mode: 'Cash', // 'Cash' | 'Bank' | 'UPI'
+    mode: 'Cash', // 'Cash' | 'Bank' (shown as Account; 'Bank' is the stored value)
     bankAccountId: '',
     reference: '',
     notes: '',
@@ -62,7 +63,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
     }
     return bankAccounts.map((b) => ({
       value: b.id,
-      label: `${b.accountName} (${b.bankName || b.accountType || 'Bank'}) • Balance: ₹${formatCurrency(b.currentBalance)}`,
+      label: accountLabel(b),
     }));
   }, [bankAccounts]);
 
@@ -83,7 +84,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
   };
 
   const handleBankChange = (val) => {
-    const nextId = typeof val === 'object' && val?.target ? val.target.value : (val || '');
+    const nextId = typeof val === 'object' && val?.target ? val.target.value : val || '';
     setForm((prev) => ({ ...prev, bankAccountId: nextId }));
   };
 
@@ -103,7 +104,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
         amount: amountNum,
         mode: form.mode,
         bankAccountId: form.mode === 'Cash' ? null : selectedBankId || null,
-        bankAccountName: form.mode === 'Cash' ? '' : selectedBank?.accountName || '',
+        bankAccountName: form.mode === 'Cash' || !selectedBank ? '' : accountLabel(selectedBank),
         reference: form.reference.trim(),
         notes: form.notes.trim(),
       };
@@ -130,12 +131,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
     <Modal
       open={open}
       onClose={saving ? undefined : onClose}
-      title={
-        <div className="flex items-center gap-2">
-          <Banknote className="size-5 text-emerald-600" />
-          <span>Pay Mill / Processor — Batch #{batch.batchId}</span>
-        </div>
-      }
+      title={`Pay Mill / Processor — Batch #${batch.batchId}`}
       size="sm"
       footer={
         <div className="flex w-full items-center justify-end gap-2">
@@ -157,21 +153,19 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
     >
       <form id={FORM_ID} onSubmit={handleSubmit} className="space-y-4">
         {/* Processor & Balance Summary Banner */}
-        <div className="rounded-xl border border-slate-200/90 bg-slate-50/80 p-3.5 space-y-2.5">
+        <div className="space-y-2.5 rounded-xl border border-slate-200/90 bg-slate-50/80 p-3.5">
           <div className="flex items-start justify-between gap-2">
             <div>
               <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                 Mill / Processing Unit
               </div>
-              <div className="font-bold text-slate-900 text-sm">{batch.processorName}</div>
+              <div className="text-sm font-bold text-slate-900">{batch.processorName}</div>
               {batch.processorPhone && (
-                <div className="text-xs font-mono text-slate-500 mt-0.5">{batch.processorPhone}</div>
+                <div className="mt-0.5 font-mono text-xs text-slate-500">{batch.processorPhone}</div>
               )}
             </div>
             <div className="text-right">
-              <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
-                Balance Due
-              </div>
+              <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Balance Due</div>
               <div className="font-display text-base font-extrabold text-rose-700 tabular-nums">
                 ₹{formatCurrency(stats.balanceDue)}
               </div>
@@ -206,7 +200,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
               <button
                 type="button"
                 onClick={handleFillBalance}
-                className="text-xs font-semibold text-brand-700 hover:text-brand-900 underline underline-offset-2"
+                className="text-xs font-semibold text-brand-700 underline underline-offset-2 hover:text-brand-900"
               >
                 Pay Full Balance (₹{formatCurrency(stats.balanceDue)})
               </button>
@@ -225,11 +219,11 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
         {/* Payment Mode Selector */}
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-slate-700">Payment Mode *</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleModeChange('Cash')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-xs font-bold transition shadow-2xs ${
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-xs font-bold shadow-2xs transition ${
                 form.mode === 'Cash'
                   ? 'border-emerald-500 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-500/20'
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -241,31 +235,19 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
             <button
               type="button"
               onClick={() => handleModeChange('Bank')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-xs font-bold transition shadow-2xs ${
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-xs font-bold shadow-2xs transition ${
                 form.mode === 'Bank'
                   ? 'border-blue-500 bg-blue-50/80 text-blue-900 ring-2 ring-blue-500/20'
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
               <Landmark className="size-4 text-blue-600" />
-              <span>Bank</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleModeChange('UPI')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-xs font-bold transition shadow-2xs ${
-                form.mode === 'UPI'
-                  ? 'border-purple-500 bg-purple-50/80 text-purple-900 ring-2 ring-purple-500/20'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <Smartphone className="size-4 text-purple-600" />
-              <span>UPI</span>
+              <span>Account</span>
             </button>
           </div>
         </div>
 
-        {/* Bank Account Selection (if Bank or UPI) */}
+        {/* Bank Account Selection (Account mode) + its live balance */}
         {!isCash && (
           <div className="space-y-1.5">
             <SelectField
@@ -274,6 +256,14 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
               onChange={handleBankChange}
               options={bankAccountOptions}
             />
+            {selectedBank && (
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                <span className="text-slate-600">Available:</span>
+                <span className="font-bold text-slate-900 tabular-nums">
+                  ₹{formatCurrency(selectedBank.currentBalance)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -290,7 +280,7 @@ export function AddCombingPaymentModal({ open, batch, onClose, onPaymentAdded })
         {/* Overdraft Warning Banner */}
         {isOverdrawn && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
-            <AlertTriangle className="size-4 shrink-0 text-amber-600 mt-0.5" />
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
             <div>
               <span className="font-bold">Insufficient Balance Warning:</span> The entered amount (₹
               {formatCurrency(amountNum)}) exceeds the available account balance (₹

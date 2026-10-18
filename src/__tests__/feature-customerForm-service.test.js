@@ -76,7 +76,14 @@ describe('updateCustomer', () => {
     });
     expect(result).toEqual({ ok: true });
     expect(m.getCustomer).not.toHaveBeenCalled();
-    expect(m.updateCustomerDetails).toHaveBeenCalledWith('SLN TEX', 'SLN TEXTILES', '9876543210', 'Palladam');
+    expect(m.updateCustomerDetails).toHaveBeenCalledWith(
+      'SLN TEX',
+      'SLN TEXTILES',
+      '9876543210',
+      'Palladam',
+      undefined,
+      { oldPhone: '9876543210', newOpening: undefined },
+    );
     expect(m.deleteCustomerDoc).not.toHaveBeenCalled();
   });
   test('new phone already used by someone else is refused', async () => {
@@ -103,7 +110,17 @@ describe('updateCustomer', () => {
       address: 'Tirupur',
     });
     expect(result).toEqual({ ok: true });
-    expect(m.updateCustomerDetails).toHaveBeenCalledWith('SLN TEX', 'SLN TEX', '9000000002', 'Tirupur');
+    expect(m.updateCustomerDetails).toHaveBeenCalledWith(
+      'SLN TEX',
+      'SLN TEX',
+      '9000000002',
+      'Tirupur',
+      undefined,
+      {
+        oldPhone: '9876543210',
+        newOpening: undefined,
+      },
+    );
     expect(m.deleteCustomerDoc).toHaveBeenCalledWith('9876543210');
     expect(order).toEqual(['update', 'deleteOld']);
   });
@@ -122,8 +139,29 @@ describe('updateCustomer', () => {
     expect(await updateCustomer(legacy, { phone: '9000000002', name: 'Walk-in', address: '' })).toEqual({
       ok: true,
     });
-    expect(m.updateCustomerDetails).toHaveBeenCalledWith('Walk-in', 'Walk-in', '9000000002', '');
+    expect(m.updateCustomerDetails).toHaveBeenCalledWith('Walk-in', 'Walk-in', '9000000002', '', undefined, {
+      oldPhone: '',
+      newOpening: undefined,
+    });
     expect(m.deleteCustomerDoc).not.toHaveBeenCalled();
+  });
+  test('the ledger gets a new opening balance only when it was changed on the form', async () => {
+    const m = stubDb();
+    const withOpening = { ...original, openingBalance: 500 };
+    await updateCustomer(withOpening, {
+      phone: '9876543210',
+      name: 'SLN TEX',
+      address: '',
+      openingBalance: '500',
+    });
+    expect(m.updateCustomerDetails.mock.calls[0][5].newOpening).toBeUndefined();
+    await updateCustomer(withOpening, {
+      phone: '9876543210',
+      name: 'SLN TEX',
+      address: '',
+      openingBalance: '750',
+    });
+    expect(m.updateCustomerDetails.mock.calls[1][5].newOpening).toBe(750);
   });
 });
 describe('deleteCustomer', () => {

@@ -7,9 +7,11 @@
  */
 
 /**
+ * New bills store only `cash` and `account`. `upi` is a LEGACY read-only amount on older documents: readers fold it
+ * into Account (`foldBreakdown` in core/paymentMethods), and writers never write it.
  * @typedef {Object} PaymentBreakdown
  * @property {number} cash
- * @property {number} upi
+ * @property {number} [upi] legacy, read as Account
  * @property {number} account
  */
 
@@ -84,8 +86,9 @@
  * Purchase bills carry BOTH a nested `payment` object (new bills) and top-level fields (edited / legacy bills).
  * @typedef {Object} PurchasePaymentSummary
  * @property {number} cash
- * @property {number} upi
+ * @property {number} [upi] legacy, read as Account (`foldPurchasePayment`)
  * @property {number} account
+ * @property {string|null} [bankAccountId]
  * @property {number} totalPaid
  * @property {number} balanceDue
  */
@@ -203,7 +206,11 @@
  */
 
 /** @typedef {{seconds: number, nanoseconds: number, toDate?: () => Date} | null | undefined} FirestoreTimestamp */
-/** @typedef {'cash' | 'upi' | 'account'} PaymentMethod */
+/**
+ * Stored on payment documents. New documents use 'cash' | 'account'; older ones may say 'upi', 'gpay', 'bank' or an
+ * upper-case variant, all read as Account through `normalizeMethod` (core/paymentMethods).
+ * @typedef {'cash' | 'account'} PaymentMethod
+ */
 /** @typedef {SalesRecycleBinItem | PurchaseRecycleBinItem} RecycleBinItem */
 /** @typedef {'success' | 'error' | 'info' | 'warning'} ToastType */
 

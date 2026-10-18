@@ -36,12 +36,13 @@ export function withSavedLedger(session, invoice) {
   return { ...session, form: { ...session.form, previousBalance } };
 }
 /**
- * Re-computed "Previous Balance Due" for a bill that is still being composed (new, unsaved). Saved and edited bills
- * keep the figure they were loaded / stored with (an edited bill is re-read from the ledger when it is opened).
+ * Re-computed "Previous Balance Due" for a bill that is being composed or edited and has unsaved changes (its customer,
+ * number or date moved it in the ledger). A bill showing exactly what is stored keeps it. `null` (the ledger could not
+ * be read) changes nothing.
  */
 export function withRefreshedPreviousBalance(session, previousBalance) {
-  if (session.editingNo !== null || session.saved || session.form.previousBalance === previousBalance)
-    return session;
+  if (previousBalance === null || previousBalance === undefined) return session;
+  if (session.saved || session.form.previousBalance === previousBalance) return session;
   return { ...session, form: { ...session.form, previousBalance } };
 }
 /** What the screen must do when the `edit` search param changes (tab screens stay mounted, so it can change). */

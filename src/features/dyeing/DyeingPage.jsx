@@ -4,30 +4,24 @@ import {
   CheckCircle2,
   Clock,
   Edit,
-  Eye,
   FileText,
   Layers,
   Package,
   Plus,
   Receipt,
-  RefreshCw,
-  Search,
   Trash2,
-  TrendingUp,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 import { formatCurrency, formatDateIN } from '@/core/format';
 import {
-  Badge,
   Button,
-  Card,
-  DataTable,
   EmptyState,
   ErrorState,
   LoadingState,
   Page,
+  RefreshButton,
   SearchBar,
   StatCard,
   useFeedback,
@@ -37,10 +31,9 @@ import { AddDyeingPaymentModal } from './AddDyeingPaymentModal';
 import { DyeingBatchModal } from './DyeingBatchModal';
 import { DyeingChallanModal } from './DyeingChallanModal';
 import { DyeingCompletionModal } from './DyeingCompletionModal';
-import DyeingNavTabs from './DyeingNavTabs';
 import { DyeingPaymentHistoryModal } from './DyeingPaymentHistoryModal';
-import { DYEING_STATUS, calcBatchPaymentStats, filterBatches } from './dyeingLogic';
-import { deleteDyeingBatchRecord, loadDyeingData, saveDyeingBatchRecord } from './dyeingService';
+import { DYEING_STATUS, calcBatchPaymentStats } from './dyeingLogic';
+import { deleteDyeingBatchRecord, loadDyeingData } from './dyeingService';
 
 const rupees = (n) => `₹${formatCurrency(n)}`;
 
@@ -221,85 +214,32 @@ export default function DyeingPage({ openNew = false }) {
 
   return (
     <Page
-      title={
-        <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Layers className="size-6 text-brand-600" />
-              <h1 className="font-display text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                Dyeing & Processing
-              </h1>
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-              Raw grey fabric purchasing, dyeing expense allocation, finished stock conversion & true profit
-              calculation
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" icon={RefreshCw} onClick={loadData} title="Refresh batches">
-              Refresh
-            </Button>
-          </div>
-        </div>
-      }
+      title="Dyeing & Processing"
+      icon={Layers}
+      actions={<RefreshButton onClick={loadData} loading={loading} title="Refresh batches" />}
     >
       <div className="space-y-6">
-        {/* Navigation Tabs */}
-        <DyeingNavTabs
-          counts={{
-            ongoing: ongoingBatches.length,
-            settled: settledCount,
-            dyers: data.dyers.length,
-          }}
-        />
-
         {/* KPI Strip */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <StatCard
-            label="In Process Batches"
-            value={kpis.inProcessCount}
-            icon={Clock}
-            tone="warning"
-            subtext="Awaiting delivery from dyer"
-          />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard label="In Process Batches" value={kpis.inProcessCount} icon={Clock} tint="amber" />
           <StatCard
             label="Raw Grey Fabric Issued"
             value={`${kpis.totalGreyQty} Qty`}
             icon={Package}
-            tone="brand"
-            subtext="Currently at dye houses"
+            tint="brand"
           />
           <StatCard
-            label="Dyeing Charges"
+            label={`Dyeing Charges · Paid ${rupees(kpis.totalPaid)}`}
             value={rupees(kpis.totalDyeingCharges)}
             icon={Banknote}
-            tone="default"
-            subtext={`Paid: ${rupees(kpis.totalPaid)}`}
+            tint="brand"
           />
           <StatCard
             label="Dyer Balance Due"
             value={rupees(kpis.totalBalanceDue)}
             icon={AlertCircle}
-            tone={kpis.totalBalanceDue > 0 ? 'danger' : 'success'}
-            subtext={kpis.totalBalanceDue > 0 ? 'Pending payment' : 'All settled'}
+            tint={kpis.totalBalanceDue > 0 ? 'red' : 'green'}
           />
-          <Link
-            to="/dyeing/settled"
-            className="flex flex-col justify-between rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-2xs transition hover:bg-emerald-100/70 hover:border-emerald-300"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold tracking-wider text-emerald-800 uppercase">
-                Settled Batches
-              </span>
-              <CheckCircle2 className="size-4 text-emerald-600" />
-            </div>
-            <div className="mt-2 font-display text-xl font-bold tracking-tight text-emerald-950 sm:text-2xl">
-              {kpis.settledCount}
-            </div>
-            <div className="mt-1 text-xs font-semibold text-emerald-700 flex items-center gap-1">
-              <span>View Settled Page →</span>
-            </div>
-          </Link>
         </div>
 
         {/* Filter & Search Bar */}
@@ -312,13 +252,19 @@ export default function DyeingPage({ openNew = false }) {
             />
           </div>
           <div className="flex flex-wrap items-center gap-1.5 self-start overflow-x-auto pb-1 sm:self-auto sm:pb-0">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+            <span className="mr-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
               Payment:
             </span>
             {[
               { id: 'ALL', label: `All Ongoing (${ongoingBatches.length})` },
-              { id: 'DUE', label: `Balance Due (${ongoingBatches.filter((b) => calcBatchPaymentStats(b).hasBalanceDue).length})` },
-              { id: 'PAID', label: `Paid (${ongoingBatches.filter((b) => calcBatchPaymentStats(b).isPaid).length})` },
+              {
+                id: 'DUE',
+                label: `Balance Due (${ongoingBatches.filter((b) => calcBatchPaymentStats(b).hasBalanceDue).length})`,
+              },
+              {
+                id: 'PAID',
+                label: `Paid (${ongoingBatches.filter((b) => calcBatchPaymentStats(b).isPaid).length})`,
+              },
             ].map((p) => (
               <button
                 key={p.id}
@@ -338,7 +284,7 @@ export default function DyeingPage({ openNew = false }) {
 
         {/* Content Body */}
         {loading ? (
-          <LoadingState message="Loading dyeing batches..." className="py-16" />
+          <LoadingState label="Loading dyeing batches..." className="py-16" />
         ) : error ? (
           <ErrorState message={error} onRetry={loadData} />
         ) : filteredBatches.length === 0 ? (
@@ -349,7 +295,7 @@ export default function DyeingPage({ openNew = false }) {
                 ? 'No matching ongoing batches found'
                 : 'No ongoing dyeing batches in process'
             }
-            description={
+            message={
               searchTerm || paymentFilter !== 'ALL'
                 ? 'Try adjusting your search keywords or payment filter.'
                 : 'All batches have been completed and moved to Settled Batches, or click below to start a new batch.'
@@ -390,10 +336,6 @@ export default function DyeingPage({ openNew = false }) {
                       <span className="text-xs font-medium text-slate-500">
                         {formatDateIN(batch.batchDate)}
                       </span>
-                      <Badge variant={isCompleted ? 'success' : 'warning'} className="text-xs">
-                        {isCompleted ? 'Completed' : 'In Process'}
-                      </Badge>
-
                       {/* Payment Status Badge */}
                       {paymentStats.isPaid ? (
                         <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
@@ -420,7 +362,7 @@ export default function DyeingPage({ openNew = false }) {
                           variant="primary"
                           icon={CheckCircle2}
                           onClick={() => handleCompleteBatch(batch)}
-                          className="font-semibold text-xs py-1.5"
+                          className="py-1.5 text-xs font-semibold"
                         >
                           Complete
                         </Button>
@@ -432,7 +374,7 @@ export default function DyeingPage({ openNew = false }) {
                         variant="outline"
                         icon={Banknote}
                         onClick={() => handleOpenPayment(batch)}
-                        className="text-emerald-800 hover:bg-emerald-50 border-emerald-300 font-semibold text-xs py-1.5"
+                        className="border-emerald-300 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
                         title="Record payment to dyer"
                       >
                         + Pay
@@ -442,7 +384,7 @@ export default function DyeingPage({ openNew = false }) {
                         variant="outline"
                         icon={Receipt}
                         onClick={() => handleOpenPaymentHistory(batch)}
-                        className="text-slate-700 hover:bg-slate-100 border-slate-200 text-xs py-1.5"
+                        className="border-slate-200 py-1.5 text-xs text-slate-700 hover:bg-slate-100"
                         title="View payment history"
                       >
                         History {paymentStats.paymentsCount > 0 ? `(${paymentStats.paymentsCount})` : ''}
@@ -462,7 +404,7 @@ export default function DyeingPage({ openNew = false }) {
                         variant="outline"
                         icon={Edit}
                         onClick={() => handleEdit(batch)}
-                        className="text-slate-700 hover:bg-slate-100 border-slate-200"
+                        className="border-slate-200 text-slate-700 hover:bg-slate-100"
                       >
                         Edit
                       </Button>
@@ -471,7 +413,7 @@ export default function DyeingPage({ openNew = false }) {
                         variant="outline"
                         icon={Trash2}
                         onClick={() => handleDelete(batch)}
-                        className="text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-slate-200"
+                        className="border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                         title="Delete Batch"
                       >
                         Delete
@@ -513,7 +455,7 @@ export default function DyeingPage({ openNew = false }) {
                         {batch.dyeingRate || batch.input?.dyeingRate ? (
                           <span>
                             {rupees(batch.dyeingRate || batch.input?.dyeingRate)}/qty
-                            {(batch.weightLossPct || batch.input?.weightLossPct) ? (
+                            {batch.weightLossPct || batch.input?.weightLossPct ? (
                               <span> • {batch.weightLossPct || batch.input?.weightLossPct}% loss</span>
                             ) : null}
                           </span>
@@ -528,11 +470,7 @@ export default function DyeingPage({ openNew = false }) {
                         <span className="text-slate-300">•</span>
                         <span className="text-slate-500">
                           Due:{' '}
-                          <b
-                            className={
-                              paymentStats.balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700'
-                            }
-                          >
+                          <b className={paymentStats.balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700'}>
                             {rupees(paymentStats.balanceDue)}
                           </b>
                         </span>
@@ -570,7 +508,7 @@ export default function DyeingPage({ openNew = false }) {
         onClick={handleOpenNew}
         aria-label="New Dyeing Batch"
         title="New Dyeing Batch"
-        className="no-print fixed right-5 bottom-[calc(4.6rem+env(safe-area-inset-bottom))] sm:bottom-6 z-30 flex size-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-xl border-2 border-white transition hover:bg-slate-800 active:scale-95 focus-visible:outline-none"
+        className="no-print fixed right-5 bottom-[calc(4.6rem+env(safe-area-inset-bottom))] z-30 flex size-14 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white shadow-xl transition hover:bg-slate-800 focus-visible:outline-none active:scale-95 lg:bottom-6"
       >
         <Plus className="size-6 stroke-[2.5]" aria-hidden />
       </button>
@@ -611,7 +549,11 @@ export default function DyeingPage({ openNew = false }) {
           setPayingBatch(null);
         }}
         onPaymentAdded={(updatedBatch) => {
-          if (updatedBatch && historyBatch && (updatedBatch.batchId === historyBatch.batchId || updatedBatch.id === historyBatch.id)) {
+          if (
+            updatedBatch &&
+            historyBatch &&
+            (updatedBatch.batchId === historyBatch.batchId || updatedBatch.id === historyBatch.id)
+          ) {
             setHistoryBatch(updatedBatch);
           }
           loadData();

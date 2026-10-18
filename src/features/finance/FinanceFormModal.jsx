@@ -1,10 +1,10 @@
 import { Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { PartyNotFoundHint, PartyPicker } from '@/components/bill';
 import { differenceInMonths, differenceInDays } from 'date-fns';
 import { Button, Grid, Modal, NumberField, DateField, TextArea, SelectField } from '@/ui';
-import { formatCurrency } from '@/core/format';
 import { loadLiveAccountBalances } from './accountsLogic';
 
 const FORM_ID = 'finance-record-form';
@@ -104,7 +104,7 @@ export default function FinanceFormModal({ form, onChange, saving, onClose, onSa
 
           <div>
             <h3 className="mb-3 text-sm font-bold text-slate-800">Loan Details</h3>
-            <Grid>
+            <Grid cols={{ base: 1, sm: 2 }}>
               <NumberField
                 label="Principal Amount (Rs.)"
                 placeholder="0.00"
@@ -131,18 +131,12 @@ export default function FinanceFormModal({ form, onChange, saving, onClose, onSa
                 onChange={(v) => onChange({ ...form, endDate: v })}
               />
               <SelectField
-                label="Receive Loan In (Account / Cash)"
+                label="Receive Loan In"
                 value={form.depositAccount || 'cash'}
                 onChange={(v) => onChange({ ...form, depositAccount: v })}
                 options={[
-                  {
-                    value: 'cash',
-                    label: `Cash in Hand (Physical Cash) • Available: ₹${formatCurrency(liveBalances?.cashBalance ?? 0)}`,
-                  },
-                  ...(liveBalances?.bankAccounts || []).map((a) => ({
-                    value: a.id,
-                    label: `${a.accountName} (${a.bankName || a.accountType}) • Balance: ₹${formatCurrency(a.currentBalance)}`,
-                  })),
+                  { value: 'cash', label: CASH_LABEL },
+                  ...(liveBalances?.bankAccounts || []).map((a) => ({ value: a.id, label: accountLabel(a) })),
                 ]}
               />
               <TextArea

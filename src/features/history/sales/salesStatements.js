@@ -4,12 +4,12 @@
  * generateStatement, generatePDFStatement).
  */
 import { copyText, openExternal } from '@/platform';
-import { calculateTotalReturns } from '@/core/billing';
 import { db } from '@/core/db';
+import { SALES_LEDGER, groupParties, partySummary, returnsTotalsByInvoice } from '@/core/ledger';
 import { getLogoSrc } from '@/core/services/invoiceShare';
 import { printStatementHtml, shareStatementPdf } from '../lib/documentOutput';
 import { indexByInvoiceNo } from '../lib/lookups';
-import { buildCombinedStatement, matchPartyInvoices } from '../lib/statement';
+import { buildCombinedStatement, findStatementParties, partyChoice } from '../lib/statement';
 import {
   buildCombinedStatementHtml,
   buildEasyStatementHtml,
@@ -27,21 +27,26 @@ import { SALES_LABELS, userError } from '../lib/types';
 import { toHistoryInvoice } from './salesModel';
 // ------------------------------------------------------------------ combined (all invoices of a customer)
 /**
- * Customers whose name CONTAINS the typed text (case-insensitive) are combined into one statement, newest invoice
- * first. Returns null when nothing matches. Payments are loaded too because the detailed PDF prints them.
+ * The statement of ONE customer (a ledger party: phone first, then name — see lib/statement findStatementParties):
+ * the typed phone / exact name / part of a name, or `partyKey` once the user picked one. Returns null when nothing
+ * matches, `{ choices }` when several customers match, else the statement (newest invoice first) whose totals and
+ * outstanding balance come from the customer's ledger. Payments are loaded too because the detailed PDF prints them.
  */
-export async function loadCustomerStatement(customerName) {
+export async function loadCustomerStatement(query, partyKey) {
   const [invoices, returns, payments] = await Promise.all([
     db.getAllInvoices(),
     db.getAllReturns(),
     db.getAllPayments(),
   ]);
+  const parties = partyKey
+    ? groupParties(SALES_LEDGER, invoices).filter((p) => p.key === partyKey)
+    : findStatementParties(SALES_LEDGER, invoices, query);
+  if (parties.length === 0) return null;
+  if (parties.length > 1) return { choices: parties.map(partyChoice) };
+  const [party] = parties;
   const returnsByInvoice = indexByInvoiceNo(returns);
   const paymentsByInvoice = indexByInvoiceNo(payments);
-  const matched = matchPartyInvoices(
-    invoices.map((i) => ({ partyName: i.customerName, invoice: i })),
-    customerName,
-  ).map(({ invoice }) =>
+  const views = party.bills.map((invoice) =>
     toHistoryInvoice(
       invoice,
       paymentsByInvoice.get(invoice.invoiceNo) ?? [],
@@ -49,7 +54,10 @@ export async function loadCustomerStatement(customerName) {
       false,
     ),
   );
-  return buildCombinedStatement(customerName, matched);
+  const summary = partySummary(SALES_LEDGER, party.bills, {
+    returnsByInvoice: returnsTotalsByInvoice(returns),
+  });
+  return { ...buildCombinedStatement(party.name, views, summary), partyKey: party.key };
 }
 /**
  * The statement PDF: shared as a file where the device can ("Save to Files", WhatsApp, Drive…), otherwise the
@@ -75,6 +83,8 @@ export async function exportEasyStatement(statement, now = new Date()) {
   const html = buildEasyStatementHtml({
     partyName: statement.partyName,
     invoices: statement.invoices,
+    opening: statement.totals.opening,
+    outstanding: statement.totals.outstanding,
     labels: SALES_LABELS,
     logoSrc: await getLogoSrc(),
     now,
@@ -95,20 +105,25 @@ export async function shareCombinedStatementOnWhatsApp(statement) {
   return { copied };
 }
 // ------------------------------------------------------------------ one invoice
-/** generatePDFStatement() inputs: the invoice, its payments and (only when there are returns) its returns. */
+/**
+ * generatePDFStatement() inputs: the invoice, its payments and its returns. The adjusted balance deducts only the
+ * returns settled against the balance (refunds are listed, the balance stays), like the ledger.
+ */
 async function buildInvoiceStatement(invoiceNo, now) {
   const invoice = await db.getInvoice(invoiceNo);
   if (!invoice) throw userError('Invoice not found!');
-  const payments = await db.getPaymentsByInvoice(invoiceNo);
-  const totalReturns = await calculateTotalReturns(invoiceNo);
-  const returns = totalReturns > 0 ? await db.getReturnsByInvoice(invoiceNo) : [];
+  const [payments, returns] = await Promise.all([
+    db.getPaymentsByInvoice(invoiceNo),
+    db.getReturnsByInvoice(invoiceNo),
+  ]);
   const view = toHistoryInvoice(invoice, payments, returns, false);
   const html = buildInvoiceStatementHtml({
     invoice: view,
     payments: view.payments,
     returns: view.returns,
-    totalReturns,
-    adjustedBalanceDue: invoice.balanceDue - totalReturns,
+    totalReturns: view.totalReturns,
+    balanceReturns: view.balanceReturns,
+    adjustedBalanceDue: view.adjustedBalanceDue,
     labels: SALES_LABELS,
     logoSrc: await getLogoSrc(),
     now,

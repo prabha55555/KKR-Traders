@@ -7,28 +7,29 @@
  */
 import { Banknote, Landmark, Plus, RotateCcw, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
+import { isBalanceReturn } from '@/core/ledger';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { Button, EmptyState } from '@/ui';
 import { dateMillis } from '../lib/dates';
 import { sumReturnAmounts } from '../lib/lookups';
 import { HistorySheet } from './HistorySheet';
 
+/**
+ * How a return was settled. A refund (settlementType 'refund' or any refundMethod — the same test as core/ledger
+ * isBalanceReturn) is Cash only when its refundMethod is 'cash'; any other refund is an Account refund, exactly as
+ * Finance books it (features/finance/accountsLogic), shown against its bank — or, without a stored bank, the first bank
+ * account, where Finance books it. Older returns without settlement fields adjusted the bill's balance.
+ */
 function ReturnMethodBadge({ item, bankMap, defaultBank }) {
-  const isRefund = item.settlementType === 'refund';
-  const refundMethod = item.refundMethod?.toLowerCase();
-  const bank = item.bankAccountId ? bankMap.get(item.bankAccountId) : null;
-  const activeBank = bank || (refundMethod === 'bank' ? defaultBank : null);
-
-  if (isRefund) {
-    if (refundMethod === 'bank') {
-      const accName = activeBank ? activeBank.accountName : 'Bank Account';
-      const bankDesc = activeBank?.bankName || activeBank?.accountType || '';
+  if (!isBalanceReturn(item)) {
+    if (String(item.refundMethod ?? '').toLowerCase() !== 'cash') {
+      const bank = (item.bankAccountId ? bankMap.get(item.bankAccountId) : null) || defaultBank;
       return (
         <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 ring-1 ring-blue-200">
           <Landmark className="size-3.5 text-blue-600" />
-          <span>Bank Refund: {accName}</span>
-          {bankDesc && <span className="font-medium text-blue-600/80">({bankDesc})</span>}
+          <span>Account Refund: {accountLabel(bank)}</span>
         </span>
       );
     }

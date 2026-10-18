@@ -71,6 +71,7 @@ export default function PurchaseHistoryPage() {
           state={statement.state}
           busy={statement.busy}
           onGenerate={() => void statement.generate()}
+          onChooseParty={(partyKey) => void statement.choose(partyKey)}
           onClear={statement.clear}
           onDownloadPdf={() => void statement.downloadPdf()}
           onDownloadEasyPdf={() => void statement.downloadEasyPdf()}
@@ -150,6 +151,7 @@ export default function PurchaseHistoryPage() {
           products={sheet.products}
           balanceDue={sheet.balanceDue}
           returns={sheet.returns}
+          partyReturns={sheet.partyReturns}
           onClose={h.closeSheet}
           onSubmit={(submission) => h.submitReturn(sheet.invoiceNo, submission)}
         />

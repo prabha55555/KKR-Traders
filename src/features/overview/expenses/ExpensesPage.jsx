@@ -6,6 +6,7 @@
 import { CalendarDays, CalendarRange, Plus, Sigma, Wallet } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { CASH_LABEL, accountLabel } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, toNum, todayISO } from '@/core/format';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
@@ -34,6 +35,13 @@ import {
 const rs = (n) => `₹${formatCurrency(n)}`;
 /** "Today's Total:" -> "Today's Total" (KPI labels have no trailing colon) */
 const kpiLabel = (text) => text.replace(/:$/, '');
+
+/** Source filter chips: every non-cash expense is paid from a bank account ("Account"). */
+const SOURCE_FILTERS = [
+  { value: 'all', label: 'All Modes' },
+  { value: 'cash', label: 'Cash Only' },
+  { value: 'bank', label: 'Account' },
+];
 
 /** The reason as a category-style chip ('-' when there is none). */
 function ReasonChip({ expense, className }) {
@@ -115,8 +123,8 @@ export default function ExpensesPage() {
         const bank = balances.bankAccounts.find((b) => b.id === source);
         if (bank && amt > bank.currentBalance) {
           const ok = await confirm({
-            title: `Insufficient Balance in ${bank.accountName}`,
-            message: `Paying ₹${formatCurrency(amt)} exceeds available balance in ${bank.accountName} (₹${formatCurrency(bank.currentBalance)}). Do you want to proceed anyway?`,
+            title: `Insufficient Balance in ${accountLabel(bank)}`,
+            message: `Paying ₹${formatCurrency(amt)} exceeds available balance in ${accountLabel(bank)} (₹${formatCurrency(bank.currentBalance)}). Do you want to proceed anyway?`,
             tone: 'warning',
             confirmText: 'Proceed Anyway',
             cancelText: 'Cancel & Adjust',
@@ -188,7 +196,7 @@ export default function ExpensesPage() {
           return (
             <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/70">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Cash in Hand
+              {CASH_LABEL}
             </span>
           );
         }
@@ -196,7 +204,7 @@ export default function ExpensesPage() {
         return (
           <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800 ring-1 ring-blue-200/70">
             <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-            {bank ? bank.accountName : 'Bank Account'}
+            {accountLabel(bank)}
           </span>
         );
       },
@@ -231,7 +239,7 @@ export default function ExpensesPage() {
                   {e.paymentSource && e.paymentSource !== 'cash' ? (
                     <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-800 ring-1 ring-blue-200/70">
                       <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                      {bankAccounts.find((b) => b.id === e.paymentSource)?.accountName || 'Bank'}
+                      {accountLabel(bankAccounts.find((b) => b.id === e.paymentSource))}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200/70">
@@ -298,40 +306,18 @@ export default function ExpensesPage() {
         textPlaceholder="Search by Reason..."
         quickDates
         extraFilters={
-          <div className="flex items-center rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setSourceFilter('all')}
-              className={`rounded-md px-2 py-0.5 transition ${
-                sourceFilter === 'all'
-                  ? 'bg-white text-brand-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              All Modes
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceFilter('cash')}
-              className={`rounded-md px-2 py-0.5 transition ${
-                sourceFilter === 'cash'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Cash Only
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceFilter('bank')}
-              className={`rounded-md px-2 py-0.5 transition ${
-                sourceFilter === 'bank'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Bank / UPI
-            </button>
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Paid via">
+            {SOURCE_FILTERS.map(({ value, label }) => (
+              <Button
+                key={value}
+                size="sm"
+                variant={sourceFilter === value ? 'secondary' : 'subtle'}
+                aria-pressed={sourceFilter === value}
+                onClick={() => setSourceFilter(value)}
+              >
+                {label}
+              </Button>
+            ))}
           </div>
         }
         onClear={() => {

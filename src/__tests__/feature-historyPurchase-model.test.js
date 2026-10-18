@@ -88,28 +88,64 @@ describe('toHistoryPurchase (hybrid payment schema)', () => {
     expect(view.balanceDue).toBe(0);
     expect(view.adjustedBalanceDue).toBe(0);
   });
-  test('Current Bill Amount falls back to the grand total; discount reads `discountAmount` before `discount`', () => {
-    expect(toHistoryPurchase(bill({ subtotal: 0 }), [], [], false).subtotal).toBe(8000);
+  test("Current Bill Amount is the bill's own amount (never the grand total with its carried balance); discount reads `discountAmount` before `discount`", () => {
+    // no stored subtotal: rebuilt from the products, like the ledger does
+    expect(toHistoryPurchase(bill({ subtotal: undefined }), [], [], false).subtotal).toBe(7500);
+    // nothing to rebuild from: the grand total minus the carried balances, plus the discount
+    expect(toHistoryPurchase(bill({ subtotal: undefined, products: [] }), [], [], false).subtotal).toBe(
+      8000 - 500 - 100 + 100,
+    );
+    expect(toHistoryPurchase(bill(), [], [], false).billAmount).toBe(7500 + 100 - 100);
     expect(toHistoryPurchase(bill({ discount: 5, discountAmount: 7 }), [], [], false).discountAmount).toBe(7);
     expect(toHistoryPurchase(bill({ discount: undefined }), [], [], false).discountAmount).toBe(0);
   });
-  test('the legacy paymentMethod badge and the top-level breakdown are passed through', () => {
+  test('the legacy paymentMethod badge and the top-level breakdown are folded to Cash / Account', () => {
     const view = toHistoryPurchase(
       bill({ paymentMethod: 'upi', paymentBreakdown: { cash: 0, upi: 50, account: 0 } }),
       [],
       [],
       false,
     );
-    expect(view.legacyPaymentMethod).toBe('upi');
-    expect(view.paymentBreakdown).toEqual({ cash: 0, upi: 50, account: 0 });
+    expect(view.legacyPaymentMethod).toBe('account');
+    expect(view.paymentBreakdown).toEqual({ cash: 0, account: 50 });
+  });
+  test('only returns settled against the balance lower it; refunds are listed but leave the balance due', () => {
+    const view = toHistoryPurchase(
+      bill(),
+      [],
+      [
+        ret({ id: 'old', returnAmount: 200 }), // legacy: no settlement fields -> adjusted the balance
+        ret({ id: 'cash', returnAmount: 300, settlementType: 'refund', refundMethod: 'cash' }),
+        ret({ id: 'bank', returnAmount: 100, refundMethod: 'bank', bankAccountId: 'b1' }),
+      ],
+      false,
+    );
+    expect(view).toMatchObject({
+      balanceDue: 3000,
+      totalReturns: 600,
+      balanceReturns: 200,
+      refundedReturns: 400,
+      adjustedBalanceDue: 2800,
+    });
   });
 });
 describe('buildPurchaseHistoryData', () => {
   const bills = [
     bill({ invoiceNo: '001', invoiceDate: '2026-10-01' }),
     bill({ invoiceNo: '002', invoiceDate: '2026-10-03' }),
-    bill({ invoiceNo: '003', invoiceDate: '2026-10-02', supplierName: 'Lakshmi Dyers' }),
-    bill({ invoiceNo: '004', invoiceDate: '2026-10-03', supplierName: 'Lakshmi Dyers' }),
+    // suppliers are told apart like the ledger does: by phone first
+    bill({
+      invoiceNo: '003',
+      invoiceDate: '2026-10-02',
+      supplierName: 'Lakshmi Dyers',
+      supplierPhone: '9000000001',
+    }),
+    bill({
+      invoiceNo: '004',
+      invoiceDate: '2026-10-03',
+      supplierName: 'Lakshmi Dyers',
+      supplierPhone: '9000000001',
+    }),
   ];
   test("newest first, payments / returns attached per bill, Add Payment only on each supplier's latest bill", () => {
     const { invoices } = buildPurchaseHistoryData(

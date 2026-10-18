@@ -14,6 +14,7 @@ import {
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 
+import { accountLabel, accountLabelWithBank } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, toNum } from '@/core/format';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
@@ -27,7 +28,6 @@ import { usePagedRows } from '../overview/components/paging';
 import { calculateFinanceStats, validateFinanceForm } from './financeLogic';
 import FinanceFormModal from './FinanceFormModal';
 import FinancePaymentHistoryModal from './FinancePaymentHistoryModal';
-import FinanceNavTabs from './FinanceNavTabs';
 
 const rs = (n) => `Rs. ${formatCurrency(n)}`;
 
@@ -200,10 +200,10 @@ export default function FinanceSettledRecordsPage() {
         ) : (
           <span
             className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200"
-            title={bank ? `${bank.accountName} (${bank.bankName || ''})` : 'Bank Account'}
+            title={bank ? accountLabelWithBank(bank) : 'Bank Account'}
           >
             <Building2 className="size-3.5" />
-            {bank ? bank.accountName : 'Bank Account'}
+            {bank ? accountLabel(bank) : 'Bank Account'}
           </span>
         );
       },
@@ -336,7 +336,9 @@ export default function FinanceSettledRecordsPage() {
                       ) : (
                         <span className="flex items-center gap-1 font-semibold text-blue-700">
                           <Building2 className="size-3.5" />{' '}
-                          {bankMap[e.depositAccount]?.accountName || 'Bank Account'}
+                          {bankMap[e.depositAccount]
+                            ? accountLabel(bankMap[e.depositAccount])
+                            : 'Bank Account'}
                         </span>
                       )}
                     </div>
@@ -367,14 +369,11 @@ export default function FinanceSettledRecordsPage() {
 
   return (
     <Page title="Settled Finance Records" icon={CheckCircle2}>
-      {/* Top navigation tabs */}
-      <FinanceNavTabs />
-
       <KpiRow cols={4}>
         <InkStat icon={CheckCheck} label="Settled Loans" value={totals.count} />
-        <InkStat icon={Landmark} label="Total Principal" value={rs(totals.principal)} tint="brand" />
-        <InkStat icon={Sigma} label="Interest Repaid" value={rs(totals.interestPaid)} tint="amber" />
-        <InkStat icon={CreditCard} label="Total Amount Repaid" value={rs(totals.totalPaid)} tint="emerald" />
+        <InkStat icon={Landmark} label="Total Principal" value={rs(totals.principal)} />
+        <InkStat icon={Sigma} label="Interest Repaid" value={rs(totals.interestPaid)} />
+        <InkStat icon={CreditCard} label="Total Amount Repaid" value={rs(totals.totalPaid)} />
       </KpiRow>
 
       <FilterBar
@@ -383,6 +382,7 @@ export default function FinanceSettledRecordsPage() {
         text={searchTerm}
         onTextChange={setSearchTerm}
         textPlaceholder="Search settled records by Lender or Phone..."
+        dateLabel="Interest as of"
         onClear={() => {
           setSearchTerm('');
           setCalcDate('');

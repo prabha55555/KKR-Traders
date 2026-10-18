@@ -23,7 +23,8 @@ export function roundMoney(amount) {
 }
 /**
  * Utils.calculateAndSetPreviousBalance: balance carried in from the customer's previous invoice in their ledger
- * (the one before `invoiceNo` / `invoiceDate`).
+ * (the one before `invoiceNo` / `invoiceDate`). `null` when the ledger could not be read: callers keep the value they
+ * show (a silent 0 would be saved as if the customer owed nothing).
  */
 export async function previousBalanceFor(customerName, customerPhone, invoiceNo, invoiceDate = null) {
   if (!customerName && !customerPhone) return 0;
@@ -33,5 +34,6 @@ export async function previousBalanceFor(customerName, customerPhone, invoiceNo,
     invoiceNo || null,
     invoiceDate || null,
   );
+  if (info.failed) return null;
   return roundMoney(info.balanceCarriedForward);
 }

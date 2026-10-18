@@ -5,6 +5,7 @@
  *  - value: string                      current description
  *  - onChange(value: string)            typed text OR the full description of a picked suggestion
  *  - shortcuts: Array<{shortcutKey, fullDescription}> | null   product catalogue (null while loading: no hints)
+ *  - stockMap?: Map                     stock lookup (stocksService.getStockQuantityMap): stock hints + stock products
  *  - readOnly?: boolean
  *  - label: string                      accessible label
  *  - placeholder?: string
@@ -13,6 +14,7 @@
  * is flagged ("Select a product from the suggestions") once the box loses focus, mirroring the save validation.
  */
 import { useId, useMemo, useState } from 'react';
+import { lookupStock } from '@/features/overview/stocks/stocksLogic';
 import { cn } from '@/ui/cn';
 import { isKnownProduct, matchShortcuts } from './productMatch';
 
@@ -56,23 +58,18 @@ export function ProductDescriptionInput({
   }, [focused, readOnly, dismissed, shortcutSuggestions, stockMap, value]);
 
   const open = suggestions.length > 0;
-  const inStock = Boolean(
-    stockMap &&
-      value &&
-      typeof value === 'string' &&
-      value.trim() &&
-      (stockMap.has(value.trim()) || stockMap.has(value.trim().toLowerCase())),
-  );
+  const matchedStock = typeof value === 'string' ? lookupStock(stockMap, value) : null;
+  const inStock = Boolean(matchedStock);
   const isKnown = (!!shortcuts && isKnownProduct(shortcuts, value)) || inStock;
   const unknown = !focused && (!!shortcuts || inStock) && value.trim().length > 0 && !isKnown;
   const noMatch =
-    focused && !readOnly && !dismissed && (!!shortcuts || !!stockMap) && value.trim().length > 0 && suggestions.length === 0;
+    focused &&
+    !readOnly &&
+    !dismissed &&
+    (!!shortcuts || !!stockMap) &&
+    value.trim().length > 0 &&
+    suggestions.length === 0;
   const active = Math.min(highlight, suggestions.length - 1);
-
-  const matchedStock =
-    stockMap && value && typeof value === 'string' && value.trim()
-      ? stockMap.get(value.trim()) || stockMap.get(value.trim().toLowerCase()) || null
-      : null;
 
   const pick = (s) => {
     onChange(s.fullDescription);
@@ -193,9 +190,7 @@ export function ProductDescriptionInput({
               <span className="min-w-0 flex-1 truncate">{s.fullDescription}</span>
               {stockMap
                 ? (() => {
-                    const stockInfo =
-                      stockMap.get(s.fullDescription?.trim()) ||
-                      stockMap.get(s.fullDescription?.trim().toLowerCase());
+                    const stockInfo = lookupStock(stockMap, s.fullDescription);
                     if (!stockInfo || typeof stockInfo.available !== 'number') return null;
                     const qty = stockInfo.available;
                     return (
@@ -229,7 +224,7 @@ export function ProductDescriptionInput({
       {isKnown ? (
         <div className="mt-1 flex items-center justify-between gap-1 text-[11px] font-semibold">
           <span className="flex items-center gap-1 text-emerald-600">✓ In catalogue</span>
-          {matchedStock != null && typeof matchedStock?.available === 'number' && (
+          {typeof matchedStock?.available === 'number' && (
             <span
               className={cn(
                 'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-bold tabular-nums ring-1',

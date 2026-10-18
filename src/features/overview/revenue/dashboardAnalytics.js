@@ -15,6 +15,15 @@ import {
   subDays,
   subMonths,
 } from 'date-fns';
+import { purchaseAmountPaid } from '@/core/billing';
+import {
+  PURCHASE_LEDGER,
+  SALES_LEDGER,
+  billAmount,
+  groupParties,
+  partySummary,
+  returnsTotalsByInvoice,
+} from '@/core/ledger';
 import { buildAvgCostLookup, invoiceDiscount } from './revenueLogic';
 
 /**
@@ -181,66 +190,13 @@ export function computeAnalytics(data, rangeKey) {
     : aggregatePeriod(data, { start: new Date(0), end: new Date(2100, 1, 1) }, avgCostLookup);
   const previous = previousRange ? aggregatePeriod(data, previousRange, avgCostLookup) : null;
 
-  // Outstanding logic is cumulative, not bound to the date filter.
-  // It uses the ledger balances.
-  let customerOutstanding = 0;
-  let suppliersOutstanding = 0;
-  let customersWithDues = 0;
-  let suppliersWithDues = 0;
-
-  const custLedger = new Map();
-  for (const inv of data.salesBills) {
-    if (!inv.customerName) continue;
-    const c = custLedger.get(inv.customerName) || { latestDate: 0, balance: 0, returns: 0 };
-    const dTime = new Date(inv.invoiceDate || inv.date || 0).getTime();
-    if (dTime >= c.latestDate) {
-      c.latestDate = dTime;
-      c.balance = toNum(inv.balanceDue);
-    }
-    custLedger.set(inv.customerName, c);
-  }
-  for (const r of data.salesReturns) {
-    const inv = data.salesBills.find((i) => String(i.invoiceNo) === String(r.invoiceNo));
-    if (inv && inv.customerName) {
-      const c = custLedger.get(inv.customerName);
-      if (c) c.returns += toNum(r.returnAmount);
-    }
-  }
-
-  custLedger.forEach((c) => {
-    const due = c.balance - c.returns;
-    if (due > 0) {
-      customerOutstanding += due;
-      customersWithDues++;
-    }
-  });
-
-  const supLedger = new Map();
-  for (const bill of data.purchaseBills) {
-    if (!bill.supplierName) continue;
-    const s = supLedger.get(bill.supplierName) || { latestDate: 0, balance: 0, returns: 0 };
-    const dTime = new Date(bill.invoiceDate || bill.date || 0).getTime();
-    if (dTime >= s.latestDate) {
-      s.latestDate = dTime;
-      s.balance = toNum(bill.payment?.balanceDue || bill.balanceDue);
-    }
-    supLedger.set(bill.supplierName, s);
-  }
-  for (const r of data.purchaseReturns) {
-    const inv = data.purchaseBills.find((i) => String(i.invoiceNo) === String(r.invoiceNo));
-    if (inv && inv.supplierName) {
-      const s = supLedger.get(inv.supplierName);
-      if (s) s.returns += toNum(r.returnAmount);
-    }
-  }
-
-  supLedger.forEach((s) => {
-    const due = s.balance - s.returns;
-    if (due > 0) {
-      suppliersOutstanding += due;
-      suppliersWithDues++;
-    }
-  });
+  // Outstanding is cumulative (not bound to the date filter): each party's ledger closing balance.
+  const customers = outstandingParties(SALES_LEDGER, data.salesBills, data.salesReturns);
+  const suppliers = outstandingParties(PURCHASE_LEDGER, data.purchaseBills, data.purchaseReturns);
+  const customerOutstanding = customers.total;
+  const customersWithDues = customers.count;
+  const suppliersOutstanding = suppliers.total;
+  const suppliersWithDues = suppliers.count;
 
   return {
     current,
@@ -256,6 +212,52 @@ export function computeAnalytics(data, rangeKey) {
   };
 }
 
+/** A bill that names a party (bills without a name or phone are not part of any ledger). */
+const hasParty = (kind, bill) =>
+  Boolean(String(kind.name(bill) ?? '').trim() || String(kind.phone(bill) ?? '').trim());
+
+/**
+ * Parties of one kind grouped exactly like the ledger chains them, with what each owes now
+ * (partySummary(...).balance = closing of the latest bill; returns refunded in cash / bank do not lower it).
+ */
+export function partyBalances(kind, bills, returns) {
+  const returnsByInvoice = returnsTotalsByInvoice(returns);
+  return groupParties(
+    kind,
+    (bills || []).filter((b) => hasParty(kind, b)),
+  ).map((group) => ({ ...group, ...partySummary(kind, group.bills, { returnsByInvoice }) }));
+}
+
+/** Σ of the positive party balances and how many parties owe something. */
+function outstandingParties(kind, bills, returns) {
+  let total = 0;
+  let count = 0;
+  partyBalances(kind, bills, returns).forEach(({ balance }) => {
+    if (balance > 0) {
+      total += balance;
+      count++;
+    }
+  });
+  return { total: Math.round(total * 100) / 100, count };
+}
+
+/** Bill -> its ledger party `{ key, name }` (for per-party totals that must not split or merge by exact name). */
+export function partyOfBill(kind, bills) {
+  const map = new Map();
+  groupParties(
+    kind,
+    (bills || []).filter((b) => hasParty(kind, b)),
+  ).forEach(({ key, name, bills: members }) => members.forEach((b) => map.set(b, { key, name })));
+  return map;
+}
+
+/** What a sales invoice itself billed (no carried previous balance). */
+export const salesBillValue = (bill) => billAmount(bill, SALES_LEDGER);
+/** What a purchase bill itself billed (no carried previous balance). */
+export const purchaseBillValue = (bill) => billAmount(bill, PURCHASE_LEDGER);
+/** Amount paid on a purchase bill (nested `payment.totalPaid` or top-level `amountPaid`). */
+export const purchasePaid = (bill) => toNum(purchaseAmountPaid(bill));
+
 function aggregatePeriod(data, range, avgCostLookup) {
   let salesAmount = 0;
   let salesCount = 0;
@@ -266,7 +268,7 @@ function aggregatePeriod(data, range, avgCostLookup) {
   for (const bill of data.salesBills || []) {
     const date = bill.invoiceDate || bill.date || bill.timestamp;
     if (isWithinRange(date, range)) {
-      salesAmount += toNum(bill.grandTotal);
+      salesAmount += salesBillValue(bill);
       salesCount++;
       profitAmount += getBillProfit(bill, avgCostLookup);
     }
@@ -275,7 +277,7 @@ function aggregatePeriod(data, range, avgCostLookup) {
   for (const bill of data.purchaseBills || []) {
     const date = bill.invoiceDate || bill.date || bill.timestamp;
     if (isWithinRange(date, range)) {
-      purchasesAmount += toNum(bill.grandTotal);
+      purchasesAmount += purchaseBillValue(bill);
     }
   }
 

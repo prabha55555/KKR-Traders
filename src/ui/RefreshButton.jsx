@@ -2,7 +2,8 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from './Button';
 
 /**
- * The one Refresh button of the app: blue "refresh" variant, icon + "Refresh" text on every screen size.
+ * The one Refresh button of the app: blue "refresh" variant, icon + "Refresh" text (the text is visually hidden on
+ * phones, where page headers are crowded, but stays the accessible name).
  * While `loading` the icon becomes a spinner and the button is disabled. Extra props (aria-label, title…) pass through.
  */
 export function RefreshButton({
@@ -23,7 +24,7 @@ export function RefreshButton({
       onClick={onClick}
       {...rest}
     >
-      {children}
+      <span className="max-sm:sr-only">{children}</span>
     </Button>
   );
 }

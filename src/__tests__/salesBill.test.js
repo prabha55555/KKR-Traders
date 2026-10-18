@@ -26,8 +26,7 @@ const form = (over = {}) => ({
   manualPreviousBalance: '50',
   discountAmount: '25',
   cash: '500',
-  upi: '200',
-  account: '0',
+  account: '200',
   ...over,
 });
 afterEach(() => jest.restoreAllMocks());
@@ -73,7 +72,7 @@ describe('buildSalesInvoice', () => {
     expect(inv.grandTotal).toBe(1728);
     expect(inv.amountPaid).toBe(700);
     expect(inv.balanceDue).toBe(1028);
-    expect(inv.paymentBreakdown).toEqual({ cash: 500, upi: 200, account: 0 });
+    expect(inv.paymentBreakdown).toEqual({ cash: 500, account: 200 });
     expect(inv.discountAmount).toBe(25);
     expect(inv.manualPreviousBalance).toBe(50);
     expect(inv.products.map((p) => [p.sno, p.amount])).toEqual([
@@ -85,6 +84,15 @@ describe('buildSalesInvoice', () => {
     const t = salesFormTotals(form({ additionalPaymentsTotal: 100 }));
     expect(t.totalPaid).toBe(800);
     expect(t.balanceDue).toBe(928);
+  });
+  test('the form has no UPI amount; a legacy UPI amount in later payments is stored as Account', () => {
+    expect(emptySalesForm()).not.toHaveProperty('upi');
+    expect(emptySalesForm().additionalPaymentsBreakdown).toEqual({ cash: 0, account: 0 });
+    const inv = buildSalesInvoice(
+      form({ additionalPaymentsTotal: 80, additionalPaymentsBreakdown: { cash: 30, upi: 50, account: 0 } }),
+    );
+    expect(inv.paymentBreakdown).toEqual({ cash: 530, account: 250 });
+    expect(inv.amountPaid).toBe(780);
   });
 });
 describe('saveSalesBill', () => {
@@ -121,13 +129,13 @@ describe('saveSalesBill', () => {
     expect(calls.invoices).toHaveLength(1);
     expect(calls.payments.map((p) => [p.id, p.amount, p.paymentMethod, p.paymentType])).toEqual([
       ['payment_012_initial_cash', 500, 'cash', 'initial'],
-      ['payment_012_initial_upi', 200, 'upi', 'initial'],
+      ['payment_012_initial_account', 200, 'account', 'initial'],
     ]);
     expect(calls.customers[0]).toMatchObject({ phone: '9876543210', name: 'SLN TEX', address: 'Tirupur' });
     expect(subsequent).toHaveBeenCalledTimes(1);
     expect(subsequent.mock.calls[0][0]).toMatchObject({ customerName: 'SLN TEX', invoiceNo: '012' });
   });
-  test("returns the bill as the ledger sync stored it; an edit that changes the customer also re-syncs the old one", async () => {
+  test('returns the bill as the ledger sync stored it; an edit that changes the customer also re-syncs the old one', async () => {
     const { subsequent } = stubDb();
     const before = { invoiceNo: '012', customerName: 'OLD', customerPhone: '9000000009' };
     db.getInvoice.mockResolvedValue(before);
@@ -138,7 +146,33 @@ describe('saveSalesBill', () => {
     );
     const saved = await saveSalesBill(form());
     expect(saved).toMatchObject({ previousBalance: 450, grandTotal: 1749, balanceDue: 1049 });
-    expect(subsequent).toHaveBeenCalledWith(before, { removed: before });
+    // the new customer's sync knows which bill changed (and how it was stored before) for the opening balance
+    expect(subsequent.mock.calls[0][1]).toEqual({ changedNo: '012', before });
+    expect(subsequent).toHaveBeenCalledWith(before, { before });
+  });
+  test('a confirmed overwrite of a different bill sends that bill to the recycle bin first', async () => {
+    const { calls } = stubDb();
+    const old = { invoiceNo: '012', customerName: 'OLD', customerPhone: '9000000009' };
+    db.getInvoice.mockResolvedValue(old);
+    const bin = jest.spyOn(db, 'moveInvoiceToRecycleBin').mockResolvedValue();
+    await saveSalesBill(form(), { replaceExisting: true });
+    expect(bin).toHaveBeenCalledWith('012');
+    expect(calls.invoices).toHaveLength(1);
+  });
+  test('editing a legacy invoice without initial payment documents keeps what was paid', async () => {
+    jest.spyOn(db, 'getInvoice').mockResolvedValue({
+      invoiceNo: '012',
+      customerName: 'SLN TEX',
+      customerPhone: '9876543210',
+      products: [],
+      amountPaid: 700,
+      paymentBreakdown: { cash: 600, upi: 100, account: 0 },
+    });
+    jest.spyOn(db, 'getPaymentsByInvoice').mockResolvedValue([]);
+    const loaded = await loadSalesBillForEditing('012');
+    // the legacy UPI amount is loaded as Account (no hidden amount the user cannot see or edit)
+    expect(loaded?.form).toMatchObject({ cash: '600', account: '100' });
+    expect(loaded?.form).not.toHaveProperty('upi');
   });
   test('replaces previously stored initial payments but leaves later payments alone', async () => {
     const { calls } = stubDb([
@@ -148,9 +182,22 @@ describe('saveSalesBill', () => {
     await saveSalesBill(form());
     expect(calls.deleted).toEqual(['payment_012_initial_cash']);
   });
+  test('re-saving a legacy bill removes its initial UPI document and writes the amount as one Account document', async () => {
+    const { calls } = stubDb([
+      { id: 'payment_012_initial_cash', paymentType: 'initial', paymentMethod: 'cash', amount: 500 },
+      { id: 'payment_012_initial_upi', paymentType: 'initial', paymentMethod: 'upi', amount: 200 },
+    ]);
+    await saveSalesBill(form({ bankAccountId: 'bank-1' }));
+    expect(calls.deleted).toEqual(['payment_012_initial_cash', 'payment_012_initial_upi']);
+    expect(calls.payments.map((p) => [p.id, p.paymentMethod, p.bankAccountId])).toEqual([
+      ['payment_012_initial_cash', 'cash', 'bank-1'],
+      ['payment_012_initial_account', 'account', 'bank-1'],
+    ]);
+    expect(calls.invoices[0].paymentBreakdown).toEqual({ cash: 500, account: 200 });
+  });
   test('no customer record without a 10-digit phone; no payment docs when nothing paid', async () => {
     const { calls } = stubDb();
-    await saveSalesBill(form({ customerPhone: '', cash: '0', upi: '0', account: '0' }));
+    await saveSalesBill(form({ customerPhone: '', cash: '0', account: '0' }));
     expect(calls.customers).toHaveLength(0);
     expect(calls.payments).toHaveLength(0);
   });
@@ -172,7 +219,7 @@ describe('loadSalesBillForEditing', () => {
     amountPaid: 700,
     balanceDue: 830,
   };
-  test('rebuilds the cash/upi/account split from stored payments and totals later payments', async () => {
+  test('rebuilds the cash/account split from stored payments (legacy UPI = Account) and totals later payments', async () => {
     jest.spyOn(db, 'getInvoice').mockResolvedValue(stored);
     jest.spyOn(db, 'getPaymentsByInvoice').mockResolvedValue([
       {
@@ -203,9 +250,9 @@ describe('loadSalesBillForEditing', () => {
     const loaded = await loadSalesBillForEditing('012');
     expect(loaded?.form).toMatchObject({
       cash: '500',
-      upi: '100',
-      account: '0',
+      account: '100',
       additionalPaymentsTotal: 100,
+      additionalPaymentsBreakdown: { cash: 100, account: 0 },
       discountAmount: '25',
     });
     expect(loaded?.form.rows).toEqual([{ description: 'Cotton Shirt', qty: '10', rate: '120.5' }]);
@@ -222,6 +269,7 @@ describe('loadSalesBillForEditing', () => {
       .mockResolvedValue({ ...stored, paymentBreakdown: undefined, amountPaid: 250 });
     jest.spyOn(db, 'getPaymentsByInvoice').mockRejectedValue(new Error('offline'));
     const loaded = await loadSalesBillForEditing('012');
-    expect(loaded?.form).toMatchObject({ cash: '250', upi: '0', account: '0', additionalPaymentsTotal: 0 });
+    expect(loaded?.form).toMatchObject({ cash: '250', account: '0', additionalPaymentsTotal: 0 });
+    expect(loaded?.form).not.toHaveProperty('upi');
   });
 });

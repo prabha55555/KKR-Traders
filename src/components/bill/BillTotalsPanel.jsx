@@ -6,7 +6,7 @@
  *
  * Props
  *  - title: string                         "Calculation" | "Bill Summary"
- *  - form: { previousBalance, manualPreviousBalance, discountAmount, cash, upi, account }
+ *  - form: { previousBalance, manualPreviousBalance, discountAmount, cash, account, bankAccountId }
  *  - totals: { subtotal, grandTotal, totalPaid, balanceDue }
  *  - onChange(patch)                       merged into the form
  *  - balanceLabel: string                  "New Balance Due" | "Balance Due"
@@ -23,6 +23,7 @@ const rupees = (n) => `₹${formatCurrency(n)}`;
 export function BillTotalsPanel({ title, form, totals, onChange, balanceLabel, note, mode }) {
   const effectiveMode = mode || (title === 'Bill Summary' ? 'purchase' : 'sales');
   const due = totals.balanceDue > 0;
+  const credit = totals.balanceDue < 0;
   return (
     <section
       aria-label={title}
@@ -80,7 +81,6 @@ export function BillTotalsPanel({ title, form, totals, onChange, balanceLabel, n
             mode={effectiveMode}
             values={{
               cash: String(form.cash),
-              upi: String(form.upi),
               account: String(form.account),
               bankAccountId: form.bankAccountId,
             }}
@@ -94,19 +94,19 @@ export function BillTotalsPanel({ title, form, totals, onChange, balanceLabel, n
         <div
           className={cn(
             'flex items-center justify-between gap-3 rounded-xl p-3.5 ring-1 transition-colors',
-            'bg-red-50 ring-red-200',
+            due ? 'bg-red-50 ring-red-200' : 'bg-emerald-50 ring-emerald-200',
           )}
         >
           <div className="min-w-0">
             <div className="text-sm font-bold text-slate-700">{balanceLabel}</div>
             <Badge tone={due ? 'danger' : 'success'} className="mt-1">
-              {due ? 'Payment pending' : totals.balanceDue < 0 ? 'Credit' : 'Settled'}
+              {due ? 'Payment pending' : credit ? 'Credit' : 'Settled'}
             </Badge>
           </div>
           <div
             className={cn(
               'text-right font-display text-xl font-extrabold [overflow-wrap:anywhere] tabular-nums sm:text-2xl',
-              'text-red-600',
+              due ? 'text-red-600' : 'text-emerald-700',
             )}
           >
             {rupees(totals.balanceDue)}

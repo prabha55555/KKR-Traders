@@ -103,7 +103,11 @@ export function computeInputFabricRate(
     dyeingBatches.forEach((batch) => {
       if (batch.status === 'COMPLETED' && Array.isArray(batch.output)) {
         batch.output.forEach((out) => {
-          if (String(out.description || '').trim().toLowerCase() === desc) {
+          if (
+            String(out.description || '')
+              .trim()
+              .toLowerCase() === desc
+          ) {
             const qty = toNum(out.qty);
             const rate = toNum(out.unitCost);
             if (qty > 0 && rate > 0) {
@@ -132,7 +136,11 @@ export function computeInputFabricRate(
     purchaseBills.forEach((bill) => {
       if (!bill.products || !Array.isArray(bill.products)) return;
       bill.products.forEach((prod) => {
-        if (String(prod.description || '').trim().toLowerCase() === desc) {
+        if (
+          String(prod.description || '')
+            .trim()
+            .toLowerCase() === desc
+        ) {
           const qty = toNum(prod.qty);
           const rate = toNum(prod.rate);
           if (qty > 0 && rate > 0) {
@@ -229,28 +237,18 @@ export function calcCombingBatchTotals(form) {
 
   // Adjusted finished unit cost based on expected weight loss
   const adjustedUnitCost =
-    expectedOutputQty > 0
-      ? round2(totalBatchCost / expectedOutputQty)
-      : costPerUnitBeforeLoss;
+    expectedOutputQty > 0 ? round2(totalBatchCost / expectedOutputQty) : costPerUnitBeforeLoss;
 
   const outputs = Array.isArray(form.output) ? form.output : [];
-  const totalOutputQty = round3(
-    outputs.reduce((sum, o) => sum + toNum(o.qty), 0),
-  );
+  const totalOutputQty = round3(outputs.reduce((sum, o) => sum + toNum(o.qty), 0));
 
   // Actual shrinkage tracking if output goods are recorded
   const actualShrinkageQty =
-    totalOutputQty > 0
-      ? round3(Math.max(0, inputQty - totalOutputQty))
-      : weightLossQty;
-  const actualShrinkagePct =
-    inputQty > 0 ? round2((actualShrinkageQty / inputQty) * 100) : weightLossPct;
+    totalOutputQty > 0 ? round3(Math.max(0, inputQty - totalOutputQty)) : weightLossQty;
+  const actualShrinkagePct = inputQty > 0 ? round2((actualShrinkageQty / inputQty) * 100) : weightLossPct;
 
   // Finished unit cost allocation
-  const avgFinishedUnitCost =
-    totalOutputQty > 0
-      ? round2(totalBatchCost / totalOutputQty)
-      : adjustedUnitCost;
+  const avgFinishedUnitCost = totalOutputQty > 0 ? round2(totalBatchCost / totalOutputQty) : adjustedUnitCost;
 
   // Allocate cost to output lines proportionally by quantity
   const enrichedOutput = outputs.map((out) => {
@@ -315,13 +313,12 @@ export function validateCombingBatch(form) {
   }
 
   if (form.status === COMBING_STATUS.COMPLETED) {
-    const validOutputs = (form.output || []).filter(
-      (o) => o.description?.trim() && toNum(o.qty) > 0,
-    );
+    const validOutputs = (form.output || []).filter((o) => o.description?.trim() && toNum(o.qty) > 0);
     if (validOutputs.length === 0) {
       return {
         title: 'Missing Finished Goods',
-        message: 'To mark the batch as Completed, please specify at least one finished combed product with quantity.',
+        message:
+          'To mark the batch as Completed, please specify at least one finished combed product with quantity.',
       };
     }
   }
@@ -343,9 +340,7 @@ export function filterCombingBatches(batches = [], query = '', statusFilter = 'A
     const matchId = (b.batchId || '').toLowerCase().includes(q);
     const matchProcessor = (b.processorName || '').toLowerCase().includes(q);
     const matchInput = (b.input?.description || '').toLowerCase().includes(q);
-    const matchOutput = (b.output || []).some((o) =>
-      (o.description || '').toLowerCase().includes(q),
-    );
+    const matchOutput = (b.output || []).some((o) => (o.description || '').toLowerCase().includes(q));
     return matchId || matchProcessor || matchInput || matchOutput;
   });
 }

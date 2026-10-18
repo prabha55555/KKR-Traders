@@ -58,7 +58,13 @@ describe('previousBalanceFor', () => {
       subtotal,
       previousBalance,
       grandTotal: subtotal + previousBalance,
-      payment: { cash: paid, upi: 0, account: 0, totalPaid: paid, balanceDue: subtotal + previousBalance - paid },
+      payment: {
+        cash: paid,
+        upi: 0,
+        account: 0,
+        totalPaid: paid,
+        balanceDue: subtotal + previousBalance - paid,
+      },
       ...over,
     });
   const stubBills = (bills, returns = []) => {

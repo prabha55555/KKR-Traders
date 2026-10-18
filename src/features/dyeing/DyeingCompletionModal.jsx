@@ -14,14 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { ProductDescriptionInput } from '@/components/bill';
 import { formatCurrency, toNum } from '@/core/format';
-import {
-  Badge,
-  Button,
-  Modal,
-  NumberField,
-  TextField,
-  useFeedback,
-} from '@/ui';
+import { Badge, Button, Modal, NumberField, TextField, useFeedback } from '@/ui';
 
 import { DYEING_STATUS, calcBatchTotals } from './dyeingLogic';
 import { saveDyeingBatchRecord } from './dyeingService';
@@ -68,17 +61,18 @@ export function DyeingCompletionModal({
     setWeightLossPct(initialLoss);
     setFinishedQty(initialQty);
 
-    const initialOutputs = Array.isArray(batch.output) && batch.output.length > 0
-      ? batch.output.map((o) => ({ ...o, qty: o.qty || initialQty }))
-      : [
-          {
-            description: batch.input?.description ? `${batch.input.description} (Dyed)` : '',
-            unit: batch.input?.unit || 'Rolls',
-            qty: initialQty,
-            allocatedCost: 0,
-            unitCost: 0,
-          },
-        ];
+    const initialOutputs =
+      Array.isArray(batch.output) && batch.output.length > 0
+        ? batch.output.map((o) => ({ ...o, qty: o.qty || initialQty }))
+        : [
+            {
+              description: batch.input?.description ? `${batch.input.description} (Dyed)` : '',
+              unit: batch.input?.unit || 'Rolls',
+              qty: initialQty,
+              allocatedCost: 0,
+              unitCost: 0,
+            },
+          ];
 
     setOutputs(initialOutputs);
   }, [open, batch]);
@@ -137,9 +131,8 @@ export function DyeingCompletionModal({
   // Live Recalculations
   const actualFinishedQty = toNum(finishedQty);
   const lossUnits = round3(Math.max(0, inputQty - actualFinishedQty));
-  const finalAdjustedUnitCost = actualFinishedQty > 0
-    ? round2(totalBatchCost / actualFinishedQty)
-    : costBeforeLoss;
+  const finalAdjustedUnitCost =
+    actualFinishedQty > 0 ? round2(totalBatchCost / actualFinishedQty) : costBeforeLoss;
 
   const updateOutputField = (index, key, val) => {
     setOutputs((prev) => {
@@ -167,9 +160,7 @@ export function DyeingCompletionModal({
   };
 
   const handleCompleteSubmit = async () => {
-    const validOutputs = outputs.filter(
-      (o) => o.description?.trim() && toNum(o.qty) > 0,
-    );
+    const validOutputs = outputs.filter((o) => o.description?.trim() && toNum(o.qty) > 0);
 
     if (validOutputs.length === 0) {
       toast(
@@ -180,17 +171,15 @@ export function DyeingCompletionModal({
       return;
     }
 
-    const totalSumOutputQty = round3(
-      validOutputs.reduce((sum, o) => sum + toNum(o.qty), 0),
-    );
+    const totalSumOutputQty = round3(validOutputs.reduce((sum, o) => sum + toNum(o.qty), 0));
 
-    const calculatedLossPct = inputQty > 0
-      ? round2(Math.max(0, ((inputQty - totalSumOutputQty) / inputQty) * 100))
-      : toNum(weightLossPct);
+    const calculatedLossPct =
+      inputQty > 0
+        ? round2(Math.max(0, ((inputQty - totalSumOutputQty) / inputQty) * 100))
+        : toNum(weightLossPct);
 
-    const calculatedUnitCost = totalSumOutputQty > 0
-      ? round2(totalBatchCost / totalSumOutputQty)
-      : finalAdjustedUnitCost;
+    const calculatedUnitCost =
+      totalSumOutputQty > 0 ? round2(totalBatchCost / totalSumOutputQty) : finalAdjustedUnitCost;
 
     const enrichedOutputs = validOutputs.map((o) => {
       const qty = toNum(o.qty);
@@ -254,18 +243,18 @@ export function DyeingCompletionModal({
         </div>
       }
       footer={
-        <div className="flex flex-col gap-2.5 w-full sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs text-slate-600">
             {actualFinishedQty > 0 ? (
               <div className="flex items-center gap-1.5">
-                <span className="text-slate-500 font-medium">Final Manufactured Cost:</span>
+                <span className="font-medium text-slate-500">Final Manufactured Cost:</span>
                 <strong className="font-mono text-base font-extrabold text-emerald-800">
                   {rupees(finalAdjustedUnitCost)}
                 </strong>
                 <span className="text-slate-500">/ qty</span>
               </div>
             ) : (
-              <span className="text-amber-700 font-medium">
+              <span className="font-medium text-amber-700">
                 Enter finished quantity or actual weight loss % to finalize unit cost
               </span>
             )}
@@ -280,7 +269,7 @@ export function DyeingCompletionModal({
               icon={CheckCircle2}
               loading={saving}
               onClick={handleCompleteSubmit}
-              className="font-semibold text-xs sm:text-sm py-2 px-5"
+              className="px-5 py-2 text-xs font-semibold sm:text-sm"
             >
               Complete Batch & Receive Stock
             </Button>
@@ -288,62 +277,62 @@ export function DyeingCompletionModal({
         </div>
       }
     >
-      <div className="space-y-5 text-slate-800 text-sm max-h-[75vh] overflow-y-auto px-1 pr-1.5">
+      <div className="max-h-[75vh] space-y-5 overflow-y-auto px-1 pr-1.5 text-sm text-slate-800">
         {/* Step 1: Dispatched Batch Summary Card */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2.5">
-          <div className="flex flex-wrap items-center justify-between text-xs border-b border-slate-200 pb-2">
+        <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-wrap items-center justify-between border-b border-slate-200 pb-2 text-xs">
             <div>
               <span className="font-semibold text-slate-500">Processor / Dye House: </span>
-              <strong className="text-slate-900 font-bold">{batch.processorName}</strong>
+              <strong className="font-bold text-slate-900">{batch.processorName}</strong>
             </div>
-            <div className="text-slate-500 font-mono">Dispatched: {batch.batchDate}</div>
+            <div className="font-mono text-slate-500">Dispatched: {batch.batchDate}</div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-            <div className="bg-white p-2 rounded-lg border border-slate-200">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Raw Grey Sent</div>
-              <div className="font-mono font-bold text-slate-900 mt-0.5">
-                {inputQty} Qty
-              </div>
-              <div className="text-[10px] text-slate-500 font-mono">@{rupees(avgGreyRate)}/qty</div>
+          <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-2">
+              <div className="text-[10px] font-semibold text-slate-400 uppercase">Raw Grey Sent</div>
+              <div className="mt-0.5 font-mono font-bold text-slate-900">{inputQty} Qty</div>
+              <div className="font-mono text-[10px] text-slate-500">@{rupees(avgGreyRate)}/qty</div>
             </div>
 
-            <div className="bg-white p-2 rounded-lg border border-slate-200">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Raw Grey Cost</div>
-              <div className="font-mono font-bold text-amber-900 mt-0.5">{rupees(totalGreyCost)}</div>
+            <div className="rounded-lg border border-slate-200 bg-white p-2">
+              <div className="text-[10px] font-semibold text-slate-400 uppercase">Raw Grey Cost</div>
+              <div className="mt-0.5 font-mono font-bold text-amber-900">{rupees(totalGreyCost)}</div>
               <div className="text-[10px] text-slate-400">Material value</div>
             </div>
 
-            <div className="bg-white p-2 rounded-lg border border-slate-200">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Dyeing Charges</div>
-              <div className="font-mono font-bold text-indigo-700 mt-0.5">+{rupees(totalDyeingCost)}</div>
-              <div className="text-[10px] text-slate-500 font-mono">@{rupees(dyeingRate)}/qty</div>
+            <div className="rounded-lg border border-slate-200 bg-white p-2">
+              <div className="text-[10px] font-semibold text-slate-400 uppercase">Dyeing Charges</div>
+              <div className="mt-0.5 font-mono font-bold text-indigo-700">+{rupees(totalDyeingCost)}</div>
+              <div className="font-mono text-[10px] text-slate-500">@{rupees(dyeingRate)}/qty</div>
             </div>
 
-            <div className="bg-white p-2 rounded-lg border border-slate-200">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Total Batch Cost</div>
-              <div className="font-mono font-bold text-slate-900 mt-0.5">={rupees(totalBatchCost)}</div>
-              <div className="text-[10px] text-slate-500 font-mono">({rupees(costBeforeLoss)}/qty before loss)</div>
+            <div className="rounded-lg border border-slate-200 bg-white p-2">
+              <div className="text-[10px] font-semibold text-slate-400 uppercase">Total Batch Cost</div>
+              <div className="mt-0.5 font-mono font-bold text-slate-900">={rupees(totalBatchCost)}</div>
+              <div className="font-mono text-[10px] text-slate-500">
+                ({rupees(costBeforeLoss)}/qty before loss)
+              </div>
             </div>
           </div>
         </div>
 
         {/* Step 2: Record Actual Weight Loss & Finished Received Quantity */}
-        <div className="rounded-xl border border-amber-300 bg-amber-50/50 p-4 space-y-3.5 shadow-2xs">
+        <div className="space-y-3.5 rounded-xl border border-amber-300 bg-amber-50/50 p-4 shadow-2xs">
           <div className="flex items-center gap-2">
             <Scale className="size-4 text-amber-700" />
-            <h3 className="text-sm font-bold text-amber-950 uppercase tracking-wider">
+            <h3 className="text-sm font-bold tracking-wider text-amber-950 uppercase">
               Step 1: Record Actual Weight Loss on Return
             </h3>
           </div>
 
           <p className="text-xs text-amber-900/80">
             Now that the fabric has returned from dyeing, measure the returned cloth. Entering either the
-            <strong> Actual Weight Loss %</strong> or the <strong>Finished Quantity</strong> will automatically
-            calculate the other.
+            <strong> Actual Weight Loss %</strong> or the <strong>Finished Quantity</strong> will
+            automatically calculate the other.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-white p-3.5 rounded-lg border border-amber-200 shadow-2xs">
+          <div className="grid grid-cols-1 gap-3.5 rounded-lg border border-amber-200 bg-white p-3.5 shadow-2xs sm:grid-cols-2">
             <div>
               <NumberField
                 label="Actual Weight Loss (%) *"
@@ -351,7 +340,7 @@ export function DyeingCompletionModal({
                 onChange={handleWeightLossChange}
                 placeholder="e.g. 5"
               />
-              <span className="text-[11px] text-slate-500 mt-1 block">
+              <span className="mt-1 block text-[11px] text-slate-500">
                 Percentage lost during scouring & dyeing
               </span>
             </div>
@@ -363,15 +352,15 @@ export function DyeingCompletionModal({
                 onChange={handleFinishedQtyChange}
                 placeholder="e.g. 52.25"
               />
-              <span className="text-[11px] text-slate-500 mt-1 block">
+              <span className="mt-1 block text-[11px] text-slate-500">
                 Total weighed quantity delivered by processor
               </span>
             </div>
           </div>
 
           {/* Dynamic Automatic Recalculation Strip */}
-          <div className="rounded-lg bg-gradient-to-r from-slate-900 to-brand-950 p-3.5 text-white shadow-sm space-y-2">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-amber-300 flex items-center justify-between">
+          <div className="space-y-2 rounded-lg bg-gradient-to-r from-slate-900 to-brand-950 p-3.5 text-white shadow-sm">
+            <div className="flex items-center justify-between text-[11px] font-bold tracking-wider text-amber-300 uppercase">
               <span>Automatic Finished Cost Recalculation</span>
               <span className="font-mono text-emerald-400">
                 {rupees(totalBatchCost)} ÷ {actualFinishedQty || inputQty} units
@@ -379,25 +368,25 @@ export function DyeingCompletionModal({
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="bg-white/10 p-2 rounded">
+              <div className="rounded bg-white/10 p-2">
                 <div className="text-[10px] text-slate-300">Weight Loss Deduction</div>
-                <div className="font-mono font-bold text-amber-300 mt-0.5">
+                <div className="mt-0.5 font-mono font-bold text-amber-300">
                   {lossUnits > 0 ? `-${lossUnits} units` : '0 units'}
                 </div>
                 <div className="text-[10px] text-slate-400">({weightLossPct || 0}% loss)</div>
               </div>
 
-              <div className="bg-white/10 p-2 rounded">
+              <div className="rounded bg-white/10 p-2">
                 <div className="text-[10px] text-slate-300">Finished Goods Yield</div>
-                <div className="font-mono font-bold text-white mt-0.5">
+                <div className="mt-0.5 font-mono font-bold text-white">
                   {actualFinishedQty > 0 ? `${actualFinishedQty} Qty` : '-'}
                 </div>
                 <div className="text-[10px] text-slate-400">surviving output</div>
               </div>
 
-              <div className="bg-emerald-500/20 border border-emerald-400/30 p-2 rounded">
-                <div className="text-[10px] text-emerald-200 font-semibold">Final Adjusted Cost / Qty</div>
-                <div className="font-mono font-black text-emerald-300 text-sm mt-0.5">
+              <div className="rounded border border-emerald-400/30 bg-emerald-500/20 p-2">
+                <div className="text-[10px] font-semibold text-emerald-200">Final Adjusted Cost / Qty</div>
+                <div className="mt-0.5 font-mono text-sm font-black text-emerald-300">
                   {rupees(finalAdjustedUnitCost)}
                 </div>
                 <div className="text-[10px] text-emerald-200">added to stock</div>
@@ -407,11 +396,11 @@ export function DyeingCompletionModal({
         </div>
 
         {/* Step 3: Finished Goods Allocation (Into Stock) */}
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3">
+        <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="size-4 text-emerald-700" />
-              <h3 className="text-sm font-bold text-emerald-950 uppercase tracking-wider">
+              <h3 className="text-sm font-bold tracking-wider text-emerald-950 uppercase">
                 Step 2: Finished Goods to Receive into Stock
               </h3>
             </div>
@@ -420,7 +409,7 @@ export function DyeingCompletionModal({
               variant="outline"
               icon={Plus}
               onClick={addOutputRow}
-              className="text-xs h-7 px-2"
+              className="h-7 px-2 text-xs"
             >
               Add Multiple Colors
             </Button>
@@ -430,7 +419,7 @@ export function DyeingCompletionModal({
             {outputs.map((out, idx) => (
               <div
                 key={idx}
-                className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white p-3 rounded-lg border border-emerald-100 shadow-2xs"
+                className="grid grid-cols-1 items-center gap-2 rounded-lg border border-emerald-100 bg-white p-3 shadow-2xs sm:grid-cols-12"
               >
                 <div className="sm:col-span-6">
                   <ProductDescriptionInput
@@ -448,7 +437,7 @@ export function DyeingCompletionModal({
                     placeholder="Received Qty"
                   />
                 </div>
-                <div className="sm:col-span-2 text-right pr-2">
+                <div className="pr-2 text-right sm:col-span-2">
                   <div className="text-xs font-bold text-emerald-800 tabular-nums">
                     {rupees(finalAdjustedUnitCost)} / qty
                   </div>
@@ -456,12 +445,12 @@ export function DyeingCompletionModal({
                     Allocated: {rupees(round2(toNum(out.qty) * finalAdjustedUnitCost))}
                   </div>
                 </div>
-                <div className="sm:col-span-1 flex justify-end">
+                <div className="flex justify-end sm:col-span-1">
                   {outputs.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removeOutputRow(idx)}
-                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
+                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                       title="Remove row"
                     >
                       <Trash2 className="size-4" />
@@ -473,13 +462,14 @@ export function DyeingCompletionModal({
           </div>
 
           {/* Stock Notification Banner */}
-          <div className="flex items-start gap-2 bg-emerald-100/70 border border-emerald-200 text-emerald-900 p-2.5 rounded-lg text-xs">
-            <CheckCircle2 className="size-4 shrink-0 text-emerald-700 mt-0.5" />
+          <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-100/70 p-2.5 text-xs text-emerald-900">
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" />
             <div>
               <strong>Inventory Receipt: </strong>
-              Upon completion, {actualFinishedQty > 0 ? actualFinishedQty : 0} units of finished colored fabric
-              will be received into live inventory at <strong>{rupees(finalAdjustedUnitCost)}/unit</strong>.
-              Raw grey fabric ({inputQty} units) will remain deducted as consumed.
+              Upon completion, {actualFinishedQty > 0 ? actualFinishedQty : 0} units of finished colored
+              fabric will be received into live inventory at{' '}
+              <strong>{rupees(finalAdjustedUnitCost)}/unit</strong>. Raw grey fabric ({inputQty} units) will
+              remain deducted as consumed.
             </div>
           </div>
         </div>

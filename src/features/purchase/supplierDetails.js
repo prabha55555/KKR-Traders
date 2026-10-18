@@ -1,124 +1,110 @@
 /** Supplier Details page — port of js/supplier-details.js (aggregation, stats, search, phone masking, CSV export). */
-import { digitsOnly, toNum } from '@/core/format';
+import { digitsOnly } from '@/core/format';
+import {
+  groupParties,
+  normalizePhone,
+  PURCHASE_LEDGER,
+  partySummary,
+  returnsTotalsByInvoice,
+} from '@/core/ledger';
 function cleanInvoiceNo(invoiceNo) {
   let inv = invoiceNo.toString();
   if (inv.startsWith('P-')) inv = inv.substring(2);
   const num = parseInt(inv, 10);
   return Number.isNaN(num) ? inv : String(num).padStart(3, '0');
 }
+const emptySupplier = (key, name, phone, address) => ({
+  key,
+  name,
+  phone,
+  address,
+  totalBills: 0,
+  totalAmount: 0,
+  totalPaid: 0,
+  totalDiscount: 0,
+  totalReturns: 0,
+  openingBalance: 0,
+  allInvoiceNumbers: [],
+  invoiceNos: [],
+  lastInvoiceDate: null,
+  balanceDue: 0,
+});
+/** The party key a directory supplier would get from groupParties (phone first, else the name). */
+const nameKey = (name) =>
+  `n:${String(name ?? '')
+    .trim()
+    .toLowerCase()}`;
+const directoryKey = (ds) => {
+  const phone = normalizePhone(ds.phone);
+  return phone ? `p:${phone}` : nameKey(ds.name);
+};
 /**
- * processSupplierData: purchase bills grouped by trimmed supplier name (the suppliers collection is not used).
- * Phone/address come from the first bill seen — the newest, as getAllPurchaseBills sorts by timestamp desc.
- *
- * PARITY NOTE: paid / balance read `payment?.x || top-level x`, so a nested balanceDue of 0 falls back to the top-level
- * field — unlike billing.purchaseBalanceDue (`!== undefined`). Bills written by this app keep both in sync, so the
- * results only differ for stale legacy documents. `discount` is read without the `discountAmount` fallback history uses.
+ * processSupplierData, on the supplier LEDGER: purchase bills grouped into parties exactly as the ledger chains them
+ * (phone first — two suppliers sharing a name stay apart, one supplier typed two ways stays together), plus the
+ * suppliers of the directory that have no bill yet.
+ *  - balanceDue    = what is owed now: the ledger closing of the latest bill (carried balances counted once, only
+ *                    balance-settled returns lower it, negative = an advance / credit with the supplier)
+ *  - totalAmount   = Σ the bills' own amounts (subtotal + opening-balance entry − discount, no carried balance)
+ *  - openingBalance = the supplier's ledger opening (so opening + amount − paid − balance returns = balance)
+ *  - totalPaid     = Σ the stored paid amounts · totalReturns = every return (refunds included)
+ * Name / phone / address come from the supplier's latest bill (address falls back to older bills, then the directory).
  */
 export function aggregateSuppliers(bills, returns = [], directorySuppliers = []) {
-  if ((!bills || !Array.isArray(bills)) && (!directorySuppliers || !Array.isArray(directorySuppliers)))
-    return [];
-  const returnedByInvoice = new Map();
-  if (Array.isArray(returns)) {
-    for (const r of returns) {
-      const key = String(r.invoiceNo);
-      returnedByInvoice.set(key, (returnedByInvoice.get(key) ?? 0) + toNum(r.returnAmount));
-    }
-  }
+  const billList = (Array.isArray(bills) ? bills : []).filter(
+    (b) =>
+      b && (String(PURCHASE_LEDGER.name(b) ?? '').trim() || String(PURCHASE_LEDGER.phone(b) ?? '').trim()),
+  );
+  const directory = (Array.isArray(directorySuppliers) ? directorySuppliers : []).filter(
+    (ds) => ds && String(ds.name ?? '').trim(),
+  );
+  const directoryByKey = new Map(directory.map((ds) => [directoryKey(ds), ds]));
+  const returnsByInvoice = returnsTotalsByInvoice(Array.isArray(returns) ? returns : []);
   const bySupplier = new Map();
 
-  if (Array.isArray(directorySuppliers)) {
-    for (const ds of directorySuppliers) {
-      if (!ds || !ds.name) continue;
-      const key = ds.name.trim();
-      if (!key) continue;
-      bySupplier.set(key, {
-        name: key,
-        phone: ds.phone || '',
-        address: ds.address || '',
-        totalBills: 0,
-        totalAmount: 0,
-        totalPaid: 0,
-        totalDiscount: 0,
-        totalReturns: 0,
-        totalManualAdjustments: 0,
-        firstBillPreviousBalance: 0,
-        firstBillNo: undefined,
-        allInvoiceNumbers: [],
-        invoiceNos: [],
-        latestBalanceDue: 0,
-        lastInvoiceDate: null,
-        balanceDue: 0,
-      });
-    }
-  }
-
-  if (Array.isArray(bills)) {
-    bills.forEach((bill) => {
-      if (!bill || !bill.supplierName) return;
-      const key = bill.supplierName.trim();
-      if (!key) return;
-      let s = bySupplier.get(key);
-      if (!s) {
-        s = {
-          name: key,
-          phone: bill.supplierPhone || '',
-          address: bill.supplierAddress || '',
-          totalBills: 0,
-          totalAmount: 0,
-          totalPaid: 0,
-          totalDiscount: 0,
-          totalReturns: 0,
-          totalManualAdjustments: 0,
-          firstBillPreviousBalance: 0,
-          firstBillNo: undefined,
-          allInvoiceNumbers: [],
-          invoiceNos: [],
-          latestBalanceDue: 0,
-          lastInvoiceDate: null,
-          balanceDue: 0,
-        };
-        bySupplier.set(key, s);
-      }
-      if (!s.phone && bill.supplierPhone) s.phone = bill.supplierPhone;
-      if (!s.address && bill.supplierAddress) s.address = bill.supplierAddress;
-      s.totalBills++;
-      s.totalAmount += toNum(bill.grandTotal);
-      s.totalPaid += toNum(bill.payment?.totalPaid || bill.amountPaid);
-      s.totalDiscount += toNum(bill.discount !== undefined ? bill.discount : bill.discountAmount || 0);
-      s.balanceDue += toNum(bill.payment?.balanceDue || bill.balanceDue);
-      s.totalManualAdjustments += toNum(bill.manualPreviousBalance);
-
-      if (bill.invoiceNo) {
-        const cleanNo = cleanInvoiceNo(bill.invoiceNo);
-        s.allInvoiceNumbers.push(cleanNo);
-        s.invoiceNos.push(cleanNo);
-        const numVal = parseInt(cleanNo, 10);
-        if (s.firstBillNo === undefined || numVal < s.firstBillNo) {
-          s.firstBillNo = numVal;
-          s.firstBillPreviousBalance = toNum(bill.previousBalance);
-        }
-      }
-      if (bill.invoiceDate) {
-        const dVal = new Date(bill.invoiceDate).getTime();
-        if (!s.lastInvoiceDate || dVal > new Date(s.lastInvoiceDate).getTime()) {
-          s.lastInvoiceDate = bill.invoiceDate;
-          s.latestBalanceDue = toNum(bill.payment?.balanceDue || bill.balanceDue);
-        }
-      }
+  groupParties(PURCHASE_LEDGER, billList).forEach((group) => {
+    const newestFirst = [...group.bills].reverse();
+    const listed = directoryByKey.get(group.key);
+    const name =
+      group.name ||
+      newestFirst.map((b) => String(b.supplierName ?? '').trim()).find(Boolean) ||
+      String(listed?.name ?? '').trim() ||
+      group.phone;
+    const address =
+      newestFirst.map((b) => String(b.supplierAddress ?? '').trim()).find(Boolean) ||
+      String(listed?.address ?? '').trim();
+    const s = emptySupplier(group.key, name, group.phone || listed?.phone || '', address);
+    const summary = partySummary(PURCHASE_LEDGER, group.bills, { returnsByInvoice });
+    s.totalBills = group.bills.length;
+    s.totalAmount = summary.billed;
+    s.totalPaid = summary.paid;
+    s.totalReturns = summary.returns;
+    s.openingBalance = summary.opening;
+    s.balanceDue = summary.balance;
+    s.totalDiscount = group.bills.reduce((sum, b) => sum + PURCHASE_LEDGER.discount(b), 0);
+    s.lastInvoiceDate = summary.latest?.invoiceDate || null;
+    group.bills.forEach((bill) => {
+      if (bill.invoiceNo) s.allInvoiceNumbers.push(cleanInvoiceNo(bill.invoiceNo));
     });
-  }
-
-  const suppliers = Array.from(bySupplier.values());
-  for (const s of suppliers) {
     s.allInvoiceNumbers.sort((a, b) => parseInt(b) - parseInt(a));
-    s.invoiceNos.sort((a, b) => parseInt(b) - parseInt(a));
-    s.totalReturns = 0;
-    for (const invoiceNo of s.allInvoiceNumbers) {
-      s.totalReturns += returnedByInvoice.get(String(invoiceNo)) ?? 0;
+    s.invoiceNos = [...s.allInvoiceNumbers];
+    bySupplier.set(group.key, s);
+  });
+
+  // suppliers saved in the directory without any bill yet
+  directory.forEach((ds) => {
+    const key = directoryKey(ds);
+    if (bySupplier.has(key)) return;
+    // only phone-less bills under this name (and no phone claimed them yet): they are this supplier's
+    const byName = bySupplier.get(nameKey(ds.name));
+    if (byName && !byName.phone) {
+      byName.phone = ds.phone || '';
+      if (!byName.address) byName.address = String(ds.address ?? '').trim();
+      return;
     }
-    s.balanceDue = Math.max(0, s.balanceDue - s.totalReturns);
-  }
-  return suppliers.sort((a, b) => a.name.localeCompare(b.name));
+    bySupplier.set(key, emptySupplier(key, ds.name.trim(), ds.phone || '', ds.address || ''));
+  });
+
+  return Array.from(bySupplier.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 export function supplierStats(suppliers) {
   const sum = (pick) => suppliers.reduce((total, s) => total + pick(s), 0);
@@ -129,6 +115,7 @@ export function supplierStats(suppliers) {
     totalAmount: sum((s) => s.totalAmount),
     totalPaid: sum((s) => s.totalPaid),
     totalDiscount: sum((s) => s.totalDiscount),
+    // net of advances: a supplier holding a credit lowers the total owed
     totalBalance: sum((s) => s.balanceDue),
   };
   if (totalReturns > 0) {

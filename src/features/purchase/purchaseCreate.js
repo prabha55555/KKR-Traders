@@ -15,7 +15,7 @@ export async function lookupSupplier(phone) {
  * Utils.calculateAndSetSupplierPreviousBalance: the previous balance shown on the bill (2 decimals, like the web's
  * displayed text) — the closing balance of the supplier's bill just before this one in their ledger. Depends on the
  * invoice number and date too: a number that already exists resolves to the bill before it, a back-dated bill to the
- * bill before its date.
+ * bill before its date. `null` when the ledger could not be read (callers keep the value they show).
  */
 export async function previousBalanceFor(form) {
   if (!form.supplierName.trim() && !form.supplierPhone.trim()) return 0;
@@ -25,6 +25,7 @@ export async function previousBalanceFor(form) {
     form.invoiceNo.trim() || null,
     form.invoiceDate || null,
   );
+  if (info.failed) return null;
   return round2(info.balanceCarriedForward);
 }
 /**

@@ -13,7 +13,13 @@ import {
 } from 'recharts';
 import { formatCurrency, toNum } from '@/core/format';
 import { format, eachDayOfInterval, eachMonthOfInterval } from 'date-fns';
-import { dateRanges, isWithinRange, parseAnyDate } from '../dashboardAnalytics';
+import {
+  dateRanges,
+  isWithinRange,
+  parseAnyDate,
+  purchaseBillValue,
+  salesBillValue,
+} from '../dashboardAnalytics';
 
 const rupees = (n) => {
   const num = toNum(n);
@@ -165,7 +171,7 @@ export function DashboardCharts({ data, rangeKey }) {
       const dVal = bill.invoiceDate || bill.date || bill.timestamp;
       const b = findBucket(dVal);
       if (b) {
-        b.Sales += toNum(bill.grandTotal);
+        b.Sales += salesBillValue(bill);
         const p = bill.computedProfit !== undefined ? toNum(bill.computedProfit) : toNum(bill.profit || 0);
         b.Profit += p;
       }
@@ -176,7 +182,7 @@ export function DashboardCharts({ data, rangeKey }) {
       const dVal = bill.invoiceDate || bill.date || bill.timestamp;
       const b = findBucket(dVal);
       if (b) {
-        b.Purchases += toNum(bill.grandTotal);
+        b.Purchases += purchaseBillValue(bill);
       }
     });
 
@@ -197,7 +203,7 @@ export function DashboardCharts({ data, rangeKey }) {
   return (
     <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Area Chart: Sales vs Purchases vs Profit */}
-      <div className="bg-surface rounded-xl border border-line p-4 shadow-sm sm:p-5">
+      <div className="rounded-xl border border-line bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold tracking-tight text-slate-800 sm:text-lg">
@@ -258,7 +264,7 @@ export function DashboardCharts({ data, rangeKey }) {
       </div>
 
       {/* Bar Chart: Revenue vs Expenses */}
-      <div className="bg-surface rounded-xl border border-line p-4 shadow-sm sm:p-5">
+      <div className="rounded-xl border border-line bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold tracking-tight text-slate-800 sm:text-lg">

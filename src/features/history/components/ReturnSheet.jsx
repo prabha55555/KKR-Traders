@@ -1,20 +1,25 @@
 /**
- * ReturnSheet – "Process Return - Invoice #x": pick products from the invoice (or a custom one), qty, rate,
- * reason; live summary of the new adjusted balance. Errors are shown inside the sheet.
+ * ReturnSheet – "Process Return - Invoice #x": pick products (from the party's bills, or a custom one), qty, rate,
+ * reason, and how the money goes back: Cash (default) or Account. A return is always a direct refund — the bill's
+ * balance due does not change. Errors are shown inside the sheet.
  *
  * Props:
  *   open (bool) · invoiceNo · labels ({ party }) · partyName · invoiceDate · onClose()
- *   products   the invoice's product lines [{ description, qty (sold), rate }]
- *   balanceDue the invoice balance before returns
- *   returns    returns already stored for the invoice (HistoryReturn[])
- *   onSubmit({ returnDate, items }) => Promise<string | null>   string = inline error, null = saved
+ *   products      the returnable product lines [{ description, qty (sold), rate }] (lib/returns partyReturnProducts)
+ *   balanceDue    what the bill still owes (shown as "stays ₹x")
+ *   returns       returns already stored for the invoice (HistoryReturn[])
+ *   partyReturns? returns of all the party's bills, for the "Already returned" hints (default: `returns`)
+ *   onSubmit({ returnDate, items, settlementType: 'refund', refundMethod: 'cash' | 'bank', bankAccountId })
+ *                 => Promise<string | null>   string = inline error, null = saved
  */
-import { AlertTriangle, Banknote, Building2, Plus, ReceiptText, Save } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Banknote, Landmark, Plus, Save } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { accountLabel } from '@/core/accountLabel';
 import { formatCurrency, formatDateIN, todayISO } from '@/core/format';
 import { Button, DateField, SelectField, cn } from '@/ui';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
-import { newReturnItem, returnSummary, returnedQtyByDescription } from '../lib/returns';
+import { newReturnItem, returnTotal, returnedQtyByDescription } from '../lib/returns';
+import { sumReturnAmounts } from '../lib/lookups';
 import { HistorySheet } from './HistorySheet';
 import { ReturnItemEditor } from './ReturnItemEditor';
 
@@ -42,6 +47,25 @@ function SummaryRow({ label, value, tone, bold }) {
   );
 }
 
+function MethodButton({ active, disabled, icon: Icon, label, tone, onClick }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border p-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50',
+        active ? tone : 'border-line bg-white text-slate-700 hover:bg-slate-50',
+      )}
+    >
+      <Icon className="size-4 shrink-0" aria-hidden />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 export function ReturnSheet({
   open,
   invoiceNo,
@@ -51,15 +75,17 @@ export function ReturnSheet({
   products,
   balanceDue,
   returns,
+  partyReturns,
   onClose,
   onSubmit,
 }) {
   const isSales = labels?.party?.toLowerCase()?.includes('customer');
+  const methodLabelId = useId();
   const nextKey = useRef(1);
   const makeItem = useCallback(() => newReturnItem(`item-${nextKey.current++}`), []);
   const [returnDate, setReturnDate] = useState(todayISO());
   const [items, setItems] = useState(() => [makeItem()]);
-  const [settlementType, setSettlementType] = useState('adjustment'); // 'adjustment' | 'cash' | 'bank'
+  const [method, setMethod] = useState('cash'); // 'cash' | 'account'
   const [bankAccountId, setBankAccountId] = useState('');
   const [liveBalances, setLiveBalances] = useState(null);
   const [error, setError] = useState(null);
@@ -69,7 +95,7 @@ export function ReturnSheet({
     if (open) {
       setReturnDate(todayISO());
       setItems([makeItem()]);
-      setSettlementType('adjustment');
+      setMethod('cash');
       setBankAccountId('');
       setError(null);
       setBusy(false);
@@ -81,36 +107,42 @@ export function ReturnSheet({
 
   const bankAccounts = liveBalances?.bankAccounts || [];
   const cashBalance = liveBalances?.cashBalance ?? 0;
+  const noAccounts = liveBalances !== null && bankAccounts.length === 0;
   const selectedBankId = bankAccountId || bankAccounts[0]?.id || '';
   const selectedBank = bankAccounts.find((b) => b.id === selectedBankId);
 
-  const previousReturns = returns.reduce((sum, r) => sum + (Number(r.returnAmount) || 0), 0);
-  const currentBalance = balanceDue - previousReturns;
-  const { total, newAdjustedBalance } = returnSummary(items, currentBalance);
-  const returned = returnedQtyByDescription(returns);
+  const previousReturns = sumReturnAmounts(returns);
+  const total = returnTotal(items);
+  const returned = returnedQtyByDescription(partyReturns ?? returns);
   const update = (key, next) => setItems((list) => list.map((i) => (i.key === key ? next : i)));
 
-  const isCashOverdraft = isSales && settlementType === 'cash' && total > cashBalance;
+  const isCashOverdraft = isSales && method === 'cash' && total > cashBalance;
   const isBankOverdraft =
-    isSales && settlementType === 'bank' && selectedBank && total > selectedBank.currentBalance;
+    isSales && method === 'account' && selectedBank && total > selectedBank.currentBalance;
 
   const submit = async () => {
     if (busy) return;
+    if (method === 'account' && !selectedBankId) {
+      setError('Add a bank account in Finance to refund to an account, or choose Cash.');
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
       const failure = await onSubmit({
         returnDate,
         items,
-        settlementType: settlementType === 'adjustment' ? 'adjustment' : 'refund',
-        refundMethod: settlementType === 'adjustment' ? null : settlementType,
-        bankAccountId: settlementType === 'bank' ? selectedBankId : null,
+        settlementType: 'refund',
+        refundMethod: method === 'cash' ? 'cash' : 'bank',
+        bankAccountId: method === 'cash' ? null : selectedBankId,
       });
       if (failure) setError(failure);
     } finally {
       setBusy(false);
     }
   };
+
+  const methodLabel = method === 'cash' ? 'Cash' : 'Account';
 
   return (
     <HistorySheet
@@ -166,55 +198,36 @@ export function ReturnSheet({
         Add Return Item
       </Button>
 
-      {/* Settlement / Refund Option */}
+      {/* Refund method */}
       <div className="my-4 space-y-2.5 rounded-2xl border border-line bg-slate-50/80 p-3 sm:p-3.5">
-        <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
-          Settlement / Refund Method
-        </label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <button
-            type="button"
-            onClick={() => setSettlementType('adjustment')}
-            className={cn(
-              'flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 text-left text-xs font-semibold transition',
-              settlementType === 'adjustment'
-                ? 'border-gold-500 bg-gold-50/80 text-brand-900 shadow-xs ring-1 ring-gold-400'
-                : 'border-line bg-white text-slate-700 hover:bg-slate-50',
-            )}
-          >
-            <ReceiptText className="size-4 shrink-0 text-brand-700" />
-            <span>Adjust Balance Due</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSettlementType('cash')}
-            className={cn(
-              'flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 text-left text-xs font-semibold transition',
-              settlementType === 'cash'
-                ? 'border-emerald-500 bg-emerald-50/80 text-emerald-900 shadow-xs ring-1 ring-emerald-400'
-                : 'border-line bg-white text-slate-700 hover:bg-slate-50',
-            )}
-          >
-            <Banknote className="size-4 shrink-0 text-emerald-600" />
-            <span>{isSales ? 'Refund via Cash' : 'Supplier Cash Refund'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSettlementType('bank')}
-            className={cn(
-              'flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 text-left text-xs font-semibold transition',
-              settlementType === 'bank'
-                ? 'border-brand-500 bg-brand-50/80 text-brand-900 shadow-xs ring-1 ring-brand-400'
-                : 'border-line bg-white text-slate-700 hover:bg-slate-50',
-            )}
-          >
-            <Building2 className="size-4 shrink-0 text-brand-700" />
-            <span>{isSales ? 'Refund via Bank' : 'Supplier Bank Refund'}</span>
-          </button>
+        <p id={methodLabelId} className="text-xs font-bold tracking-wider text-slate-700 uppercase">
+          {isSales ? 'Refund to customer' : 'Refund from supplier'}
+        </p>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby={methodLabelId}>
+          <MethodButton
+            active={method === 'cash'}
+            icon={Banknote}
+            label="Cash"
+            tone="border-emerald-500 bg-emerald-50/80 text-emerald-900 shadow-xs ring-1 ring-emerald-400"
+            onClick={() => setMethod('cash')}
+          />
+          <MethodButton
+            active={method === 'account'}
+            disabled={noAccounts}
+            icon={Landmark}
+            label="Account"
+            tone="border-brand-500 bg-brand-50/80 text-brand-900 shadow-xs ring-1 ring-brand-400"
+            onClick={() => setMethod('account')}
+          />
         </div>
+        {noAccounts ? (
+          <p className="px-1 text-[11px] font-medium text-slate-500">
+            No bank account yet — add one in Finance to refund to an account.
+          </p>
+        ) : null}
 
-        {/* Cash Balance Indicator */}
-        {settlementType === 'cash' && liveBalances && (
+        {/* Cash Balance Indicator (money leaves the drawer only for sales refunds) */}
+        {isSales && method === 'cash' && liveBalances && (
           <div
             className={cn(
               'flex items-center justify-between rounded-xl border px-3 py-1.5 text-xs transition',
@@ -248,33 +261,31 @@ export function ReturnSheet({
           </div>
         )}
 
-        {/* Bank Account Selector */}
-        {settlementType === 'bank' && bankAccounts.length > 0 && (
+        {/* Bank account: a picker only when there is a choice to make */}
+        {method === 'account' && selectedBank && (
           <div className="space-y-1.5 rounded-xl border border-line bg-white p-2.5">
-            <SelectField
-              label={
-                isSales ? 'Refund Customer from Bank Account' : 'Receive Supplier Refund into Bank Account'
-              }
-              value={selectedBankId}
-              onChange={(bId) => setBankAccountId(bId)}
-              options={bankAccounts.map((a) => ({
-                value: a.id,
-                label: `${a.accountName} (${a.bankName || a.accountType}) • Balance: ₹${formatCurrency(a.currentBalance)}`,
-              }))}
-            />
-            {selectedBank && (
-              <div className="flex items-center justify-between rounded-lg border border-slate-200/60 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                <span>Account Available:</span>
-                <span className="font-display font-bold text-slate-800 tabular-nums">
-                  ₹{formatCurrency(selectedBank.currentBalance)}
-                </span>
-              </div>
-            )}
+            {bankAccounts.length > 1 ? (
+              <SelectField
+                label={isSales ? 'Refund from Account' : 'Receive refund into Account'}
+                value={selectedBankId}
+                onChange={(bId) => setBankAccountId(bId)}
+                options={bankAccounts.map((a) => ({
+                  value: a.id,
+                  label: `${accountLabel(a)} • Balance: ₹${formatCurrency(a.currentBalance)}`,
+                }))}
+              />
+            ) : null}
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200/60 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+              <span className="min-w-0 truncate">{accountLabel(selectedBank)} available:</span>
+              <span className="font-display font-bold text-slate-800 tabular-nums">
+                ₹{formatCurrency(selectedBank.currentBalance)}
+              </span>
+            </div>
             {isBankOverdraft && (
               <div className="flex items-center gap-1.5 pt-1 text-[11px] font-semibold text-amber-700">
                 <AlertTriangle className="size-3.5 shrink-0" />
                 <span>
-                  Refund amount (₹{formatCurrency(total)}) exceeds available bank balance (₹
+                  Refund amount (₹{formatCurrency(total)}) exceeds available account balance (₹
                   {formatCurrency(selectedBank.currentBalance)}).
                 </span>
               </div>
@@ -284,24 +295,16 @@ export function ReturnSheet({
       </div>
 
       <div className="my-4 rounded-2xl border border-gold-200 bg-gold-50/60 p-3 sm:p-3.5">
-        <SummaryRow label="Original Balance:" value={rs(balanceDue)} />
-        {previousReturns > 0 ? (
-          <>
-            <SummaryRow label="Previous Returns:" value={`-${rs(previousReturns)}`} tone="text-amber-700" />
-            <SummaryRow label="Balance Before Return:" value={rs(currentBalance)} />
-          </>
+        <SummaryRow label="Return Amount:" value={rs(total)} />
+        <SummaryRow
+          label={`Refund (${methodLabel}):`}
+          value={rs(total)}
+          tone={isSales ? 'text-amber-700' : 'text-emerald-700'}
+          bold
+        />
+        {balanceDue !== undefined && balanceDue !== null ? (
+          <p className="mt-1.5 text-xs text-slate-500">Bill balance due stays {rs(balanceDue)}</p>
         ) : null}
-        <SummaryRow label="This Return Amount:" value={rs(total)} />
-        {settlementType === 'adjustment' ? (
-          <SummaryRow label="New Adjusted Balance:" value={rs(newAdjustedBalance)} bold />
-        ) : (
-          <SummaryRow
-            label={isSales ? 'Direct Refund to Customer:' : 'Direct Refund from Supplier:'}
-            value={rs(total)}
-            tone={isSales ? 'text-amber-700' : 'text-emerald-700'}
-            bold
-          />
-        )}
       </div>
 
       {error ? (

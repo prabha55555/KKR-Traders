@@ -1,5 +1,5 @@
 import { db } from '@/core/db';
-import { computeStocks } from './stocksLogic';
+import { buildStockMap, computeStocks } from './stocksLogic';
 /** Loads purchases, sales and opening stocks and derives the stock rows + financial summary. */
 export async function loadStocks() {
   const [
@@ -48,8 +48,8 @@ if (db && typeof db.onInvalidate === 'function') {
 }
 
 /**
- * Returns a fast lookup Map of { [description]: { available, minStockLevel } }
- * Supports both exact description and lowercased description lookups.
+ * Returns a fast lookup Map of { [description]: { available, minStockLevel, avgPurchaseRate, purchased,
+ * purchaseHistory } } keyed by the exact description plus a lower-case fallback (see buildStockMap / lookupStock).
  */
 export async function getStockQuantityMap(forceRefresh = false) {
   if (forceRefresh) {
@@ -61,21 +61,7 @@ export async function getStockQuantityMap(forceRefresh = false) {
   }
   try {
     const { rows } = await loadStocks();
-    const map = new Map();
-    rows.forEach((r) => {
-      const key = (r.description || '').trim();
-      if (key) {
-        const info = {
-          available: r.available,
-          minStockLevel: r.minStockLevel || 0,
-          avgPurchaseRate: r.avgPurchaseRate || 0,
-          purchased: r.purchased || 0,
-          purchaseHistory: r.purchaseHistory || [],
-        };
-        map.set(key, info);
-        map.set(key.toLowerCase(), info);
-      }
-    });
+    const map = buildStockMap(rows);
     _stocksCache = map;
     _stocksCacheTime = now;
     return map;

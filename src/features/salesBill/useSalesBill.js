@@ -4,7 +4,7 @@ import { useFeedback } from '@/ui';
 import { useFocusLoad } from '@/hooks/useFocusLoad';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { db } from '@/core/db';
-import { todayISO } from '@/core/format';
+import { formatDateIN, todayISO } from '@/core/format';
 import { printInvoice, shareInvoicePdf } from '@/core/services/invoiceShare';
 import { buildSalesInvoice, saveSalesBill, salesFormTotals } from '@/core/services/salesBill';
 import { openInvoiceForEditing } from './billLoader';
@@ -142,7 +142,19 @@ export function useSalesBill() {
         await openInvoice(current.editingNo, true);
       return;
     }
-    if (current.saved) return;
+    if (current.saved) {
+      // a new bill saved on this screen: an earlier bill may have changed since (History, another device) — show what
+      // the ledger now carries, so Generate / Share print the stored figure
+      const { customerName: name, customerPhone: phone, invoiceDate: date } = current.form;
+      if (current.persistedNo && (name || phone)) {
+        const previousBalance = await previousBalanceFor(name, phone, current.persistedNo, date);
+        if (previousBalance !== null)
+          setSession((s) =>
+            s.persistedNo === current.persistedNo ? withSavedLedger(s, { previousBalance }) : s,
+          );
+      }
+      return;
+    }
     const { customerName, customerPhone, invoiceNo, invoiceDate } = current.form;
     if (customerName || customerPhone) {
       const previousBalance = await previousBalanceFor(customerName, customerPhone, invoiceNo, invoiceDate);
@@ -152,18 +164,20 @@ export function useSalesBill() {
   }, [lookup, openInvoice, refreshSuggestion]);
   const focusLoad = useFocusLoad(load);
   const ready = customers !== null;
-  // A new bill's place in the customer's ledger depends on its number and date: re-read the carried balance when
-  // either changes (customer changes are handled by the lookup itself).
+  // A bill's place in the customer's ledger depends on its number and date: re-read the carried balance when either
+  // changes on a new bill or an edited one (customer changes are handled by the lookup itself).
   const { invoiceNo: formInvoiceNo, invoiceDate: formInvoiceDate } = form;
   useEffect(() => {
-    const { form: f, editingNo, saved } = sessionRef.current;
-    if (editingNo !== null || saved || (!f.customerName && !f.customerPhone)) return undefined;
+    const { form: f, saved } = sessionRef.current;
+    if (saved || (!f.customerName && !f.customerPhone)) return undefined;
     let cancelled = false;
     const timer = setTimeout(() => {
       const now = sessionRef.current.form;
       previousBalanceFor(now.customerName, now.customerPhone, now.invoiceNo, now.invoiceDate)
         .then((previousBalance) => {
-          if (!cancelled) setSession((s) => withRefreshedPreviousBalance(s, previousBalance));
+          // a Save that started meanwhile has its own snapshot: do not mark that bill unsaved
+          if (!cancelled && !busy.current)
+            setSession((s) => withRefreshedPreviousBalance(s, previousBalance));
         })
         .catch((error) => console.error('Error calculating previous balance', error));
     }, 300);
@@ -189,17 +203,22 @@ export function useSalesBill() {
       return null;
     }
     if (plan.kind === 'confirm-overwrite') {
+      const existing = await db.getInvoice(plan.invoiceNo).catch(() => null);
+      const who = existing
+        ? ` (${existing.customerName || 'customer'}, ${formatDateIN(existing.invoiceDate)})`
+        : '';
       const proceed = await confirm({
         title: 'Invoice Already Exists',
-        message: `Invoice #${plan.invoiceNo} already exists. Saving will overwrite it. Continue?`,
+        message: `Invoice #${plan.invoiceNo}${who} already exists. Saving will move it to the Recycle Bin with its payments and returns, and its amount will no longer count in that customer's balance. Continue?`,
         tone: 'warning',
         confirmText: 'Overwrite',
       });
       if (!proceed) return null;
     }
+    const replaceExisting = plan.kind === 'confirm-overwrite';
     const invoice = await loading.run(
       'Saving Bill',
-      () => saveSalesBill(snapshot.form),
+      () => saveSalesBill(snapshot.form, { replaceExisting }),
       'Please wait while we save your invoice...',
     );
     setSession((s) => withSavedLedger(markSaved(s, snapshot.form), invoice));

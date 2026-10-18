@@ -5,7 +5,8 @@ import { todayISO } from '@/core/format';
 
 /**
  * The "search by date + search by name / reason + clear" row of the overview pages.
- * Supports quick date filters (Today, This Month) and optional extra filter slots.
+ * Supports quick date filters (Today, This Month) and optional extra filter slots. `dateLabel` names the date field
+ * when it is not a search (e.g. "Interest as of" on the finance records, where the date changes the computed figures).
  */
 export default function FilterBar({
   date,
@@ -16,6 +17,7 @@ export default function FilterBar({
   onClear,
   quickDates = false,
   extraFilters,
+  dateLabel,
 }) {
   const hasDate = typeof onDateChange === 'function';
   const filtering = (hasDate && !!date) || !!text;
@@ -30,14 +32,15 @@ export default function FilterBar({
       <div
         className={`grid gap-2.5 ${
           hasDate ? 'sm:grid-cols-[11.5rem_minmax(0,1fr)_auto]' : 'sm:grid-cols-[minmax(0,1fr)_auto]'
-        } sm:items-center`}
+        } ${dateLabel ? 'sm:items-end' : 'sm:items-center'}`}
       >
         {hasDate && (
           <DateField
             value={date}
             onChange={onDateChange}
-            aria-label="Search by date"
-            title="Search by Date"
+            label={dateLabel}
+            aria-label={dateLabel || 'Search by date'}
+            title={dateLabel || 'Search by Date'}
           />
         )}
         <SearchBar

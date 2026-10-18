@@ -9,10 +9,11 @@
  */
 import { copyText, openExternal } from '@/platform';
 import { db } from '@/core/db';
+import { PURCHASE_LEDGER, groupParties, partySummary, returnsTotalsByInvoice } from '@/core/ledger';
 import { getLogoSrc } from '@/core/services/invoiceShare';
 import { printStatementHtml, shareStatementPdf } from '../lib/documentOutput';
 import { indexByInvoiceNo } from '../lib/lookups';
-import { buildCombinedStatement, matchPartyInvoices } from '../lib/statement';
+import { buildCombinedStatement, findStatementParties, partyChoice } from '../lib/statement';
 import {
   buildCombinedStatementHtml,
   buildEasyStatementHtml,
@@ -31,21 +32,26 @@ import { PURCHASE_LABELS, toHistoryPurchase } from './purchaseModel';
 import { PURCHASE_BILL_NOT_FOUND, statementPayments } from './purchasePayments';
 // ------------------------------------------------------------------ combined (all bills of a supplier)
 /**
- * Suppliers whose name CONTAINS the typed text (case-insensitive) are combined into one statement, newest bill
- * first. Returns null when nothing matches. Payments are loaded too because the detailed PDF prints them.
+ * The statement of ONE supplier (a ledger party: phone first, then name — see lib/statement findStatementParties):
+ * the typed phone / exact name / part of a name, or `partyKey` once the user picked one. Returns null when nothing
+ * matches, `{ choices }` when several suppliers match, else the statement (newest bill first) whose totals and
+ * outstanding balance come from the supplier's ledger. Payments are loaded too because the detailed PDF prints them.
  */
-export async function loadSupplierStatement(supplierName) {
+export async function loadSupplierStatement(query, partyKey) {
   const [bills, returns, payments] = await Promise.all([
     db.getAllPurchaseBills(),
     db.getAllPurchaseReturns(),
     db.getAllPurchasePayments(),
   ]);
+  const parties = partyKey
+    ? groupParties(PURCHASE_LEDGER, bills).filter((p) => p.key === partyKey)
+    : findStatementParties(PURCHASE_LEDGER, bills, query);
+  if (parties.length === 0) return null;
+  if (parties.length > 1) return { choices: parties.map(partyChoice) };
+  const [party] = parties;
   const returnsByInvoice = indexByInvoiceNo(returns);
   const paymentsByInvoice = indexByInvoiceNo(payments);
-  const matched = matchPartyInvoices(
-    bills.map((b) => ({ partyName: b.supplierName, bill: b })),
-    supplierName,
-  ).map(({ bill }) => {
+  const views = party.bills.map((bill) => {
     const view = toHistoryPurchase(
       bill,
       paymentsByInvoice.get(bill.invoiceNo) ?? [],
@@ -54,7 +60,10 @@ export async function loadSupplierStatement(supplierName) {
     );
     return { ...view, payments: statementPayments(bill, view.payments) };
   });
-  return buildCombinedStatement(supplierName, matched);
+  const summary = partySummary(PURCHASE_LEDGER, party.bills, {
+    returnsByInvoice: returnsTotalsByInvoice(returns),
+  });
+  return { ...buildCombinedStatement(party.name, views, summary), partyKey: party.key };
 }
 /** The PDF: shared as a file where the device can, otherwise the system print dialog (web: a print window). */
 async function exportHtml(html, fileName, dialogTitle) {
@@ -77,6 +86,8 @@ export async function exportEasySupplierStatement(statement, now = new Date()) {
   const html = buildEasyStatementHtml({
     partyName: statement.partyName,
     invoices: statement.invoices,
+    opening: statement.totals.opening,
+    outstanding: statement.totals.outstanding,
     labels: PURCHASE_LABELS,
     logoSrc: await getLogoSrc(),
     now,
@@ -111,6 +122,7 @@ async function buildBillStatement(invoiceNo, now) {
     payments: statementPayments(bill, view.payments),
     returns: view.returns,
     totalReturns: view.totalReturns,
+    balanceReturns: view.balanceReturns,
     adjustedBalanceDue: view.adjustedBalanceDue,
     labels: PURCHASE_LABELS,
     logoSrc: await getLogoSrc(),

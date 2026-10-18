@@ -11,7 +11,9 @@ import {
 import { COMPANY, CREDIT_LINE } from '@/core/branding';
 import { db } from '@/core/db';
 import { toNum, todayISO } from '@/core/format';
-import { PURCHASE_LEDGER, partyMatcher } from '@/core/ledger';
+import { PURCHASE_LEDGER, sameParty } from '@/core/ledger';
+import { PAYMENT_METHODS, normalizeMethod, sumByMethod } from '@/core/paymentMethods';
+import { CASH_LABEL, accountLabel, accountLabelWithBank } from '@/core/accountLabel';
 import { invalidateStocksCache } from '@/features/overview/stocks/stocksService';
 export function emptyPurchaseForm() {
   return {
@@ -25,7 +27,6 @@ export function emptyPurchaseForm() {
     manualPreviousBalance: '0',
     discountAmount: '0',
     cash: '0',
-    upi: '0',
     account: '0',
   };
 }
@@ -39,7 +40,6 @@ export function purchaseFormTotals(form) {
       manualPreviousBalance: toNum(form.manualPreviousBalance),
       discount: toNum(form.discountAmount),
       cash: toNum(form.cash),
-      upi: toNum(form.upi),
       account: toNum(form.account),
     }),
   };
@@ -95,7 +95,6 @@ export function buildPurchaseBill(form) {
     ...(form.bankAccountId ? { bankAccountId: form.bankAccountId } : {}),
     payment: {
       cash: toNum(form.cash),
-      upi: toNum(form.upi),
       account: toNum(form.account),
       bankAccountId: form.bankAccountId || null,
       totalPaid,
@@ -119,14 +118,19 @@ export async function purchaseNoExists(invoiceNo) {
  * purchase.js save: bill + one 'initial' payment record per method + supplier details for future auto-fill, then the
  * supplier's ledger is re-synced (this bill's previous balance and every later bill's follow — see core/ledger.js).
  */
-export async function savePurchaseBillWithPayments(form) {
+export async function savePurchaseBillWithPayments(form, { replaceExisting = false } = {}) {
   const bill = buildPurchaseBill(form);
-  const before = await db.getPurchaseBill(bill.invoiceNo).catch(() => null);
+  let before = await db.getPurchaseBill(bill.invoiceNo).catch(() => null);
+  // the user confirmed replacing another bill with this number: bin it (with its payments / returns) first
+  if (before && replaceExisting) {
+    await db.movePurchaseInvoiceToRecycleBin(bill.invoiceNo);
+    before = null;
+  }
   await db.savePurchaseBill(bill);
   const pay = bill.payment || {};
   const bId = bill.bankAccountId || pay.bankAccountId;
   const saves = [];
-  ['cash', 'upi', 'account'].forEach((method) => {
+  PAYMENT_METHODS.forEach((method) => {
     if (pay.totalPaid > 0 && pay[method] > 0) {
       const paymentDoc = {
         id: `purchase_payment_${bill.invoiceNo}_initial_${method}`,
@@ -144,19 +148,22 @@ export async function savePurchaseBillWithPayments(form) {
   });
   if (bill.supplierPhone) {
     saves.push(
-      db.saveSupplier({
-        phone: bill.supplierPhone,
-        name: bill.supplierName,
-        address: bill.supplierAddress,
-        lastUpdated: new Date().toISOString(),
-      }),
+      db.saveSupplier(
+        {
+          phone: bill.supplierPhone,
+          name: bill.supplierName,
+          address: bill.supplierAddress,
+          lastUpdated: new Date().toISOString(),
+        },
+        { merge: true },
+      ),
     );
   }
   await Promise.all(saves);
-  await db.syncPurchaseLedger(bill);
+  await db.syncPurchaseLedger(bill, { changedNo: bill.invoiceNo, before });
   // overwriting a number that belonged to another supplier: that supplier's chain lost a bill
-  if (before && !partyMatcher(PURCHASE_LEDGER, bill.supplierName, bill.supplierPhone)(before)) {
-    await db.syncPurchaseLedger(before, { removed: before });
+  if (before && !sameParty(PURCHASE_LEDGER, before, bill)) {
+    await db.syncPurchaseLedger(before, { before });
   }
   invalidateStocksCache();
   return bill;
@@ -185,38 +192,25 @@ export async function buildAcknowledgementMessage(form) {
       const bankMap = new Map((bankAccounts || []).map((b) => [b.id, b]));
       const defaultBank = bankAccounts?.[0];
 
-      let cashPaid = 0;
-      let upiPaid = 0;
-      let accountPaid = 0;
-
-      if (payments.length > 0) {
-        payments.forEach((p) => {
-          const m = (p.paymentMethod || 'cash').toLowerCase();
-          if (m === 'cash') cashPaid += p.amount || 0;
-          else if (m === 'upi') upiPaid += p.amount || 0;
-          else if (m === 'account') accountPaid += p.amount || 0;
-        });
-      } else {
-        cashPaid = toNum(form.cash);
-        upiPaid = toNum(form.upi);
-        accountPaid = toNum(form.account);
-      }
+      // Cash / Account split (legacy UPI / GPay / bank documents count as Account).
+      const { cash: cashPaid, account: accountPaid } =
+        payments.length > 0
+          ? sumByMethod(payments)
+          : { cash: toNum(form.cash), account: toNum(form.account) };
 
       let accountBankName = '';
       const activeBankId = form.bankAccountId || payments.find((p) => p.bankAccountId)?.bankAccountId;
       const bank = activeBankId ? bankMap.get(activeBankId) : defaultBank;
-      if (bank && (accountPaid > 0 || upiPaid > 0)) {
-        accountBankName = bank.accountName;
+      if (bank && accountPaid > 0) {
+        accountBankName = accountLabel(bank);
       }
 
-      const totalPaidAmount = cashPaid + upiPaid + accountPaid;
+      const totalPaidAmount = cashPaid + accountPaid;
       const calcBalanceDue = grandTotal - totalPaidAmount;
 
-      if (totalPaidAmount > 0 || cashPaid > 0 || upiPaid > 0 || accountPaid > 0) {
+      if (totalPaidAmount > 0 || cashPaid > 0 || accountPaid > 0) {
         message += '\nPayment Summary:\n';
         if (cashPaid > 0) message += `- Cash Paid: ₹${cashPaid.toFixed(2)}\n`;
-        if (upiPaid > 0)
-          message += `- UPI Paid${accountBankName ? ` (${accountBankName})` : ''}: ₹${upiPaid.toFixed(2)}\n`;
         if (accountPaid > 0)
           message += `- Account Paid${accountBankName ? ` (${accountBankName})` : ''}: ₹${accountPaid.toFixed(2)}\n`;
         message += `- Total Amount Paid: ₹${totalPaidAmount.toFixed(2)}\n`;
@@ -227,20 +221,13 @@ export async function buildAcknowledgementMessage(form) {
         message += '\nPayment History:\n';
         payments.forEach((p) => {
           const date = new Date(p.paymentDate).toLocaleDateString('en-IN');
-          const rawMethod = (p.paymentMethod || 'cash').toLowerCase();
-          const pBank = p.bankAccountId
-            ? bankMap.get(p.bankAccountId)
-            : rawMethod === 'account'
-              ? defaultBank
-              : null;
-          let methodLabel = 'Cash in Hand';
-          if (rawMethod === 'account') {
-            methodLabel = pBank
-              ? `Account: ${pBank.accountName}${pBank.bankName ? ` (${pBank.bankName})` : ''}`
+          const isAccount = normalizeMethod(p.paymentMethod) === 'account';
+          const pBank = p.bankAccountId ? bankMap.get(p.bankAccountId) : isAccount ? defaultBank : null;
+          const methodLabel = !isAccount
+            ? CASH_LABEL
+            : pBank
+              ? `Account: ${accountLabelWithBank(pBank)}`
               : 'Bank Account';
-          } else if (rawMethod === 'upi') {
-            methodLabel = pBank ? `UPI (${pBank.accountName})` : 'UPI';
-          }
           const typeSuffix = p.paymentType === 'additional' ? ' - Additional Payment' : '';
           message += `- ${date}: ₹${p.amount.toFixed(2)} (${methodLabel}${typeSuffix})\n`;
         });

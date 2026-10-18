@@ -48,7 +48,9 @@ export function computeGreyPurchaseRate(
   openingStocks = [],
   stockMap = null,
 ) {
-  const desc = String(description || '').trim().toLowerCase();
+  const desc = String(description || '')
+    .trim()
+    .toLowerCase();
   if (!desc) {
     return {
       avgRate: 0,
@@ -70,7 +72,11 @@ export function computeGreyPurchaseRate(
     purchaseBills.forEach((bill) => {
       if (!bill.products || !Array.isArray(bill.products)) return;
       bill.products.forEach((prod) => {
-        if (String(prod.description || '').trim().toLowerCase() === desc) {
+        if (
+          String(prod.description || '')
+            .trim()
+            .toLowerCase() === desc
+        ) {
           const qty = toNum(prod.qty);
           const rate = toNum(prod.rate);
           if (qty > 0) {
@@ -96,7 +102,11 @@ export function computeGreyPurchaseRate(
   // 2. Scan opening stock if any
   if (Array.isArray(openingStocks)) {
     openingStocks.forEach((os) => {
-      if (String(os.description || '').trim().toLowerCase() === desc) {
+      if (
+        String(os.description || '')
+          .trim()
+          .toLowerCase() === desc
+      ) {
         const qty = toNum(os.qty);
         const rate = toNum(os.rate || os.purchaseRate);
         if (qty > 0 && rate > 0) {
@@ -240,28 +250,18 @@ export function calcBatchTotals(form) {
 
   // Adjusted finished unit cost based on weight loss
   const adjustedUnitCost =
-    expectedOutputQty > 0
-      ? round2(totalBatchCost / expectedOutputQty)
-      : costPerUnitBeforeLoss;
+    expectedOutputQty > 0 ? round2(totalBatchCost / expectedOutputQty) : costPerUnitBeforeLoss;
 
   const outputs = Array.isArray(form.output) ? form.output : [];
-  const totalOutputQty = round3(
-    outputs.reduce((sum, o) => sum + toNum(o.qty), 0),
-  );
+  const totalOutputQty = round3(outputs.reduce((sum, o) => sum + toNum(o.qty), 0));
 
   // Actual shrinkage tracking if output goods are recorded
   const actualShrinkageQty =
-    totalOutputQty > 0
-      ? round3(Math.max(0, inputQty - totalOutputQty))
-      : weightLossQty;
-  const actualShrinkagePct =
-    inputQty > 0 ? round2((actualShrinkageQty / inputQty) * 100) : weightLossPct;
+    totalOutputQty > 0 ? round3(Math.max(0, inputQty - totalOutputQty)) : weightLossQty;
+  const actualShrinkagePct = inputQty > 0 ? round2((actualShrinkageQty / inputQty) * 100) : weightLossPct;
 
   // Finished unit cost allocation
-  const avgFinishedUnitCost =
-    totalOutputQty > 0
-      ? round2(totalBatchCost / totalOutputQty)
-      : adjustedUnitCost;
+  const avgFinishedUnitCost = totalOutputQty > 0 ? round2(totalBatchCost / totalOutputQty) : adjustedUnitCost;
 
   // Allocate cost to output lines proportionally by quantity
   const enrichedOutput = outputs.map((out) => {
@@ -330,13 +330,12 @@ export function validateDyeingBatch(form) {
   }
 
   if (form.status === DYEING_STATUS.COMPLETED) {
-    const validOutputs = (form.output || []).filter(
-      (o) => o.description?.trim() && toNum(o.qty) > 0,
-    );
+    const validOutputs = (form.output || []).filter((o) => o.description?.trim() && toNum(o.qty) > 0);
     if (validOutputs.length === 0) {
       return {
         title: 'Missing Finished Goods',
-        message: 'To mark the batch as Completed, please specify at least one finished colored fabric with quantity.',
+        message:
+          'To mark the batch as Completed, please specify at least one finished colored fabric with quantity.',
       };
     }
   }
@@ -358,9 +357,7 @@ export function filterBatches(batches = [], query = '', statusFilter = 'ALL') {
     const matchId = (b.batchId || '').toLowerCase().includes(q);
     const matchProcessor = (b.processorName || '').toLowerCase().includes(q);
     const matchInput = (b.input?.description || '').toLowerCase().includes(q);
-    const matchOutput = (b.output || []).some((o) =>
-      (o.description || '').toLowerCase().includes(q),
-    );
+    const matchOutput = (b.output || []).some((o) => (o.description || '').toLowerCase().includes(q));
     return matchId || matchProcessor || matchInput || matchOutput;
   });
 }
@@ -429,8 +426,7 @@ export function filterDyers(dyers = [], query = '') {
     const matchOwner = (d.ownerName || '').toLowerCase().includes(q);
     const matchAddress = (d.address || '').toLowerCase().includes(q);
     const matchPhone =
-      (d.phone || '').toLowerCase().includes(q) ||
-      (qDigits && digitsOnly(d.phone || '').includes(qDigits));
+      (d.phone || '').toLowerCase().includes(q) || (qDigits && digitsOnly(d.phone || '').includes(qDigits));
     return matchName || matchOwner || matchAddress || matchPhone;
   });
 }

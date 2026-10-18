@@ -14,6 +14,7 @@ import {
   DataTable,
   EmptyState,
   ErrorState,
+  IconButton,
   Page,
   SearchBar,
   StatCard,
@@ -154,6 +155,18 @@ export default function ShortcutsPage() {
     />
   );
 
+  const copyButton = (s) => {
+    const copied = copiedKey === s.shortcutKey;
+    return (
+      <IconButton
+        icon={copied ? Check : Copy}
+        label={`Copy shortcut key ${s.shortcutKey}`}
+        onClick={(e) => handleCopy(s.shortcutKey, e)}
+        className={copied ? 'text-emerald-600' : 'text-slate-400'}
+      />
+    );
+  };
+
   const columns = [
     {
       key: 'key',
@@ -162,19 +175,7 @@ export default function ShortcutsPage() {
       render: (s) => (
         <div className="flex items-center gap-1.5">
           <KeyCap>{s.shortcutKey}</KeyCap>
-          <button
-            type="button"
-            onClick={(e) => handleCopy(s.shortcutKey, e)}
-            className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            title="Copy shortcut key"
-            aria-label={`Copy shortcut key ${s.shortcutKey}`}
-          >
-            {copiedKey === s.shortcutKey ? (
-              <Check className="h-3.5 w-3.5 text-emerald-600" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-          </button>
+          {copyButton(s)}
         </div>
       ),
     },
@@ -213,19 +214,7 @@ export default function ShortcutsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <KeyCap>{s.shortcutKey}</KeyCap>
-                  <button
-                    type="button"
-                    onClick={(e) => handleCopy(s.shortcutKey, e)}
-                    className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                    title="Copy shortcut key"
-                    aria-label={`Copy shortcut key ${s.shortcutKey}`}
-                  >
-                    {copiedKey === s.shortcutKey ? (
-                      <Check className="h-3.5 w-3.5 text-emerald-600" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
-                    )}
-                  </button>
+                  {copyButton(s)}
                 </div>
                 <div className="mt-1.5 font-medium break-words text-slate-800">{s.fullDescription}</div>
               </div>

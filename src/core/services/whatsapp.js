@@ -5,8 +5,9 @@
 import { copyText, openExternal } from '@/platform';
 import { COMPANY, COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
 import { db } from '@/core/db';
-import { calculateTotalReturns } from '@/core/billing';
-import { digitsOnly, formatCurrency, formatDateIN } from '@/core/format';
+import { digitsOnly, formatCurrency, formatDateIN, toNum } from '@/core/format';
+import { foldBreakdown } from '@/core/paymentMethods';
+import { loadInvoiceContext } from './invoiceContext';
 /**
  * Digits only; a bare 10-digit Indian number gets the 91 country code.
  * (The web app skipped the prefix when the 10 digits themselves began with "91", e.g. 9123456789 — a valid mobile
@@ -28,9 +29,19 @@ export async function openWhatsApp(phone, text) {
 const LINE = '----------------------';
 const fmt = (amt) => (Math.round(amt) === amt ? String(amt) : formatCurrency(amt));
 const clip = (s, n = 20) => (s.length > n ? `${s.substring(0, n)}..` : s);
+/**
+ * `balanceReturns` = returns settled against the balance (they lower the due); the rest were refunded in cash / bank
+ * and are only listed. Without it every return counts against the balance (callers that pass only `totalReturns`).
+ */
 export function buildStatementMessage(args) {
-  const { invoice, returns, totalReturns, adjustedBalanceDue } = args;
-  const previousBalance = invoice.grandTotal - invoice.subtotal;
+  const { invoice, returns = [], totalReturns = 0 } = args;
+  const balanceReturns = args.balanceReturns ?? totalReturns;
+  const refunded = Math.max(0, totalReturns - balanceReturns);
+  const balanceDue = toNum(invoice.balanceDue);
+  const adjustedBalanceDue = args.adjustedBalanceDue ?? balanceDue - balanceReturns;
+  // carried balance + this bill's opening-balance entry; the discount gets its own line
+  const previousBalance = toNum(invoice.previousBalance) + toNum(invoice.manualPreviousBalance);
+  const discount = toNum(invoice.discountAmount ?? invoice.discount);
   const dateStr = formatDateIN(invoice.invoiceDate);
   let m = `*INVOICE STATEMENT*\n*${COMPANY.name}*\n\n\n`;
   m += `+${LINE}\n│ 📋 *INVOICE DETAILS*\n+${LINE}\n│ 🔢 No: ${invoice.invoiceNo}\n│ 📅 Date: ${dateStr}\n+${LINE}\n\n`;
@@ -51,82 +62,35 @@ export function buildStatementMessage(args) {
   }
   m += '\n';
   m += `+${LINE}\n│ 💰 *ACCOUNT SUMMARY*\n+${LINE}\n│ Bill Amt:   Rs. ${fmt(invoice.subtotal)}\n`;
-  if (previousBalance > 0) m += `│ Prev Bal:   Rs. ${fmt(previousBalance)}\n`;
+  if (previousBalance !== 0) m += `│ Prev Bal:   Rs. ${fmt(previousBalance)}\n`;
+  if (discount !== 0) m += `│ Discount:  -Rs. ${fmt(discount)}\n`;
   m += `│ Total:      Rs. ${fmt(invoice.grandTotal)}\n`;
-  if (totalReturns > 0) m += `│ Returns:   -Rs. ${fmt(totalReturns)}\n`;
+  if (balanceReturns > 0) m += `│ Returns:   -Rs. ${fmt(balanceReturns)}\n`;
+  if (refunded > 0) m += `│ Refunded:   Rs. ${fmt(refunded)}\n`;
   m += `│ Paid:       Rs. ${fmt(invoice.amountPaid)}\n`;
-  const pb = invoice.paymentBreakdown;
+  const pb = foldBreakdown(invoice.paymentBreakdown);
   if (pb) {
     if (pb.cash > 0) m += `│   💵 Cash:   Rs. ${fmt(pb.cash)}\n`;
-    if (pb.upi > 0) m += `│   📱 UPI:    Rs. ${fmt(pb.upi)}\n`;
     if (pb.account > 0) {
       const acctLabel = invoice.bankAccountName ? `Acct (${invoice.bankAccountName})` : 'Acct';
       m += `│   🏦 ${acctLabel}:   Rs. ${fmt(pb.account)}\n`;
     }
   }
-  m += `│ ${LINE}\n│ *DUE:       Rs. ${fmt(totalReturns > 0 ? adjustedBalanceDue : invoice.balanceDue)}*\n+${LINE}\n`;
+  m += `│ ${LINE}\n│ *DUE:       Rs. ${fmt(balanceReturns > 0 ? adjustedBalanceDue : balanceDue)}*\n+${LINE}\n`;
   m += `\n━━━━━━━━━━━━━━━━━━━━━━\n*CONTACT INFORMATION*\n🏪 *${COMPANY.name}*${COMPANY.whatsappLocation ? `\n📍 ${COMPANY.whatsappLocation}` : ''}${COMPANY.whatsappPhones ? `\n📞 ${COMPANY.whatsappPhones}` : ''}\n\n_Automated invoice statement._`;
   m += `\n\n${CREDIT_LINE}`;
   return m;
 }
 /** Loads the invoice's returns, builds the statement, copies it to the clipboard and opens WhatsApp. */
 export async function shareStatementOnWhatsApp(invoiceNo) {
-  const invoice = await db.getInvoice(invoiceNo);
-  if (!invoice) throw new Error('Invoice not found!');
-  const [totalReturns, returns, rawPayments, bankAccounts] = await Promise.all([
-    calculateTotalReturns(invoiceNo),
-    db.getReturnsByInvoice(invoiceNo),
-    db.getPaymentsByInvoice(invoiceNo).catch(() => []),
-    db.getAllBankAccounts().catch(() => []),
-  ]);
-  const bankMap = new Map((bankAccounts || []).map((b) => [b.id, b]));
-  const defaultBank = bankAccounts?.[0];
-
-  let pb = invoice.paymentBreakdown ? { ...invoice.paymentBreakdown } : null;
-  let totalPaid = invoice.amountPaid || 0;
-
-  if (rawPayments.length > 0) {
-    let cash = 0,
-      upi = 0,
-      account = 0;
-    rawPayments.forEach((p) => {
-      const m = (p.paymentMethod || 'cash').toLowerCase();
-      if (m === 'cash') cash += p.amount || 0;
-      else if (m === 'upi') upi += p.amount || 0;
-      else if (m === 'account') account += p.amount || 0;
-    });
-    pb = { cash, upi, account };
-    totalPaid = cash + upi + account;
-  }
-
-  let bankAccountName = '';
-  const bankForInvoice = invoice.bankAccountId ? bankMap.get(invoice.bankAccountId) : null;
-  if (bankForInvoice) {
-    bankAccountName = bankForInvoice.accountName;
-  } else {
-    const accPayment = rawPayments.find((p) => (p.paymentMethod || '').toLowerCase() === 'account');
-    if (accPayment && accPayment.bankAccountId && bankMap.get(accPayment.bankAccountId)) {
-      bankAccountName = bankMap.get(accPayment.bankAccountId).accountName;
-    } else if (defaultBank && (pb?.account > 0 || invoice.paymentMethod === 'account')) {
-      bankAccountName = defaultBank.accountName;
-    }
-  }
-
-  const resolvedInvoice = {
-    ...invoice,
-    paymentBreakdown: pb,
-    amountPaid: totalPaid,
-    balanceDue: invoice.grandTotal - totalPaid,
-    bankAccountName,
-  };
-
+  const stored = await db.getInvoice(invoiceNo);
+  if (!stored) throw new Error('Invoice not found!');
+  const ctx = await loadInvoiceContext(stored);
   const message = buildStatementMessage({
-    invoice: resolvedInvoice,
-    returns,
-    totalReturns,
-    adjustedBalanceDue: resolvedInvoice.balanceDue - totalReturns,
+    ...ctx,
+    invoice: { ...ctx.invoice, bankAccountName: ctx.accountBankName },
   });
   const copied = await copyText(message);
-  await openWhatsApp(invoice.customerPhone, message);
+  await openWhatsApp(stored.customerPhone, message);
   return { message, copied };
 }

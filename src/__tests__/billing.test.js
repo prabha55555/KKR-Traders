@@ -46,19 +46,24 @@ describe('totals', () => {
       manualPreviousBalance: 50,
       discount: 100,
       cash: 400,
-      upi: 100,
-      account: 0,
+      account: 100,
       additionalPaid: 200,
     });
     expect(t.grandTotal).toBe(1200);
     expect(t.totalPaid).toBe(700);
     expect(t.balanceDue).toBe(500);
   });
-  test('sales grand total may go negative (credit balance); purchase total is clamped at 0', () => {
+  test('sales totals read only cash + account (forms have no UPI amount any more)', () => {
+    expect(
+      calcSalesTotals({ subtotal: 100, previousBalance: 0, cash: 10, account: 20, upi: 999 }).totalPaid,
+    ).toBe(30);
+  });
+  test('sales and purchase grand totals may go negative (a credit carries into the next bill)', () => {
     expect(calcSalesTotals({ subtotal: 100, previousBalance: 0, discount: 500 }).grandTotal).toBe(-400);
-    const p = calcPurchaseTotals({ subtotal: 100, previousBalance: 0, discount: 500, cash: 20 });
-    expect(p.grandTotal).toBe(0);
-    expect(p.balanceDue).toBe(-20);
+    // the web clamped purchases at 0, which silently dropped an advance paid to the supplier
+    const p = calcPurchaseTotals({ subtotal: 100, previousBalance: -600, cash: 20 });
+    expect(p.grandTotal).toBe(-500);
+    expect(p.balanceDue).toBe(-520);
   });
   test('purchase totals ignore additionalPaid (purchase.js has no such concept)', () => {
     expect(
@@ -82,7 +87,7 @@ describe('totals', () => {
       'C',
     ]);
   });
-  test('breakdownFromPayments groups by method; bank counts as account; unknown counts as cash', () => {
+  test('breakdownFromPayments: Cash / Account; legacy UPI, GPay and bank count as account; unknown counts as cash', () => {
     expect(
       breakdownFromPayments([
         { amount: 100, paymentMethod: 'cash' },
@@ -91,8 +96,10 @@ describe('totals', () => {
         { amount: 10, paymentMethod: 'account' },
         { amount: 5, paymentMethod: 'cheque' },
         { amount: 1, paymentMethod: '' },
+        { amount: 4, paymentMethod: 'GPAY' },
+        { amount: 2 },
       ]),
-    ).toEqual({ cash: 106, upi: 50, account: 35 });
+    ).toEqual({ cash: 108, account: 89 });
   });
 });
 describe('purchase bill field access (hybrid schema)', () => {
@@ -192,11 +199,15 @@ describe('balance carried forward (running-balance ledger)', () => {
   test('stale stored balances of earlier bills do not leak into the new bill', async () => {
     // 002 was saved when 001 still owed 1000; 001 was paid in full later and 002 was never refreshed
     stub([bill('001', 1000, 1000), bill('002', 500, 0, 1000)]);
-    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(500);
+    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(
+      500,
+    );
   });
   test('discount and opening balance of earlier bills are part of the carried balance', async () => {
     stub([bill('001', 1000, 0, 0, { manualPreviousBalance: 200, discountAmount: 50 })]);
-    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(1150);
+    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(
+      1150,
+    );
   });
   test('orders by invoice date first: numbers restart every financial year', async () => {
     stub([
@@ -204,7 +215,9 @@ describe('balance carried forward (running-balance ledger)', () => {
       bill('001', 300, 0, 0, { invoiceDate: '2026-04-02' }),
     ]);
     // the latest bill is 001 of the new year (300 owed), not 250 of the old year (settled)
-    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(300);
+    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(
+      300,
+    );
   });
   test('a back-dated new bill carries the balance of the bill before its date', async () => {
     stub([
@@ -225,7 +238,9 @@ describe('balance carried forward (running-balance ledger)', () => {
   test("a customer's first bill starts from the customer's opening balance", async () => {
     stub([]);
     jest.spyOn(db, 'getCustomer').mockResolvedValue({ phone: '9876543210', openingBalance: '750' });
-    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(750);
+    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', null)).balanceCarriedForward).toBe(
+      750,
+    );
   });
   test('editing an existing invoice: balance comes from the invoice before it; the first keeps its opening', async () => {
     stub([bill('001', 1000, 700, 0), bill('002', 1000, 500, 300)], [{ invoiceNo: '001', returnAmount: 100 }]);
@@ -233,7 +248,9 @@ describe('balance carried forward (running-balance ledger)', () => {
     expect(r.balanceCarriedForward).toBe(200);
     expect(r.totalPreviousBills).toBe(1000);
     stub([bill('001', 1000, 0, 125), bill('002', 100, 0, 1125)]);
-    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', '001')).balanceCarriedForward).toBe(125);
+    expect((await calculatePreviousBalanceAtTime('SLN TEX', '9876543210', '001')).balanceCarriedForward).toBe(
+      125,
+    );
   });
   test('a failed read is reported as failed (callers keep what they had)', async () => {
     jest.spyOn(db, 'getAllInvoices').mockRejectedValue(new Error('offline'));
@@ -261,7 +278,13 @@ describe('supplier balance carried forward', () => {
     subtotal,
     previousBalance,
     grandTotal: subtotal + previousBalance,
-    payment: { cash: paid, upi: 0, account: 0, totalPaid: paid, balanceDue: subtotal + previousBalance - paid },
+    payment: {
+      cash: paid,
+      upi: 0,
+      account: 0,
+      totalPaid: paid,
+      balanceDue: subtotal + previousBalance - paid,
+    },
     ...over,
   });
   const stub = (bills, returns = []) => {
@@ -274,7 +297,10 @@ describe('supplier balance carried forward', () => {
   });
   test('edited / legacy bills with top-level amountPaid count too; returns lower the carried balance', async () => {
     stub(
-      [pbill('001', 500, 0), { ...pbill('002', 300, 0, 500), payment: undefined, amountPaid: 680, balanceDue: 120 }],
+      [
+        pbill('001', 500, 0),
+        { ...pbill('002', 300, 0, 500), payment: undefined, amountPaid: 680, balanceDue: 120 },
+      ],
       [{ invoiceNo: '002', returnAmount: 20 }],
     );
     expect((await calculateSupplierPreviousBalanceAtTime('S', '9', null)).balanceCarriedForward).toBe(100);

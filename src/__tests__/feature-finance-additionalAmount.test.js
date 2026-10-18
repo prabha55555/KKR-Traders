@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { computeAccountBalances, getAccountActivity } from '@/features/finance/accountsLogic';
+import {
+  buildCashBalanceEdit,
+  computeAccountBalances,
+  getAccountActivity,
+  txDirection,
+} from '@/features/finance/accountsLogic';
 
 describe('computeAccountBalances with additional amounts and manual deductions', () => {
   const bankAccounts = [
@@ -251,5 +256,249 @@ describe('undo and reversal of transactions', () => {
     });
     expect(result.cashBalance).toBe(5000);
     expect(result.bankAccounts.find((b) => b.id === 'hdfc').currentBalance).toBe(5000);
+  });
+});
+
+describe('entries without a Reason / Category (new Add Amount form)', () => {
+  const bankAccounts = [{ id: 'sbi', accountName: 'SBI', bankName: 'SBI', openingBalance: 10000 }];
+
+  test('a category-less Additional Amount reads "Additional Amount" and counts as an added amount', () => {
+    const tx = {
+      id: 'tx_new_in',
+      date: '2026-10-14',
+      fromAccount: null,
+      toAccount: 'cash',
+      amount: 700,
+      type: 'Additional Amount',
+      notes: '',
+    };
+    const activity = getAccountActivity({
+      account: { id: 'cash', openingBalance: 0 },
+      bankAccounts,
+      accountTransactions: [tx],
+    });
+    const item = activity.items.find((i) => i.id === 'tx-in-tx_new_in');
+    expect(item.title).toBe('Additional Amount');
+    expect(item.category).toBe('Adjustment');
+    expect(activity.breakdown.additionalInflow).toBe(700);
+    expect(activity.breakdown.transferInflow).toBe(0);
+    expect(
+      computeAccountBalances({ bankAccounts, cashOpening: 100, accountTransactions: [tx] }).cashBalance,
+    ).toBe(800);
+  });
+
+  test('a category-less Manual Deduction reads "Deduction"', () => {
+    const tx = {
+      id: 'tx_new_out',
+      date: '2026-10-14',
+      fromAccount: 'sbi',
+      toAccount: null,
+      amount: 40,
+      type: 'Manual Deduction',
+      notes: '',
+    };
+    const activity = getAccountActivity({
+      account: { id: 'sbi', openingBalance: 10000 },
+      bankAccounts,
+      accountTransactions: [tx],
+    });
+    const item = activity.items.find((i) => i.id === 'tx-out-tx_new_out');
+    expect(item.title).toBe('Deduction');
+    expect(activity.breakdown.manualDeductionOutflow).toBe(40);
+    expect(activity.breakdown.transferOutflow).toBe(0);
+  });
+});
+
+describe('cash Edit Balance (records only the difference)', () => {
+  const bankAccounts = [{ id: 'sbi', accountName: 'SBI', bankName: 'SBI', openingBalance: 10000 }];
+
+  test('raising the balance writes one null -> cash entry and cash becomes the counted amount', () => {
+    const tx = buildCashBalanceEdit({
+      cashBalance: 1250.5,
+      target: 2000,
+      date: '2026-10-15',
+      notes: ' counted ',
+    });
+    expect(tx).toEqual({
+      date: '2026-10-15',
+      type: 'Balance Adjustment',
+      category: 'Cash Balance Edit',
+      fromAccount: null,
+      toAccount: 'cash',
+      amount: 749.5,
+      adjustment: true,
+      previousBalance: 1250.5,
+      newBalance: 2000,
+      notes: 'counted',
+    });
+    const after = computeAccountBalances({
+      bankAccounts,
+      cashOpening: 1250.5,
+      accountTransactions: [{ id: 'atx_1', ...tx }],
+    });
+    expect(after.cashBalance).toBe(2000);
+    // banks are untouched and the cash opening is not rewritten
+    expect(after.totalBankBalance).toBe(10000);
+    expect(after.cashAccount.openingBalance).toBe(1250.5);
+  });
+
+  test('lowering the balance writes one cash -> null entry; undo (deleting it) restores the old balance', () => {
+    const salesInvoices = [{ invoiceNo: 'S1', paymentBreakdown: { cash: 3000 }, amountPaid: 3000 }];
+    const base = computeAccountBalances({ bankAccounts, cashOpening: 500, salesInvoices });
+    expect(base.cashBalance).toBe(3500);
+
+    const tx = buildCashBalanceEdit({ cashBalance: base.cashBalance, target: 3200, date: '2026-10-15' });
+    expect(tx.fromAccount).toBe('cash');
+    expect(tx.toAccount).toBeNull();
+    expect(tx.amount).toBe(300);
+
+    const after = computeAccountBalances({
+      bankAccounts,
+      cashOpening: 500,
+      salesInvoices,
+      accountTransactions: [{ id: 'atx_2', ...tx }],
+    });
+    expect(after.cashBalance).toBe(3200);
+
+    const undone = computeAccountBalances({
+      bankAccounts,
+      cashOpening: 500,
+      salesInvoices,
+      accountTransactions: [],
+    });
+    expect(undone.cashBalance).toBe(3500);
+  });
+
+  test('no entry when the counted cash equals the system balance', () => {
+    expect(buildCashBalanceEdit({ cashBalance: 1000, target: 1000.004, date: '2026-10-15' })).toBeNull();
+  });
+
+  test('the cash ledger shows the edit with its previous and new balance', () => {
+    const tx = {
+      id: 'atx_3',
+      ...buildCashBalanceEdit({ cashBalance: 900, target: 1000, date: '2026-10-15', notes: 'Drawer count' }),
+    };
+    const activity = getAccountActivity({
+      account: { id: 'cash', openingBalance: 900 },
+      bankAccounts,
+      accountTransactions: [tx],
+    });
+    const item = activity.items.find((i) => i.id === 'tx-in-atx_3');
+    expect(item.title).toBe('Cash Balance Edited');
+    expect(item.type).toBe('Balance Adjustment');
+    expect(item.subtitle).toBe('₹900 → ₹1000 • Drawer count');
+    expect(activity.computedCurrentBalance).toBe(1000);
+  });
+
+  test('txDirection: in / out / legacy transfer', () => {
+    expect(txDirection({ fromAccount: null, toAccount: 'cash' })).toBe('in');
+    expect(txDirection({ fromAccount: 'cash', toAccount: null })).toBe('out');
+    expect(txDirection({ fromAccount: 'sbi', toAccount: 'external' })).toBe('out');
+    expect(txDirection({ fromAccount: 'cash', toAccount: 'sbi' })).toBe('transfer');
+    // dyeing / combing payments: type 'expense', only fromAccount
+    expect(txDirection({ type: 'expense', category: 'Dyeing Payment', fromAccount: 'sbi' })).toBe('out');
+  });
+});
+
+describe('legacy data keeps working after Transfer Funds and UPI left the UI', () => {
+  const bankAccounts = [
+    {
+      id: 'sbi',
+      accountName: 'SBI Current',
+      bankName: 'State Bank of India',
+      accountType: 'Current',
+      openingBalance: 10000,
+    },
+  ];
+
+  test('an old "Deposit to Bank" transfer still moves cash into the bank and stays a transfer', () => {
+    const tx = {
+      id: 'tx_dep',
+      date: '2026-09-01',
+      fromAccount: 'cash',
+      toAccount: 'sbi',
+      amount: 2500,
+      type: 'Deposit to Bank',
+    };
+    const result = computeAccountBalances({ bankAccounts, cashOpening: 5000, accountTransactions: [tx] });
+    expect(result.cashBalance).toBe(2500);
+    expect(result.bankAccounts[0].currentBalance).toBe(12500);
+
+    const bank = getAccountActivity({
+      account: { id: 'sbi', openingBalance: 10000 },
+      bankAccounts,
+      accountTransactions: [tx],
+    });
+    const item = bank.items.find((i) => i.id === 'tx-in-tx_dep');
+    expect(item.title).toBe('Received from Cash in Hand');
+    expect(item.category).toBe('Transfer');
+    expect(bank.breakdown.transferInflow).toBe(2500);
+    expect(bank.breakdown.additionalInflow).toBe(0);
+
+    const cash = getAccountActivity({
+      account: { id: 'cash', openingBalance: 5000 },
+      bankAccounts,
+      accountTransactions: [tx],
+    });
+    expect(cash.items[0].title).toBe('Transferred to SBI Current');
+    expect(cash.breakdown.transferOutflow).toBe(2500);
+  });
+
+  test('legacy UPI money is Account money: same balance, labelled "(Account)"', () => {
+    const salesInvoices = [
+      {
+        id: 'i1',
+        invoiceNo: 'S9',
+        invoiceDate: '2026-09-02',
+        paymentBreakdown: { cash: 100, upi: 400, account: 500 },
+        amountPaid: 1000,
+      },
+    ];
+    const result = computeAccountBalances({ bankAccounts, cashOpening: 0, salesInvoices });
+    expect(result.bankAccounts[0].currentBalance).toBe(10900);
+    expect(result.cashBalance).toBe(100);
+
+    const activity = getAccountActivity({
+      account: { id: 'sbi', openingBalance: 10000 },
+      bankAccounts,
+      salesInvoices,
+    });
+    expect(activity.items).toHaveLength(1);
+    expect(activity.items[0].type).toBe('Sale (Account)');
+    expect(activity.items[0].amount).toBe(900);
+
+    const purchasePayments = [
+      { id: 'pp1', invoiceNo: 'P1', amount: 300, paymentMethod: 'upi', bankAccountId: 'sbi' },
+    ];
+    const purchaseBills = [{ id: 'b1', billNumber: 'P1', billDate: '2026-09-03', supplierName: 'Ravi' }];
+    const purchase = getAccountActivity({
+      account: { id: 'sbi', openingBalance: 10000 },
+      bankAccounts,
+      purchaseBills,
+      purchasePayments,
+    });
+    expect(purchase.items[0].type).toBe('Purchase (Account)');
+    expect(purchase.items[0].subtitle).toBe('Supplier: Ravi • Account');
+    expect(purchase.computedCurrentBalance).toBe(9700);
+  });
+
+  test('an old loan repayment stored with mode "UPI" reads as Account', () => {
+    const financeRecords = [
+      {
+        id: 'f1',
+        principal: 0,
+        depositAccount: 'cash',
+        startDate: '2026-01-01',
+        payments: [{ id: 'lp1', date: '2026-02-01', amount: 200, mode: 'UPI', sourceAccount: 'sbi' }],
+      },
+    ];
+    const result = computeAccountBalances({ bankAccounts, financeRecords });
+    expect(result.bankAccounts[0].currentBalance).toBe(9800);
+    const activity = getAccountActivity({
+      account: { id: 'sbi', openingBalance: 10000 },
+      bankAccounts,
+      financeRecords,
+    });
+    expect(activity.items.find((i) => i.id === 'fin-pay-f1-0').subtitle).toBe('Mode: Account');
   });
 });

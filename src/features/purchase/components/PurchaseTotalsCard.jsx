@@ -4,8 +4,8 @@
  * BillTotalsPanel.
  *
  * Props
- *  - form: { previousBalance, manualPreviousBalance, discountAmount, cash, upi, account }
- *  - totals: { subtotal, grandTotal, totalPaid, balanceDue }   (grand total is never below zero)
+ *  - form: { previousBalance, manualPreviousBalance, discountAmount, cash, account, bankAccountId }
+ *  - totals: { subtotal, grandTotal, totalPaid, balanceDue }   (may be negative: a credit with the supplier)
  *  - onChange(patch)            merged into the form
  *  - additionalPaid?: number    edit screen: payments added later from Purchase History (already inside totalPaid)
  */

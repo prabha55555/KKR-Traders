@@ -2,12 +2,23 @@
  * Sales returns from the history screen: add (saveReturn), undo one, undo all
  * (invoice-history.js saveReturn / undoReturn / undoAllReturns / getAlreadyReturnedQty).
  */
-import { calculateTotalReturns, updateInvoiceWithReturns, updateSubsequentInvoices } from '@/core/billing';
+import { updateInvoiceWithReturns, updateSubsequentInvoices } from '@/core/billing';
 import { db } from '@/core/db';
-import { validateReturnDraft } from '../lib/returns';
+import { SALES_LEDGER } from '@/core/ledger';
+import { partyReturnProducts, refundSettlement, validateReturnDraft } from '../lib/returns';
 import { userError } from '../lib/types';
-/** The documents written for one submitted return line (db.saveReturn adds `id` and the server `createdAt`). */
-export function buildReturnRecord(invoiceNo, customerName, line, now, settlement = {}) {
+/**
+ * The documents written for one submitted return line (db.saveReturn adds `id` and the server `createdAt`).
+ * `settlement` = lib/returns refundSettlement(): every new return is a refund (Cash, or 'bank' + bankAccountId), so
+ * it can never be read as a balance adjustment (a missing settlement means "adjust the balance" to core/ledger).
+ */
+export function buildReturnRecord(
+  invoiceNo,
+  customerName,
+  line,
+  now,
+  settlement = refundSettlement({ refundMethod: 'cash' }),
+) {
   const record = {
     invoiceNo,
     customerName,
@@ -20,30 +31,27 @@ export function buildReturnRecord(invoiceNo, customerName, line, now, settlement
   return record;
 }
 /**
- * Validates the draft against the invoice (qty left to return, balance), then saves one return document per line,
- * refreshes the invoice's totalReturns / adjustedBalanceDue and re-computes the customer's later invoices.
- * Validation failures are returned (shown inline), unexpected failures throw.
+ * Validates the draft (qty left to return over the customer's bills — the same product list the sheet offered, see
+ * partyReturnProducts — and the refund account), then saves one return document per line as a refund, refreshes the
+ * invoice's totalReturns / adjustedBalanceDue and re-computes the customer's later invoices (a refund leaves the
+ * balances as they were). Validation failures are returned (shown inline), unexpected failures throw.
  */
 export async function saveSalesReturn(invoiceNo, input, now = new Date()) {
   const invoice = await db.getInvoice(invoiceNo);
   if (!invoice) throw userError('Invoice not found!');
-  const existingReturns = await db.getReturnsByInvoice(invoiceNo);
-  const currentReturns = await calculateTotalReturns(invoiceNo);
+  const [allInvoices, allReturns] = await Promise.all([db.getAllInvoices(), db.getAllReturns()]);
+  const { products, invoiceNos } = partyReturnProducts(SALES_LEDGER, allInvoices, invoice);
   const validation = validateReturnDraft({
     returnDate: input.returnDate,
     items: input.items,
-    products: invoice.products ?? [],
-    existingReturns,
-    currentBalance: invoice.balanceDue - currentReturns,
-    settlementType: input.settlementType,
+    products,
+    existingReturns: allReturns.filter((r) => invoiceNos.has(String(r.invoiceNo))),
+    refundMethod: input.refundMethod,
+    bankAccountId: input.bankAccountId,
   });
   if (!validation.ok) return validation;
-  const settlement = {};
-  if (input.settlementType) settlement.settlementType = input.settlementType;
-  if (input.refundMethod) settlement.refundMethod = input.refundMethod;
-  if (input.bankAccountId) settlement.bankAccountId = input.bankAccountId;
   for (const line of validation.lines) {
-    await db.saveReturn(buildReturnRecord(invoiceNo, invoice.customerName, line, now, settlement));
+    await db.saveReturn(buildReturnRecord(invoiceNo, invoice.customerName, line, now, validation.settlement));
   }
   await updateInvoiceWithReturns(invoiceNo);
   await updateSubsequentInvoices(invoice.customerName, invoiceNo);

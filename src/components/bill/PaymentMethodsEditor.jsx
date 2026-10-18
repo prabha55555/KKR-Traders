@@ -1,22 +1,24 @@
 /**
- * Cash / UPI / Account amounts paid on a bill (the web app's "Payment Methods" block) + the total paid.
+ * Cash / Account amounts paid on a bill (the web app's "Payment Methods" block) + the total paid. UPI, bank transfer,
+ * cheque … are all Account; the bank account is picked below when an Account amount is entered.
  *
  * Props
- *  - values: { cash: string, upi: string, account: string }
- *  - onChange(values)           receives the whole object, e.g. `patch(values)` merges the three form fields
+ *  - values: { cash: string, account: string, bankAccountId: string|null }
+ *  - onChange(patch)            receives only the changed keys (`cash`, `account` or `bankAccountId`), merged by the caller
  *  - totalPaid: number          shown as "Total Amount Paid" (includes any later payments, computed by the caller)
  *  - totalLabel?: string        default "Total Amount Paid"
  *  - readOnly?: boolean
+ *  - mode?: 'sales' | 'purchase'  purchase warns when the cash / bank balance would go negative
  */
-import { AlertTriangle, Banknote, Building2, Smartphone } from 'lucide-react';
+import { AlertTriangle, Banknote, Building2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { accountLabel } from '@/core/accountLabel';
 import { formatCurrency } from '@/core/format';
 import { NumberField, SelectField } from '@/ui';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 
 const METHODS = [
   { key: 'cash', label: 'CASH', icon: Banknote, defaultHint: 'Cash in drawer' },
-  { key: 'upi', label: 'UPI', icon: Smartphone, defaultHint: 'GPay · PhonePe · Paytm' },
   { key: 'account', label: 'ACCOUNT', icon: Building2, defaultHint: 'Bank transfer' },
 ];
 
@@ -40,14 +42,13 @@ export function PaymentMethodsEditor({
   const cashBalance = liveBalances?.cashBalance ?? 0;
 
   const cashAmount = parseFloat(values.cash) || 0;
-  const upiAmount = parseFloat(values.upi) || 0;
   const accountAmount = parseFloat(values.account) || 0;
-  const bankOutflow = upiAmount + accountAmount;
+  const bankOutflow = accountAmount;
   const hasBankPayment = bankOutflow > 0;
 
   useEffect(() => {
     if (hasBankPayment && bankAccounts.length > 0 && !values.bankAccountId) {
-      onChange({ ...values, bankAccountId: bankAccounts[0].id });
+      onChange({ bankAccountId: bankAccounts[0].id });
     }
   }, [hasBankPayment, bankAccounts, values.bankAccountId]);
 
@@ -82,7 +83,7 @@ export function PaymentMethodsEditor({
                 aria-label={`${label.charAt(0)}${label.slice(1).toLowerCase()} amount paid`}
                 value={values[key]}
                 readOnly={readOnly}
-                onChange={(v) => onChange({ ...values, [key]: v })}
+                onChange={(v) => onChange({ [key]: v })}
               />
             </div>
 
@@ -125,12 +126,9 @@ export function PaymentMethodsEditor({
               mode === 'purchase' ? 'Deduct payment from Bank Account' : 'Deposit payment to Bank Account'
             }
             value={selectedBankId}
-            onChange={(bankAccountId) => onChange({ ...values, bankAccountId })}
-            options={bankAccounts.map((a) => ({
-              value: a.id,
-              label: `${a.accountName} (${a.bankName || a.accountType}) • Balance: ₹${formatCurrency(a.currentBalance)}`,
-            }))}
-            readOnly={readOnly}
+            onChange={(bankAccountId) => onChange({ bankAccountId })}
+            options={bankAccounts.map((a) => ({ value: a.id, label: accountLabel(a) }))}
+            disabled={readOnly}
           />
           {selectedBank && (
             <div className="flex items-center justify-between rounded-lg border border-slate-200/60 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-slate-600">

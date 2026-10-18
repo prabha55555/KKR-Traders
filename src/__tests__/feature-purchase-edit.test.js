@@ -1,4 +1,5 @@
 import { db } from '@/core/db';
+import { round2 } from '@/features/purchase/money';
 import {
   buildPurchaseEditBill,
   initialPaymentBreakdown,
@@ -43,7 +44,7 @@ const payments = [
   pay({ id: 'later', amount: 200, paymentMethod: 'cash', paymentType: 'additional' }),
 ];
 describe('payment split (edit-purchase.js loadPurchaseBill)', () => {
-  test('GPAY counts as UPI, BANK as ACCOUNT, unknown/blank as CASH — case-insensitive', () => {
+  test('legacy UPI / GPAY and BANK count as ACCOUNT, unknown/blank as CASH — case-insensitive', () => {
     expect(
       initialPaymentBreakdown([
         { amount: 10, paymentMethod: 'upi' },
@@ -53,11 +54,11 @@ describe('payment split (edit-purchase.js loadPurchaseBill)', () => {
         { amount: 50, paymentMethod: 'cheque' },
         { amount: 60, paymentMethod: '' },
       ]),
-    ).toEqual({ cash: 110, upi: 30, account: 70 });
+    ).toEqual({ cash: 110, account: 100 });
   });
   test("'initial' payments feed the editable split, everything else is 'paid later'", () => {
     expect(splitPurchasePayments(payments)).toEqual({
-      initial: { cash: 300, upi: 100, account: 50 },
+      initial: { cash: 300, account: 150 },
       additionalTotal: 200,
     });
   });
@@ -74,10 +75,10 @@ describe('purchaseEditFormFromBill', () => {
       manualPreviousBalance: '20',
       discountAmount: '50',
       cash: '300',
-      upi: '100',
-      account: '50',
+      account: '150', // the legacy GPay document is Account money
       additionalPaymentsTotal: 200,
     });
+    expect(form).not.toHaveProperty('upi');
     expect(form.rows).toEqual([
       { description: 'Yarn 30s', qty: '5', rate: '200' },
       { description: 'Yarn 40s', qty: '2', rate: '33.333' },
@@ -91,6 +92,7 @@ describe('purchaseEditFormFromBill', () => {
         manualPreviousBalance: undefined,
         discount: undefined,
         previousBalance: undefined,
+        payment: undefined,
       },
       [],
     );
@@ -98,12 +100,33 @@ describe('purchaseEditFormFromBill', () => {
       manualPreviousBalance: '',
       discountAmount: '',
       cash: '',
-      upi: '',
       account: '',
+      bankAccountId: '',
       previousBalance: 0,
       additionalPaymentsTotal: 0,
     });
     expect(form.rows).toEqual([{ description: '', qty: '0', rate: '0' }]);
+  });
+  test('a bill paid when written but without initial payment documents keeps that payment (Update used to erase it)', () => {
+    // the legacy nested `upi` amount is folded into Account (nothing hidden the user cannot edit)
+    const untracked = purchaseEditFormFromBill(storedBill, []);
+    expect(untracked).toMatchObject({ cash: '300', account: '150' });
+    expect(untracked).not.toHaveProperty('upi');
+    const legacy = { ...storedBill, payment: undefined, amountPaid: 650 };
+    const later = [pay({ id: 'later', amount: 200, paymentMethod: 'cash', paymentType: 'additional' })];
+    expect(purchaseEditFormFromBill(legacy, later)).toMatchObject({
+      cash: '450',
+      account: '',
+      additionalPaymentsTotal: 200,
+    });
+  });
+  test('loads the bank of the bill (top-level first, else the nested payment one)', () => {
+    expect(purchaseEditFormFromBill({ ...storedBill, bankAccountId: 'b1' }, []).bankAccountId).toBe('b1');
+    expect(
+      purchaseEditFormFromBill({ ...storedBill, payment: { ...storedBill.payment, bankAccountId: 'b2' } }, [])
+        .bankAccountId,
+    ).toBe('b2');
+    expect(purchaseEditFormFromBill(storedBill, []).bankAccountId).toBe('');
   });
   test('older bills that only carry discountAmount keep their discount', () => {
     expect(
@@ -137,16 +160,17 @@ describe('purchaseEditTotals (updateCalculations)', () => {
       balanceDue: 486.67,
     });
   });
-  test('grand total is clamped at 0 and the balance goes negative when paid', () => {
+  test('grand total may go negative (supplier credit is kept, not clamped to 0)', () => {
     const t = purchaseEditTotals({
       ...form,
       discountAmount: '5000',
       cash: '100',
-      upi: '',
       account: '',
       additionalPaymentsTotal: 0,
     });
-    expect(t).toMatchObject({ grandTotal: 0, totalPaid: 100, balanceDue: -100 });
+    expect(t.grandTotal).toBeLessThan(0);
+    expect(t.totalPaid).toBe(100);
+    expect(t.balanceDue).toBe(round2(t.grandTotal - 100));
   });
 });
 describe('buildPurchaseEditBill (exact field set written by the Update button)', () => {
@@ -167,11 +191,23 @@ describe('buildPurchaseEditBill (exact field set written by the Update button)',
       manualPreviousBalance: 20,
       discount: 50,
       grandTotal: 1136.67,
-      // initial split only in cash/upi/account, totalPaid includes the 200 paid later
-      payment: { cash: 300, upi: 100, account: 50, totalPaid: 650, balanceDue: 486.67 },
+      // initial split only in cash/account (legacy upi folded in), totalPaid includes the 200 paid later
+      payment: { cash: 300, account: 150, bankAccountId: null, totalPaid: 650, balanceDue: 486.67 },
       amountPaid: 650,
       balanceDue: 486.67,
     });
+  });
+  test('keeps the bank: top-level and nested bankAccountId, never a upi key', () => {
+    const bill = buildPurchaseEditBill({ ...form, bankAccountId: 'b1' });
+    expect(bill.bankAccountId).toBe('b1');
+    expect(bill.payment).toEqual({
+      cash: 300,
+      account: 150,
+      bankAccountId: 'b1',
+      totalPaid: 650,
+      balanceDue: 486.67,
+    });
+    expect(bill.payment).not.toHaveProperty('upi');
   });
   test('differs from a freshly created bill by the top-level amountPaid / balanceDue fields', () => {
     const created = buildPurchaseBill({
@@ -247,7 +283,7 @@ describe('savePurchaseEdit', () => {
   const form = purchaseEditFormFromBill(storedBill, payments);
   test('bill first, then initial payments are deleted (not the later ones) and rewritten per non-zero method, then the supplier', async () => {
     const { calls, saved } = stub(payments);
-    await savePurchaseEdit({ ...form, upi: '', account: '25' });
+    await savePurchaseEdit({ ...form, account: '25' });
     expect(calls).toEqual([
       'bill:007',
       'payments:007',
@@ -277,9 +313,38 @@ describe('savePurchaseEdit', () => {
       },
     ]);
   });
+  test('a legacy initial UPI document is replaced by one Account document carrying the bank (no double count)', async () => {
+    const legacy = [
+      pay({ id: 'purchase_payment_007_initial_upi', amount: 100, paymentMethod: 'upi', bankAccountId: 'b1' }),
+      pay({
+        id: 'purchase_payment_007_initial_account',
+        amount: 50,
+        paymentMethod: 'account',
+        bankAccountId: 'b1',
+      }),
+    ];
+    const loaded = purchaseEditFormFromBill({ ...storedBill, bankAccountId: 'b1' }, legacy);
+    expect(loaded).toMatchObject({ cash: '', account: '150', bankAccountId: 'b1' });
+    const { calls, saved } = stub(legacy);
+    const bill = await savePurchaseEdit(loaded);
+    expect(calls).toContain('delete:purchase_payment_007_initial_upi');
+    expect(saved).toEqual([
+      {
+        id: 'purchase_payment_007_initial_account',
+        invoiceNo: '007',
+        paymentDate: '2026-10-03',
+        amount: 150,
+        paymentMethod: 'account',
+        paymentType: 'initial',
+        bankAccountId: 'b1',
+      },
+    ]);
+    expect(bill).toMatchObject({ bankAccountId: 'b1', amountPaid: 150 });
+    expect(bill.payment).toMatchObject({ cash: 0, account: 150, bankAccountId: 'b1', totalPaid: 150 });
+  });
   test('no initial payments are written when every method is zero (even if paid-later payments exist)', async () => {
     const { calls } = stub([]);
-    await savePurchaseEdit({ ...form, cash: '', upi: '', account: '' });
+    await savePurchaseEdit({ ...form, cash: '', account: '' });
     expect(calls.filter((c) => c.startsWith('pay:'))).toEqual([]);
   });
   test('failing to clear old payments or to save the supplier does not fail the update', async () => {

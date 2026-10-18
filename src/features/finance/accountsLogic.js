@@ -1,5 +1,52 @@
+import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { toNum } from '@/core/format';
+
+/** `type` of the account_transactions doc written by the cash "Edit Balance" action. */
+export const BALANCE_ADJUSTMENT = 'Balance Adjustment';
+
+/** True for the "outside the system" side of an account_transactions doc (null / 'external' / 'manual'). */
+const isExternalAccount = (id) => !id || id === 'external' || id === 'manual';
+
+/**
+ * Direction of an account_transactions doc as the user sees it: 'in' (money added from outside: Add Amount, an
+ * Edit Balance increase), 'out' (money removed to outside: a Deduction, an Edit Balance decrease, a dyeing/combing
+ * payment) or 'transfer' (a legacy move between two of our own accounts).
+ */
+export function txDirection(tx) {
+  const fromOutside = isExternalAccount(tx?.fromAccount);
+  const toOutside = isExternalAccount(tx?.toAccount);
+  if (fromOutside && !toOutside) return 'in';
+  if (toOutside && !fromOutside) return 'out';
+  return 'transfer';
+}
+
+const round2 = (n) => Math.round(toNum(n) * 100) / 100;
+
+/**
+ * The account_transactions doc that takes Cash in Hand from `cashBalance` (what the app computes now) to `target`
+ * (the cash actually counted). Only the DIFFERENCE is recorded, so every balance calculation picks it up through the
+ * normal from/to rule, and Undo (deleting the doc) restores the previous balance. settings/cash_in_hand is never
+ * touched. Returns null when the balance would not change.
+ */
+export function buildCashBalanceEdit({ cashBalance, target, date, notes = '' }) {
+  const previousBalance = round2(cashBalance);
+  const newBalance = round2(target);
+  const delta = round2(newBalance - previousBalance);
+  if (Math.abs(delta) < 0.01) return null;
+  return {
+    date,
+    type: BALANCE_ADJUSTMENT,
+    category: 'Cash Balance Edit',
+    fromAccount: delta < 0 ? 'cash' : null,
+    toAccount: delta > 0 ? 'cash' : null,
+    amount: Math.abs(delta),
+    adjustment: true,
+    previousBalance,
+    newBalance,
+    notes: String(notes || '').trim(),
+  };
+}
 
 /**
  * Calculates current balances for all bank accounts and cash in hand.
@@ -7,22 +54,22 @@ import { toNum } from '@/core/format';
  * Balance Formula:
  * For each Bank Account:
  *   Opening Balance
- *   + Inflows from Sales (where paymentBreakdown.account or upi was credited or bank account linked)
+ *   + Inflows from Sales paid by Account (paymentBreakdown.account, plus any legacy `upi` amount)
  *   + Inflows from Borrowed Amounts (loans received into this bank account)
- *   + Internal Transfers In (transfers from Cash or another Bank)
+ *   + account_transactions credited to it (Add Amount, legacy transfers In)
  *   - Outflows for Purchases (where payment was debited from this bank account)
  *   - Outflows for Loan Repayments (paid from this bank account)
- *   - Internal Transfers Out (transfers to Cash or another Bank)
+ *   - account_transactions debited from it (Deductions, dyeing/combing payments, legacy transfers Out)
  *
  * For Cash in Hand:
  *   Opening Cash Balance
  *   + Inflows from Sales (Cash collected)
  *   + Inflows from Borrowed Amounts (loans received in Cash)
- *   + Internal Cash Deposits / Withdrawals (from Bank to Cash)
+ *   + account_transactions credited to cash (Add Amount, Edit Balance up, legacy withdrawals from banks)
  *   - Outflows for Purchases (Cash paid)
  *   - Outflows for Expenses (Cash paid)
  *   - Outflows for Loan Repayments (paid in Cash)
- *   - Cash deposited to Banks
+ *   - account_transactions debited from cash (Deductions, Edit Balance down, legacy deposits to banks)
  */
 export function computeAccountBalances({
   bankAccounts = [],
@@ -410,9 +457,9 @@ export function getAccountActivity({
 
   const bankNameMap = {};
   bankAccounts.forEach((b) => {
-    bankNameMap[b.id] = b.accountName || b.bankName || 'Bank';
+    bankNameMap[b.id] = accountLabel(b);
   });
-  bankNameMap['cash'] = 'Cash in Hand';
+  bankNameMap['cash'] = CASH_LABEL;
 
   // 1. Sales Invoices & Payments
   const sPaymentsByInv = new Map();
@@ -458,12 +505,12 @@ export function getAccountActivity({
                 id: `sale-pay-${p.id || invNo}-${p.paymentMethod}`,
                 date: pDate,
                 timestamp: pTs,
-                type: p.paymentMethod === 'upi' ? 'Sale (UPI)' : 'Sale (Bank Transfer)',
+                type: 'Sale (Account)',
                 direction: 'in',
                 category: 'Sales',
                 amount: amt,
                 title: `Sales Invoice #${invNo}`,
-                subtitle: `Customer: ${customer} • ${p.paymentMethod.toUpperCase()}`,
+                subtitle: `Customer: ${customer} • Account`,
                 sourceRef: p,
               });
             }
@@ -493,6 +540,7 @@ export function getAccountActivity({
       } else {
         const targetBankId = inv.bankAccountId || bankAccounts[0]?.id;
         if (targetBankId === accountId) {
+          // legacy invoices may carry a separate `upi` amount: it is Account money too
           const upiPaid = toNum(
             inv.paymentBreakdown?.upi || (inv.paymentMethod === 'upi' ? inv.amountPaid : 0),
           );
@@ -505,12 +553,7 @@ export function getAccountActivity({
               id: `sale-${inv.id || invNo}-bank`,
               date: invDate,
               timestamp: invTs,
-              type:
-                upiPaid > 0 && accPaid > 0
-                  ? 'Sale (UPI & Bank)'
-                  : upiPaid > 0
-                    ? 'Sale (UPI)'
-                    : 'Sale (Bank Transfer)',
+              type: 'Sale (Account)',
               direction: 'in',
               category: 'Sales',
               amount: totalBank,
@@ -568,12 +611,12 @@ export function getAccountActivity({
                 id: `purch-pay-${p.id || billNo}-${p.paymentMethod}`,
                 date: pDate,
                 timestamp: pTs,
-                type: p.paymentMethod === 'upi' ? 'Purchase (UPI)' : 'Purchase (Bank Transfer)',
+                type: 'Purchase (Account)',
                 direction: 'out',
                 category: 'Purchase',
                 amount: amt,
                 title: `Purchase Bill #${billNo}`,
-                subtitle: `Supplier: ${supplier} • ${p.paymentMethod.toUpperCase()}`,
+                subtitle: `Supplier: ${supplier} • Account`,
                 sourceRef: p,
               });
             }
@@ -601,6 +644,7 @@ export function getAccountActivity({
       } else {
         const targetBankId = bill.bankAccountId || bankAccounts[0]?.id;
         if (targetBankId === accountId) {
+          // legacy bills may carry a separate `upi` amount: it is Account money too
           const upiPaid = toNum(pay.upi || (bill.paymentMethod === 'upi' ? bill.amountPaid : 0));
           const accPaid = toNum(pay.account || (bill.paymentMethod === 'account' ? bill.amountPaid : 0));
           const totalBank = upiPaid + accPaid;
@@ -609,12 +653,7 @@ export function getAccountActivity({
               id: `purchase-${bill.id || billNo}-bank`,
               date: billDate,
               timestamp: billTs,
-              type:
-                upiPaid > 0 && accPaid > 0
-                  ? 'Purchase (UPI & Bank)'
-                  : upiPaid > 0
-                    ? 'Purchase (UPI)'
-                    : 'Purchase (Bank Transfer)',
+              type: 'Purchase (Account)',
               direction: 'out',
               category: 'Purchase',
               amount: totalBank,
@@ -689,59 +728,74 @@ export function getAccountActivity({
           category: 'Finance',
           amount: pAmt,
           title: `Loan Repayment: ${lender}`,
-          subtitle: p.notes || `Mode: ${p.mode || 'Payment'}`,
+          // legacy 'UPI' loan payments read as Account (the money left `source` either way)
+          subtitle: p.notes || `Mode: ${source === 'cash' ? 'Cash' : 'Account'}`,
           sourceRef: p,
         });
       }
     });
   });
 
-  // 6. Fund Transfers
+  // 6. Entries (Add Amount / Deduction / Edit Balance, dyeing & combing payments) and legacy fund transfers
   accountTransactions.forEach((tx) => {
     const amt = toNum(tx.amount);
     const from = tx.fromAccount;
     const to = tx.toAccount;
     const txDate = tx.date || tx.createdAt;
     const txTs = getRecordTimestamp(tx, txDate);
+    const isBalanceEdit = tx.type === BALANCE_ADJUSTMENT;
+    const balanceEditSubtitle = isBalanceEdit
+      ? `₹${toNum(tx.previousBalance)} → ₹${toNum(tx.newBalance)}${tx.notes ? ` • ${tx.notes}` : ''}`
+      : '';
 
     // Outflow from this account
     if (from === accountId) {
-      const isManualDebit = !to || to === 'external' || to === 'manual';
-      const destName = isManualDebit
-        ? tx.category || tx.type || 'Manual Outflow'
-        : bankNameMap[to] || (to === 'cash' ? 'Cash in Hand' : 'Bank Account');
+      const isManualDebit = isExternalAccount(to);
+      const destName = bankNameMap[to] || (to === 'cash' ? CASH_LABEL : 'Bank Account');
       items.push({
         id: `tx-out-${tx.id}`,
         date: txDate,
         timestamp: txTs,
         type: tx.type || (isManualDebit ? 'Manual Deduction' : 'Internal Transfer Out'),
         direction: 'out',
-        category: tx.category || 'Transfer',
+        category: tx.category || (isManualDebit ? 'Adjustment' : 'Transfer'),
         amount: amt,
-        title: isManualDebit ? `Deduction: ${tx.category || 'Manual Outflow'}` : `Transferred to ${destName}`,
-        subtitle: tx.notes || (isManualDebit ? 'Manual deduction from account' : 'Internal fund transfer'),
+        title: isBalanceEdit
+          ? 'Cash Balance Edited'
+          : isManualDebit
+            ? tx.category
+              ? `Deduction: ${tx.category}`
+              : 'Deduction'
+            : `Transferred to ${destName}`,
+        subtitle: isBalanceEdit
+          ? balanceEditSubtitle
+          : tx.notes || (isManualDebit ? 'Manual deduction from account' : 'Internal fund transfer'),
         sourceRef: tx,
       });
     }
 
     // Inflow to this account
     if (to === accountId) {
-      const isManualCredit = !from || from === 'external' || from === 'manual';
-      const srcName = isManualCredit
-        ? tx.category || tx.type || 'Additional Amount'
-        : bankNameMap[from] || (from === 'cash' ? 'Cash in Hand' : 'Bank Account');
+      const isManualCredit = isExternalAccount(from);
+      const srcName = bankNameMap[from] || (from === 'cash' ? CASH_LABEL : 'Bank Account');
       items.push({
         id: `tx-in-${tx.id}`,
         date: txDate,
         timestamp: txTs,
         type: tx.type || (isManualCredit ? 'Additional Amount' : 'Internal Transfer In'),
         direction: 'in',
-        category: tx.category || 'Transfer',
+        category: tx.category || (isManualCredit ? 'Adjustment' : 'Transfer'),
         amount: amt,
-        title: isManualCredit
-          ? `Additional Amount: ${tx.category || 'Manual Inflow'}`
-          : `Received from ${srcName}`,
-        subtitle: tx.notes || (isManualCredit ? 'Manual amount added to account' : 'Internal fund transfer'),
+        title: isBalanceEdit
+          ? 'Cash Balance Edited'
+          : isManualCredit
+            ? tx.category
+              ? `Additional Amount: ${tx.category}`
+              : 'Additional Amount'
+            : `Received from ${srcName}`,
+        subtitle: isBalanceEdit
+          ? balanceEditSubtitle
+          : tx.notes || (isManualCredit ? 'Manual amount added to account' : 'Internal fund transfer'),
         sourceRef: tx,
       });
     }

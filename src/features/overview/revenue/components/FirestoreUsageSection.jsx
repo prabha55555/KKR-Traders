@@ -86,7 +86,7 @@ export function FirestoreUsageSection({ data }) {
   }, [today, session]);
 
   return (
-    <div className="bg-surface mt-10 rounded-2xl border border-line p-5 shadow-sm sm:p-6">
+    <div className="mt-10 rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
       {/* Header */}
       <div className="flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">

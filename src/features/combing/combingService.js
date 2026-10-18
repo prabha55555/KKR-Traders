@@ -173,7 +173,7 @@ export async function addCombingBatchPayment(batchId, paymentData) {
     id: paymentId,
     date: paymentData.date || todayISO(),
     amount: Math.round(amt * 100) / 100,
-    mode: paymentData.mode || 'Cash', // 'Cash' | 'Bank' | 'UPI'
+    mode: paymentData.mode || 'Cash', // 'Cash' | 'Bank' (Account; legacy 'UPI' is also Account)
     bankAccountId: paymentData.mode === 'Cash' ? null : paymentData.bankAccountId || null,
     bankAccountName: paymentData.bankAccountName || '',
     reference: (paymentData.reference || '').trim(),
@@ -193,7 +193,7 @@ export async function addCombingBatchPayment(batchId, paymentData) {
   // Sync with live financial accounts
   if (db.saveAccountTransaction) {
     try {
-      const source = paymentRecord.mode === 'Cash' ? 'cash' : (paymentRecord.bankAccountId || 'cash');
+      const source = paymentRecord.mode === 'Cash' ? 'cash' : paymentRecord.bankAccountId || 'cash';
       await db.saveAccountTransaction({
         id: paymentId,
         date: paymentRecord.date,

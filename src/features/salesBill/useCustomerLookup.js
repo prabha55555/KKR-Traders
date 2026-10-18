@@ -20,9 +20,12 @@ export function useCustomerLookup({ customersRef, getForm, patch, onError, onCus
       onCustomerFound?.(customer);
       const { invoiceNo, invoiceDate } = getForm();
       const previousBalance = await previousBalanceFor(customer.name || '', rawPhone, invoiceNo, invoiceDate);
-      if (request === latest.current) patch({ previousBalance });
+      if (request !== latest.current) return;
+      if (previousBalance === null)
+        onError('Could not read the previous balance. Please check your connection.');
+      else patch({ previousBalance });
     },
-    [getForm, onCustomerFound, patch],
+    [getForm, onCustomerFound, onError, patch],
   );
   const onPhoneChange = useCallback(
     (rawPhone) => {
@@ -64,11 +67,14 @@ export function useCustomerLookup({ customersRef, getForm, patch, onError, onCus
       onCustomerFound?.(party);
       void previousBalanceFor(party.name || '', party.phone, getForm().invoiceNo, getForm().invoiceDate)
         .then((previousBalance) => {
-          if (request === latest.current) patch({ previousBalance });
+          if (request !== latest.current) return;
+          if (previousBalance === null)
+            onError('Could not read the previous balance. Please check your connection.');
+          else patch({ previousBalance });
         })
         .catch((error) => console.error('Error calculating previous balance', error));
     },
-    [getForm, onCustomerFound, patch, setNotFound],
+    [getForm, onCustomerFound, onError, patch, setNotFound],
   );
   /** After the customer list was refreshed (e.g. coming back from "Add Customer"): retry a number that was unknown. */
   const recheck = useCallback(() => {

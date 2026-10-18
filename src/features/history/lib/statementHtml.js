@@ -4,10 +4,10 @@
  * generateCombinedPDFStatement and generateCombinedPDFStatementEasy.
  */
 import { COMPANY } from '@/core/branding';
-import { formatCurrency, formatDateIN, toISODate } from '@/core/format';
+import { formatCurrency, formatDateIN, toISODate, toNum } from '@/core/format';
 import { formatDateTimeIN } from './dates';
 import { generatePaymentTableData } from './payments';
-import { buildEasyStatement } from './statement';
+import { balanceReturnsOf, buildEasyStatement, invoiceDue, refundedReturnsOf } from './statement';
 import { displayInvoiceNo } from './types';
 export const esc = (value) =>
   String(value ?? '')
@@ -132,7 +132,7 @@ const returnsTable = (returns) =>
     ]),
     'small',
   );
-const paymentsTable = (payments, grandTotal, totalReturns, today, labels) =>
+const paymentsTable = (payments, grandTotal, balanceReturns, refundedReturns, today, labels) =>
   table(
     [
       ['Date', 'c'],
@@ -140,9 +140,14 @@ const paymentsTable = (payments, grandTotal, totalReturns, today, labels) =>
       ['Amount', 'r'],
       ['Balance', 'r'],
     ],
-    generatePaymentTableData(payments, grandTotal, totalReturns, today, labels.statementBillLabel).map(
-      (row) => row.map(esc),
-    ),
+    generatePaymentTableData(
+      payments,
+      grandTotal,
+      balanceReturns,
+      today,
+      labels.statementBillLabel,
+      refundedReturns,
+    ).map((row) => row.map(esc)),
   );
 function footer(now, includeCredit) {
   return `<div class="footer">
@@ -154,9 +159,15 @@ function footer(now, includeCredit) {
 }
 const rs = (amount) => `Rs. ${formatCurrency(amount)}`;
 const todayOf = (now) => toISODate(now);
-/** generatePDFStatement(): "ACCOUNT STATEMENT" for one invoice. */
+/**
+ * generatePDFStatement(): "ACCOUNT STATEMENT" for one invoice. `totalReturns` = all returns of the bill;
+ * `balanceReturns` = those settled against its balance (default: the invoice view's figure); the rest were refunded
+ * and are listed without lowering the balance. `adjustedBalanceDue` = balanceDue − balanceReturns.
+ */
 export function buildInvoiceStatementHtml(input) {
   const { invoice, payments, returns, totalReturns, adjustedBalanceDue, labels, logoSrc, now } = input;
+  const balanceReturns = toNum(input.balanceReturns ?? invoice.balanceReturns ?? totalReturns);
+  const refundedReturns = Math.max(0, toNum(totalReturns) - balanceReturns);
   const party = labels.party;
   const currentBill = invoice.subtotal || invoice.grandTotal;
   const summary = [`<div>Current Bill Amount: ${rs(currentBill)}</div>`];
@@ -165,8 +176,10 @@ export function buildInvoiceStatementHtml(input) {
   if (invoice.discountAmount > 0) summary.push(`<div>Discount Amount: -${rs(invoice.discountAmount)}</div>`);
   summary.push(`<div class="bold">Total Amount: ${rs(invoice.grandTotal)}</div>`);
   summary.push(`<div>Amount Paid: ${rs(invoice.amountPaid || 0)}</div>`);
-  if (totalReturns > 0) {
-    summary.push(`<div class="bold red">Total Returns: -${rs(totalReturns)}</div>`);
+  if (balanceReturns > 0)
+    summary.push(`<div class="bold red">Returns (adjusted): -${rs(balanceReturns)}</div>`);
+  if (refundedReturns > 0) summary.push(`<div class="bold">Returns (refunded): ${rs(refundedReturns)}</div>`);
+  if (balanceReturns > 0) {
     summary.push(`<div class="bold">Adjusted Balance Due: ${rs(adjustedBalanceDue)}</div>`);
   } else {
     summary.push(`<div class="bold">Balance Due: ${rs(adjustedBalanceDue)}</div>`);
@@ -194,7 +207,7 @@ export function buildInvoiceStatementHtml(input) {
     }
 
     <div class="section">PAYMENT HISTORY</div>
-    ${paymentsTable(payments, invoice.grandTotal, totalReturns, todayOf(now), labels)}
+    ${paymentsTable(payments, invoice.grandTotal, balanceReturns, refundedReturns, todayOf(now), labels)}
 
     ${footer(now, true)}`;
   return wrap(
@@ -205,7 +218,10 @@ export function buildInvoiceStatementHtml(input) {
     body,
   );
 }
-/** generateCombinedPDFStatement(): every invoice of the party (newest first) with its returns and payment history. */
+/**
+ * generateCombinedPDFStatement(): every invoice of the party (newest first) with its returns and payment history,
+ * then the party's totals and outstanding balance (the ledger figure from buildCombinedStatement).
+ */
 export function buildCombinedStatementHtml({ statement, labels, logoSrc, now }) {
   const today = todayOf(now);
   const blocks = statement.invoices
@@ -218,13 +234,33 @@ export function buildCombinedStatementHtml({ statement, labels, logoSrc, now }) 
         ${hasReturns ? `<div class="section">RETURN INFORMATION</div>${returnsTable(invoice.returns)}` : ''}
         ${
           invoice.payments.length > 0
-            ? `<div class="section">PAYMENT HISTORY</div>${paymentsTable(invoice.payments, invoice.grandTotal, invoice.totalReturns, today, labels)}`
+            ? `<div class="section">PAYMENT HISTORY</div>${paymentsTable(invoice.payments, invoice.grandTotal, balanceReturnsOf(invoice), refundedReturnsOf(invoice), today, labels)}`
             : ''
         }
+        <div class="summary">${
+          balanceReturnsOf(invoice) > 0
+            ? `<div class="bold">Adjusted Balance Due: ${rs(invoiceDue(invoice))}</div>`
+            : `<div class="bold">Balance Due: ${rs(invoiceDue(invoice))}</div>`
+        }</div>
         ${index < statement.invoices.length - 1 ? '<div class="separator"></div>' : ''}
       </div>`;
     })
     .join('');
+  const { totals } = statement;
+  const totalRows = [
+    totals.opening
+      ? `<div class="row"><span>Opening Balance:</span><span>${esc(rs(totals.opening))}</span></div>`
+      : '',
+    `<div class="row"><span>Total Billed:</span><span>${esc(rs(totals.totalBilled))}</span></div>`,
+    `<div class="row"><span>Total Paid:</span><span>${esc(rs(totals.totalPaid))}</span></div>`,
+    totals.balanceReturns > 0
+      ? `<div class="row"><span>Returns (adjusted):</span><span>-${esc(rs(totals.balanceReturns))}</span></div>`
+      : '',
+    totals.refundedReturns > 0
+      ? `<div class="row"><span>Returns (refunded):</span><span>${esc(rs(totals.refundedReturns))}</span></div>`
+      : '',
+    `<div class="row final"><span>Outstanding Balance:</span><span>${esc(rs(totals.outstanding))}</span></div>`,
+  ].join('');
   const partyInfoHtml = `
     <div class="section">${esc(labels.party.toUpperCase())} INFORMATION</div>
     <div class="info">Name: ${esc(statement.partyName)}</div>
@@ -235,22 +271,31 @@ export function buildCombinedStatementHtml({ statement, labels, logoSrc, now }) 
     <div class="title green">COMBINED ACCOUNT STATEMENT</div>
     <div style="height: 10px"></div>
     ${blocks}
+    <div class="totals">${totalRows}</div>
     ${footer(now, true)}`;
   return wrap(`SS Statement ${statement.partyName}`, 'SS STATEMENT', logoSrc, partyInfoHtml, body);
 }
-/** generateCombinedPDFStatementEasy(): one ledger line per invoice (oldest first) and four totals. Null when empty. */
-export function buildEasyStatementHtml({ partyName, invoices, labels, logoSrc, now }) {
-  const easy = buildEasyStatement(invoices);
+/**
+ * generateCombinedPDFStatementEasy(): the party's opening balance, one ledger line per invoice (oldest first) and the
+ * totals; Balance Due is the ledger outstanding when `outstanding` is given. Null when empty.
+ */
+export function buildEasyStatementHtml({ partyName, invoices, labels, logoSrc, now, opening, outstanding }) {
+  const easy = buildEasyStatement(invoices, { opening, outstanding });
   if (!easy) return null;
+  const notes = (row) =>
+    [
+      row.discount > 0 ? `(Discount: -${esc(rs(row.discount))})` : '',
+      row.returnsDeducted > 0 ? `(Returns deducted: -${esc(rs(row.returnsDeducted))})` : '',
+      row.returnsRefunded > 0 ? `(Returns refunded: ${esc(rs(row.returnsRefunded))})` : '',
+    ].filter(Boolean);
   const rows = easy.rows.map((row) => [
     esc(displayInvoiceNo(labels, row.invoiceNo)),
     esc(formatDateIN(row.invoiceDate)),
-    row.returnsDeducted > 0
-      ? `${esc(row.particulars)}<br />(Returns deducted: -${esc(rs(row.returnsDeducted))})`
-      : esc(row.particulars),
+    [esc(row.particulars), ...notes(row)].join('<br />'),
     formatCurrency(row.amount),
     formatCurrency(row.received),
   ]);
+  if (easy.opening) rows.unshift(['', '', 'Opening Balance', formatCurrency(easy.opening), '']);
   const partyInfoHtml = `
     <div class="section">${esc(labels.party.toUpperCase())} INFORMATION</div>
     <div class="info">Name: ${esc(partyName)}</div>
@@ -272,9 +317,10 @@ export function buildEasyStatementHtml({ partyName, invoices, labels, logoSrc, n
       'plain',
     )}
     <div class="totals">
+      ${easy.opening ? `<div class="row"><span>Opening Balance:</span><span>${esc(rs(easy.opening))}</span></div>` : ''}
       <div class="row"><span>Total Amount:</span><span>${esc(rs(easy.totalBill))}</span></div>
       <div class="row"><span>Total Received:</span><span>${esc(rs(easy.totalPaid))}</span></div>
-      ${easy.totalReturns > 0 ? `<div class="row"><span>Total Returns:</span><span>-${esc(rs(easy.totalReturns))}</span></div>` : ''}
+      ${easy.totalReturns > 0 ? `<div class="row"><span>Returns Deducted:</span><span>-${esc(rs(easy.totalReturns))}</span></div>` : ''}
       <div class="row final"><span>Balance Due:</span><span>${esc(rs(easy.balanceDue))}</span></div>
     </div>
     ${footer(now, false)}`;

@@ -47,8 +47,8 @@ const INVOICES = [
     invoiceNo: '11',
     invoiceDate: '2026-09-20',
     customerName: 'Ravi',
-    // a different phone / address on an older invoice must NOT replace the first one seen
-    customerPhone: '1111111111',
+    // no phone: joins Ravi's ledger through the name; the older address must NOT replace the newest one
+    customerPhone: '',
     customerAddress: 'Old Address',
     subtotal: 500,
     grandTotal: 500,
@@ -80,7 +80,7 @@ const INVOICES = [
     customerPhone: '98 76-5',
     subtotal: 800,
     grandTotal: 800,
-    // Firestore documents written by older versions held numbers as strings; the legacy `discount` is ignored
+    // Firestore documents written by older versions held numbers as strings; the legacy `discount` counts (as in the ledger)
     amountPaid: '100',
     discount: 30,
   }),
@@ -95,7 +95,7 @@ const RETURNS = [
 describe('buildCustomerSummaries (processCustomerData)', () => {
   const customers = buildCustomerSummaries(INVOICES, RETURNS);
   const byName = (name) => customers.find((c) => c.name === name);
-  test('one row per exact customerName, in order of first appearance; nameless invoices are skipped', () => {
+  test('one row per ledger party, in order of first appearance; nameless invoices are skipped', () => {
     expect(customers.map((c) => c.name)).toEqual(['Ravi', 'Meena', 'Kumar']);
   });
   test('sums subtotal / amountPaid / discountAmount over the invoices; counts invoices', () => {
@@ -105,7 +105,7 @@ describe('buildCustomerSummaries (processCustomerData)', () => {
     expect(ravi.amountPaid).toBe(400);
     expect(ravi.totalDiscountAmount).toBe(50);
   });
-  test('phone and address come from the first (newest) invoice only', () => {
+  test('phone and address come from the newest invoice that has one', () => {
     const ravi = byName('Ravi');
     expect(ravi.phone).toBe('9876543210');
     expect(ravi.address).toBe('Gandhi Road, Tirupur');
@@ -116,11 +116,12 @@ describe('buildCustomerSummaries (processCustomerData)', () => {
     expect(byName('Meena').totalReturns).toBe(0);
     expect(byName('Kumar').totalReturns).toBe(0);
   });
-  test('balance = bill amounts - paid - returns - discount', () => {
-    // Ravi: 1500 - 400 - 230.25 - 50 = 819.75
+  test('balance = the ledger closing of the latest bill (bill amounts - paid - returns - discount)', () => {
+    // Ravi: #11 500 - 200 returns = 300 carried; #12 300 + 1000 - 50 - 400 - 30.25 = 819.75
     expect(customerBalance(byName('Ravi'))).toBe(819.75);
-    // Kumar: 800 - 100 (string amount coerced) - 0 - 0 (legacy `discount` ignored) = 700
-    expect(customerBalance(byName('Kumar'))).toBe(700);
+    // Kumar: 800 - 100 (string amount coerced) - 30 (legacy `discount`, read like the ledger) = 670
+    expect(customerBalance(byName('Kumar'))).toBe(670);
+    expect(byName('Kumar').totalDiscountAmount).toBe(30);
   });
   test('a fully paid customer with no phone / address still appears, with a zero balance', () => {
     const meena = byName('Meena');
@@ -165,7 +166,7 @@ describe('buildCustomerSummaries (processCustomerData)', () => {
     expect(c.lastInvoiceDate).toBeUndefined();
     expect(c.lastInvoiceNo).toBeUndefined();
   });
-  test('customers are matched by name, never by phone', () => {
+  test('customers are grouped like the ledger: by phone first, so a shared name is never merged', () => {
     const list = buildCustomerSummaries(
       [
         inv({ invoiceNo: '2', customerName: 'Anu', customerPhone: '9000000001', subtotal: 10 }),
@@ -174,12 +175,80 @@ describe('buildCustomerSummaries (processCustomerData)', () => {
       ],
       [],
     );
+    // one party per phone, named after its latest bill
     expect(list.map((c) => [c.name, c.phone, c.totalCurrentBillAmount])).toEqual([
-      ['Anu', '9000000001', 15],
-      ['Anu K', '9000000001', 20],
+      ['Anu', '9000000001', 30],
+      ['Anu', '9000000002', 5],
     ]);
   });
-  test('on a date tie the first invoice seen stays the last invoice; invoices without a date never become it', () => {
+  test('two customers sharing a name each keep their own balance (reminder goes to the right phone)', () => {
+    const list = buildCustomerSummaries(
+      [
+        inv({ invoiceNo: '1', customerName: 'Ravi', customerPhone: '9000000001', subtotal: 100 }),
+        inv({ invoiceNo: '2', customerName: 'Ravi', customerPhone: '9000000002', subtotal: 100 }),
+        // same person typed differently: one ledger
+        inv({ invoiceNo: '3', customerName: 'ravi ', customerPhone: '+91 90000 00002', subtotal: 50 }),
+      ],
+      [],
+    );
+    expect(list.map((c) => [c.phone, customerBalance(c), c.totalInvoices])).toEqual([
+      ['9000000001', 100, 1],
+      ['+91 90000 00002', 150, 2],
+    ]);
+  });
+  test('opening balance + a balance return: the carried return is not subtracted twice', () => {
+    // opening 1000; #1 500 unpaid with a 200 balance return -> 1300; #2 100 -> 1400 (stored balanceDue 1400)
+    const list = buildCustomerSummaries(
+      [
+        inv({
+          invoiceNo: '1',
+          invoiceDate: '2026-01-01',
+          previousBalance: 1000,
+          subtotal: 500,
+          balanceDue: 1500,
+        }),
+        inv({
+          invoiceNo: '2',
+          invoiceDate: '2026-01-02',
+          previousBalance: 1300,
+          subtotal: 100,
+          balanceDue: 1400,
+        }),
+      ],
+      [ret({ invoiceNo: '1', returnAmount: 200 })],
+    );
+    expect(customerBalance(list[0])).toBe(1400);
+    expect(list[0].openingBalance).toBe(1000);
+    expect(list[0].totalReturns).toBe(200);
+    expect(list[0].totalCurrentBillAmount).toBe(600);
+  });
+  test('a return refunded in cash / bank is listed but does not lower the balance', () => {
+    const list = buildCustomerSummaries(
+      [inv({ invoiceNo: '1', subtotal: 1000, balanceDue: 1000 })],
+      [
+        ret({ invoiceNo: '1', returnAmount: 300, settlementType: 'refund', refundMethod: 'cash' }),
+        // a legacy return without settlement fields still reduces the balance
+        ret({ id: 'r2', invoiceNo: '1', returnAmount: 100 }),
+      ],
+    );
+    expect(list[0].totalReturns).toBe(400);
+    expect(customerBalance(list[0])).toBe(900);
+  });
+  test('directory customers: unbilled ones are listed with their opening balance, billed ones matched by phone', () => {
+    const list = buildCustomerSummaries(
+      [inv({ invoiceNo: '1', customerName: 'Ravi', customerPhone: '9000000001', subtotal: 100 })],
+      [],
+      [
+        { name: 'Ravi Textiles', phone: '+91 9000000001', address: 'Tirupur', openingBalance: 999 },
+        { name: 'New Guy', phone: '9000000009', openingBalance: 250 },
+      ],
+    );
+    expect(list.map((c) => [c.name, c.address, customerBalance(c), c.totalInvoices])).toEqual([
+      ['Ravi', 'Tirupur', 100, 1],
+      ['New Guy', '', 250, 0],
+    ]);
+  });
+  test('the last invoice follows ledger order (date, then number); invoices without a date never become it', () => {
     const [c] = buildCustomerSummaries(
       [
         inv({ invoiceNo: '8', invoiceDate: '2026-05-01' }),
@@ -188,15 +257,15 @@ describe('buildCustomerSummaries (processCustomerData)', () => {
       ],
       [],
     );
-    expect(c.lastInvoiceNo).toBe('8');
+    expect(c.lastInvoiceNo).toBe('9');
     expect(c.lastInvoiceDate).toBe('2026-05-01');
   });
-  test('returns of an invoice are summed in the stored order (0.1 + 0.2 float result is preserved)', () => {
+  test('returns of an invoice are summed and rounded to paise', () => {
     const [c] = buildCustomerSummaries(
       [inv({ invoiceNo: '4' })],
       [ret({ invoiceNo: '4', returnAmount: 0.1 }), ret({ invoiceNo: '4', returnAmount: 0.2 })],
     );
-    expect(c.totalReturns).toBe(0.1 + 0.2);
+    expect(c.totalReturns).toBe(0.3);
   });
   test('no invoices -> no customers (customers who never got an invoice are not listed)', () => {
     expect(buildCustomerSummaries([], RETURNS)).toEqual([]);
@@ -211,8 +280,8 @@ describe('computeStats (updateStatistics)', () => {
       totalCurrentBillAmount: 2550.5, // 1500 + 250.5 + 800
       totalPaid: 750.5, // 400 + 250.5 + 100
       totalReturns: 230.25,
-      totalDiscountAmount: 50,
-      pendingBalance: 1519.75, // 2550.5 - 750.5 - 230.25 - 50 == 819.75 + 0 + 700
+      totalDiscountAmount: 80, // 50 + Kumar's legacy `discount` 30
+      pendingBalance: 1489.75, // 819.75 + 0 + 670
     });
   });
   test('is recomputed over a filtered list (the web updated the cards on every search)', () => {

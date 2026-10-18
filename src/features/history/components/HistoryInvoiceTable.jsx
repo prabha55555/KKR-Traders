@@ -12,12 +12,14 @@ import { memo, useMemo } from 'react';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { cn } from '@/ui';
+import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from '../lib/statement';
 import { displayInvoiceNo } from '../lib/types';
 import { HistoryInvoiceCard } from './HistoryInvoiceCard';
 import { InvoiceSlipBadge } from './InvoiceParts';
 
 const money = (n) => `₹${formatCurrency(n)}`;
-const balanceOf = (i) => (i.totalReturns > 0 ? i.adjustedBalanceDue : i.balanceDue);
+/** What the bill still owes: balanceDue minus the returns settled against it (refunds leave it unchanged). */
+const balanceOf = invoiceDue;
 
 function IconAction({ icon: Icon, label, tone, onClick }) {
   return (
@@ -91,12 +93,21 @@ export function buildInvoiceColumns(labels, actions) {
       key: 'returns',
       header: 'Returns',
       align: 'right',
-      render: (i) =>
-        i.totalReturns > 0 ? (
-          <span className="text-red-600">-{money(i.totalReturns)}</span>
-        ) : (
-          <span className="text-slate-300">-</span>
-        ),
+      render: (i) => {
+        if (!(i.totalReturns > 0)) return <span className="text-slate-300">-</span>;
+        const adjusted = balanceReturnsOf(i);
+        const refunded = refundedReturnsOf(i);
+        return (
+          <span className="flex flex-col items-end leading-tight">
+            {adjusted > 0 ? <span className="text-red-600">-{money(adjusted)}</span> : null}
+            {refunded > 0 ? (
+              <span className="text-xs text-amber-700" title="Refunded — the balance is unchanged">
+                {money(refunded)} refunded
+              </span>
+            ) : null}
+          </span>
+        );
+      },
     },
     {
       key: 'balance',

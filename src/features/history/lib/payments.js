@@ -1,10 +1,12 @@
 /** Payment-side pure logic: input validation, record timestamps, summaries, the statement's payment table. */
 import { formatCurrency, formatDateIN, toNum } from '@/core/format';
+import { methodLabel } from '@/core/paymentMethods';
 import { dateMillis, timeOfDay } from './dates';
 import { sumPaymentAmounts } from './lookups';
-export const totalOf = (a) => a.cash + a.upi + a.account;
+/** Cash + Account (a legacy `upi` amount, if a caller still passes one, counts too). */
+export const totalOf = (a) => toNum(a.cash) + toNum(a.account) + toNum(a.upi);
 export function parsePaymentAmounts(values) {
-  return { cash: toNum(values.cash), upi: toNum(values.upi), account: toNum(values.account) };
+  return { cash: toNum(values.cash), account: toNum(values.account) };
 }
 /** addPayment() confirm handler: amount first, then date (same order and wording as the web dialog). */
 export function validatePaymentInput(
@@ -24,8 +26,8 @@ export function paymentSuccessMessage(amounts) {
   let message = `Payment of ₹${formatCurrency(totalOf(amounts))} added successfully!`;
   const parts = [];
   if (amounts.cash > 0) parts.push(`Cash: ₹${formatCurrency(amounts.cash)}`);
-  if (amounts.upi > 0) parts.push(`UPI: ₹${formatCurrency(amounts.upi)}`);
-  if (amounts.account > 0) parts.push(`Account: ₹${formatCurrency(amounts.account)}`);
+  const account = toNum(amounts.account) + toNum(amounts.upi);
+  if (account > 0) parts.push(`Account: ₹${formatCurrency(account)}`);
   if (parts.length > 0) message += `\nBreakdown: ${parts.join(', ')}`;
   return message;
 }
@@ -46,15 +48,18 @@ export function additionalPaymentsLabel(additional) {
   const amounts = additional.map((p) => formatCurrency(p.amount));
   return `${amounts.join(' + ')} = ₹${formatCurrency(sumPaymentAmounts(additional))}`;
 }
+/** 'CASH' / 'ACCOUNT' (legacy UPI / bank payments are Account), `fallback` when the payment has no method. */
 export const paymentMethodLabel = (payment, fallback = 'N/A') =>
-  payment.paymentMethod ? payment.paymentMethod.toUpperCase() : fallback;
+  payment.paymentMethod ? methodLabel(payment.paymentMethod).toUpperCase() : fallback;
 /** Chronological order for display (stable; unparseable dates first). */
 export function sortPaymentsByDate(payments) {
   return [...payments].sort((a, b) => dateMillis(a.paymentDate) - dateMillis(b.paymentDate));
 }
 /**
  * generatePaymentTableData(): rows of [Date, Description, Amount, Balance] for the statement's PAYMENT HISTORY table.
- * Starts at the invoice total, subtracts each payment (oldest first) and finally the returns as one row.
+ * Starts at the invoice total, subtracts each payment (oldest first) and finally the returns settled against the
+ * balance (`balanceReturns`) as one row. Returns refunded in cash / to an account (`refundedReturns`) are listed as
+ * an information row that leaves the balance unchanged — the ledger does not count them either.
  *
  * PARITY NOTE: the opening "Invoice - Goods/Services" row carries TODAY's date (the web used `new Date()`), not the
  * invoice date. Kept so the printed statements look the same as the web's; pass `today` as YYYY-MM-DD.
@@ -62,9 +67,10 @@ export function sortPaymentsByDate(payments) {
 export function generatePaymentTableData(
   payments,
   grandTotal,
-  totalReturns,
+  balanceReturns,
   today,
   billLabel = 'Invoice - Goods/Services',
+  refundedReturns = 0,
 ) {
   const rows = [];
   let runningBalance = grandTotal;
@@ -73,17 +79,25 @@ export function generatePaymentTableData(
     runningBalance -= payment.amount;
     rows.push([
       formatDateIN(payment.paymentDate),
-      `Payment - ${payment.paymentType === 'initial' ? 'Initial' : 'Additional'} (${payment.paymentMethod?.toUpperCase() || 'CASH'})`,
+      `Payment - ${payment.paymentType === 'initial' ? 'Initial' : 'Additional'} (${paymentMethodLabel(payment, 'CASH')})`,
       `-Rs. ${formatCurrency(payment.amount)}`,
       formatCurrency(runningBalance),
     ]);
   }
-  if (totalReturns > 0) {
-    runningBalance -= totalReturns;
+  if (balanceReturns > 0) {
+    runningBalance -= balanceReturns;
     rows.push([
       'Multiple Dates',
       'Product Returns',
-      `-Rs. ${formatCurrency(totalReturns)}`,
+      `-Rs. ${formatCurrency(balanceReturns)}`,
+      formatCurrency(runningBalance),
+    ]);
+  }
+  if (refundedReturns > 0) {
+    rows.push([
+      'Multiple Dates',
+      'Product Returns (refunded)',
+      `Rs. ${formatCurrency(refundedReturns)}`,
       formatCurrency(runningBalance),
     ]);
   }

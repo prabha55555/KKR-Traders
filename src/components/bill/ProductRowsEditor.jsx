@@ -9,6 +9,8 @@
  *  - shortcuts: Array<{shortcutKey, fullDescription}> | null         product catalogue (null = still loading)
  *  - readOnly?: boolean                                              hides add/remove, locks inputs
  *  - addLabel?: string                                               default "Add Product"
+ *  - showAvgCost?: boolean                                           default false; Sales Bill only: "Avg buy ₹x" chip
+ *                                                                    (the Stocks page's average purchase rate) under Rate
  * Removing the last row leaves one blank row. `EMPTY_ROW`, `matchShortcuts`, `isKnownProduct` are re-exported.
  */
 import { Plus, Trash2 } from 'lucide-react';
@@ -16,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { rowAmount } from '@/core/billing';
 import { formatCurrency } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { lookupStock } from '@/features/overview/stocks/stocksLogic';
 import { getStockQuantityMap } from '@/features/overview/stocks/stocksService';
 import { Button, IconButton, NumberField } from '@/ui';
 import { cn } from '@/ui/cn';
@@ -26,7 +29,36 @@ export { EMPTY_ROW, isKnownProduct, matchShortcuts } from './productMatch';
 
 const rupees = (n) => `₹${formatCurrency(n)}`;
 
-export function ProductRowsEditor({ rows, onChange, shortcuts, readOnly, addLabel = 'Add Product' }) {
+/**
+ * On-screen only (never printed): the product's average purchase price, the same number as the Stocks page's
+ * "Average Purchase Rate". '-' for a known product with no priced purchase (e.g. opening stock only).
+ */
+function AvgCostChip({ stock }) {
+  if (!stock) return null;
+  const avg = Number(stock.avgPurchaseRate) || 0;
+  return (
+    <div className="no-print mt-1 text-right">
+      <span
+        className={cn(
+          'inline-block rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+          avg > 0 ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-500',
+        )}
+        title="Average purchase price (purchase bills + dyeing / combing receipts; returns and opening stock excluded)"
+      >
+        Avg buy {avg > 0 ? rupees(avg) : '-'}
+      </span>
+    </div>
+  );
+}
+
+export function ProductRowsEditor({
+  rows,
+  onChange,
+  shortcuts,
+  readOnly,
+  addLabel = 'Add Product',
+  showAvgCost = false,
+}) {
   const { isCompact } = useBreakpoint();
   const [stockMap, setStockMap] = useState(new Map());
 
@@ -36,10 +68,7 @@ export function ProductRowsEditor({ rows, onChange, shortcuts, readOnly, addLabe
       .catch((err) => console.error('Failed to load stock quantities:', err));
   }, []);
 
-  const getStock = (desc) => {
-    if (!desc || typeof desc !== 'string' || !desc.trim() || !stockMap) return null;
-    return stockMap.get(desc.trim()) || stockMap.get(desc.trim().toLowerCase()) || null;
-  };
+  const getStock = (desc) => (typeof desc === 'string' ? lookupStock(stockMap, desc) : null);
 
   const update = (index, patch) => onChange(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   const remove = (index) => onChange(removeRowAt(rows, index));
@@ -88,7 +117,7 @@ export function ProductRowsEditor({ rows, onChange, shortcuts, readOnly, addLabe
                       return (
                         <span
                           className={cn(
-                            'py-0.2 rounded px-1.5 text-[10px] font-bold tabular-nums',
+                            'rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
                             st.available > 0
                               ? 'bg-emerald-50 text-emerald-700'
                               : st.available === 0
@@ -110,6 +139,7 @@ export function ProductRowsEditor({ rows, onChange, shortcuts, readOnly, addLabe
                     readOnly={readOnly}
                     onChange={(rate) => update(i, { rate })}
                   />
+                  {showAvgCost ? <AvgCostChip stock={getStock(row.description)} /> : null}
                 </div>
               </div>
               <div className="mt-3 flex items-baseline justify-between gap-3 rounded-xl bg-gold-50/70 px-3 py-2 ring-1 ring-gold-200/70">
@@ -201,6 +231,7 @@ export function ProductRowsEditor({ rows, onChange, shortcuts, readOnly, addLabe
                       readOnly={readOnly}
                       onChange={(rate) => update(i, { rate })}
                     />
+                    {showAvgCost ? <AvgCostChip stock={getStock(row.description)} /> : null}
                   </td>
                   <td className="border-b border-line px-3 pt-3.5 text-right font-display font-bold text-brand-800 tabular-nums">
                     {rupees(rowAmount(row.qty, row.rate))}

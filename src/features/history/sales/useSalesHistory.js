@@ -5,9 +5,10 @@ import { useFocusLoad } from '@/hooks/useFocusLoad';
 import { db } from '@/core/db';
 import { filterInvoices, recentInvoices } from '../lib/filters';
 import { filterByDate, getDateWiseStatistics } from '../lib/grouping';
-import { formatCurrency, toNum } from '@/core/format';
+import { formatCurrency } from '@/core/format';
+import { SALES_LEDGER, balanceReturnsTotal } from '@/core/ledger';
 import { paymentSuccessMessage } from '../lib/payments';
-import { returnSuccessMessage } from '../lib/returns';
+import { partyReturnProducts, returnSuccessMessage } from '../lib/returns';
 import { EMPTY_FILTERS, isUserError } from '../lib/types';
 import { buildSalesHistoryData, toHistoryPayment, toHistoryReturn } from './salesModel';
 import { addSalesPayment, undoAllSalesPayments, undoSalesPayment } from './salesPayments';
@@ -98,16 +99,16 @@ export function useSalesHistory(onDataChanged) {
           toast('Error', 'Invoice not found!', 'error');
           return;
         }
-        const canAddPayment =
-          dataRef.current?.invoices.find((i) => i.invoiceNo === invoiceNo)?.canAddPayment ?? false;
+        const view = dataRef.current?.invoices.find((i) => i.invoiceNo === invoiceNo);
         setSheet({
           kind: 'payments',
           invoiceNo,
           partyName: invoice.customerName,
-          balanceDue: invoice.balanceDue,
+          // what is still owed on the bill (returns settled on the balance deducted, refunds not)
+          balanceDue: view?.adjustedBalanceDue ?? invoice.balanceDue,
           bankAccountId: invoice.bankAccountId,
           payments: payments.map((p) => toHistoryPayment(p, invoice.bankAccountId)),
-          canAddPayment,
+          canAddPayment: view?.canAddPayment ?? false,
         });
       } catch (e) {
         console.error('Error viewing payment history:', e);
@@ -132,7 +133,7 @@ export function useSalesHistory(onDataChanged) {
           invoiceNo,
           partyName: invoice.customerName,
           bankAccountId: invoice.bankAccountId,
-          returns: returns.map((r) => toHistoryReturn(r, invoice.bankAccountId)),
+          returns: returns.map((r) => toHistoryReturn(r)),
         });
       } catch (e) {
         console.error('Error viewing return status:', e);
@@ -142,8 +143,8 @@ export function useSalesHistory(onDataChanged) {
     [toast],
   );
   const openAddPayment = useCallback((invoiceNo) => {
-    const balanceDue = dataRef.current?.invoices.find((i) => i.invoiceNo === invoiceNo)?.balanceDue;
-    setSheet({ kind: 'addPayment', invoiceNo, balanceDue });
+    const view = dataRef.current?.invoices.find((i) => i.invoiceNo === invoiceNo);
+    setSheet({ kind: 'addPayment', invoiceNo, balanceDue: view?.adjustedBalanceDue ?? view?.balanceDue });
   }, []);
   const openAddReturn = useCallback(
     async (invoiceNo) => {
@@ -153,42 +154,21 @@ export function useSalesHistory(onDataChanged) {
           toast('Error', 'Invoice not found!', 'error');
           return;
         }
-        const allInvoices = await db.getAllInvoices();
-        const customerInvoices = allInvoices.filter(
-          (inv) =>
-            inv.customerName &&
-            inv.customerName.trim().toLowerCase() === invoice.customerName.trim().toLowerCase(),
-        );
-        // Combine products from all bills of this customer (unique descriptions with aggregated/total quantities)
-        const productMap = new Map();
-        for (const inv of customerInvoices) {
-          for (const p of inv.products ?? []) {
-            if (!p || !p.description) continue;
-            const desc = p.description.trim();
-            if (!productMap.has(desc)) {
-              productMap.set(desc, {
-                description: desc,
-                qty: Number(toNum(p.qty).toFixed(2)),
-                rate: Number(toNum(p.rate).toFixed(2)),
-              });
-            } else {
-              const existing = productMap.get(desc);
-              existing.qty = Number((existing.qty + toNum(p.qty)).toFixed(2));
-              if (p.rate) existing.rate = Number(toNum(p.rate).toFixed(2));
-            }
-          }
-        }
-        const aggregatedProducts = Array.from(productMap.values());
-
-        const returns = await db.getReturnsByInvoice(invoiceNo);
+        const [allInvoices, allReturns] = await Promise.all([db.getAllInvoices(), db.getAllReturns()]);
+        // the products of all the customer's bills — the same list saveSalesReturn validates the picked line against
+        const { products, invoiceNos } = partyReturnProducts(SALES_LEDGER, allInvoices, invoice);
+        const returns = allReturns.filter((r) => String(r.invoiceNo) === String(invoiceNo));
         setSheet({
           kind: 'addReturn',
           invoiceNo,
           partyName: invoice.customerName,
           invoiceDate: invoice.invoiceDate,
-          products: aggregatedProducts.length > 0 ? aggregatedProducts : (invoice.products ?? []),
-          balanceDue: invoice.balanceDue,
-          returns: returns.map(toHistoryReturn),
+          products,
+          balanceDue: invoice.balanceDue - balanceReturnsTotal(returns),
+          returns: returns.map((r) => toHistoryReturn(r)),
+          partyReturns: allReturns
+            .filter((r) => invoiceNos.has(String(r.invoiceNo)))
+            .map((r) => toHistoryReturn(r)),
         });
       } catch (e) {
         console.error('Error opening return dialog:', e);

@@ -1,54 +1,36 @@
 import {
   AlertCircle,
   Banknote,
-  Building2,
   CheckCircle2,
   Clock,
   Edit,
-  ExternalLink,
   FileText,
-  Layers,
   Percent,
-  Plus,
-  RefreshCw,
-  Search,
   Sparkles,
   Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
-import { formatCurrency, formatDateIN, formatDateShort } from '@/core/format';
-import { Badge, Button, EmptyState, ErrorState, LoadingState, Page, useFeedback } from '@/ui';
+import { formatCurrency, formatDateShort } from '@/core/format';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Page,
+  RefreshButton,
+  SearchBar,
+  StatCard,
+  useFeedback,
+} from '@/ui';
 
 import { AddCombingPaymentModal } from './AddCombingPaymentModal';
 import { CombingBatchModal } from './CombingBatchModal';
 import { CombingChallanModal } from './CombingChallanModal';
-import CombingNavTabs from './CombingNavTabs';
 import { CombingPaymentHistoryModal } from './CombingPaymentHistoryModal';
 import { calcCombingBatchPaymentStats, COMBING_STATUS } from './combingLogic';
 import { deleteCombingBatchRecord, loadCombingData } from './combingService';
-
-function StatCard({ label, value, subtext, tone = 'default', icon: Icon }) {
-  const toneClasses = {
-    default: 'border-slate-200 bg-white text-slate-800',
-    brand: 'border-brand-200 bg-brand-50/60 text-brand-900',
-    emerald: 'border-emerald-200 bg-emerald-50/60 text-emerald-950',
-    amber: 'border-amber-200 bg-amber-50/60 text-amber-950',
-    rose: 'border-rose-200 bg-rose-50/60 text-rose-950',
-  }[tone];
-
-  return (
-    <div className={`flex flex-col justify-between rounded-2xl border p-4 shadow-2xs ${toneClasses}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">{label}</span>
-        {Icon && <Icon className="size-4 text-slate-400" />}
-      </div>
-      <div className="mt-2 font-display text-xl font-bold tracking-tight sm:text-2xl">{value}</div>
-      {subtext && <div className="mt-1 text-xs text-slate-500">{subtext}</div>}
-    </div>
-  );
-}
 
 export default function CombingSettledPage() {
   const { confirm, toast } = useFeedback();
@@ -151,7 +133,8 @@ export default function CombingSettledPage() {
       }
     }
 
-    const avgShrinkagePct = totalInputForShrinkage > 0 ? (totalShrinkageQty / totalInputForShrinkage) * 100 : 0;
+    const avgShrinkagePct =
+      totalInputForShrinkage > 0 ? (totalShrinkageQty / totalInputForShrinkage) * 100 : 0;
 
     return {
       settledCount: settledBatches.length,
@@ -204,15 +187,15 @@ export default function CombingSettledPage() {
 
   if (loading && data.batches.length === 0) {
     return (
-      <Page title="Settled Combating Batches" icon={CheckCircle2}>
-        <LoadingState label="Loading settled combating batches…" />
+      <Page title="Settled Combing Batches" icon={CheckCircle2}>
+        <LoadingState label="Loading settled combing batches…" />
       </Page>
     );
   }
 
   if (error && data.batches.length === 0) {
     return (
-      <Page title="Settled Combating Batches" icon={CheckCircle2}>
+      <Page title="Settled Combing Batches" icon={CheckCircle2}>
         <ErrorState message={error} onRetry={loadData} />
       </Page>
     );
@@ -220,98 +203,58 @@ export default function CombingSettledPage() {
 
   return (
     <Page
-      title={
-        <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="size-6 text-emerald-600" />
-              <h1 className="font-display text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                Settled Combating Batches
-              </h1>
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-              Completed combing & finishing batches, final combed costs, actual loss results & processor settlements
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" icon={RefreshCw} onClick={loadData} title="Refresh batches">
-              Refresh
-            </Button>
-          </div>
-        </div>
-      }
+      title="Settled Combing Batches"
+      icon={CheckCircle2}
+      actions={<RefreshButton onClick={loadData} loading={loading} title="Refresh batches" />}
     >
       <div className="space-y-6">
-        {/* Navigation Tabs */}
-        <CombingNavTabs
-          counts={{
-            ongoing: ongoingCount,
-            settled: settledBatches.length,
-            processors: data.processors.length,
-          }}
-        />
-
         {/* KPI Strip */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <StatCard
-            label="Settled Batches"
-            value={kpis.settledCount}
-            subtext="Fully completed"
-            tone="emerald"
-            icon={CheckCircle2}
-          />
+          <StatCard label="Settled Batches" value={kpis.settledCount} tint="green" icon={CheckCircle2} />
           <StatCard
             label="Combed Stock Produced"
             value={`${kpis.finishedQty.toLocaleString()} Qty`}
-            subtext="Added to stock"
-            tone="brand"
+            tint="brand"
             icon={Sparkles}
           />
           <StatCard
             label="Processing Cost"
             value={`₹${formatCurrency(kpis.totalProcessingCost)}`}
-            subtext="Final charges billed"
-            tone="default"
+            tint="brand"
             icon={Banknote}
           />
           <StatCard
             label="Avg Weight Loss"
             value={`${kpis.avgShrinkagePct.toFixed(1)}%`}
-            subtext="Actual combing loss"
-            tone="amber"
+            tint="amber"
             icon={Percent}
           />
           <StatCard
             label="Total Paid"
             value={`₹${formatCurrency(kpis.totalPaid)}`}
-            subtext="Remitted to mills"
-            tone="emerald"
+            tint="green"
             icon={Banknote}
           />
           <StatCard
             label="Balance Due"
             value={`₹${formatCurrency(kpis.balanceDue)}`}
-            subtext={kpis.balanceDue > 0 ? 'Payable to mills' : 'All fully settled'}
-            tone={kpis.balanceDue > 0 ? 'rose' : 'emerald'}
+            tint={kpis.balanceDue > 0 ? 'red' : 'green'}
             icon={AlertCircle}
           />
         </div>
 
         {/* Filter Bar */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
+          <div className="w-full sm:max-w-md">
+            <SearchBar
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={setSearchTerm}
               placeholder="Search batch #, mill, dyed fabric or finished product..."
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
 
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+            <span className="mr-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
               Payment:
             </span>
             <button
@@ -334,7 +277,8 @@ export default function CombingSettledPage() {
                   : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
               }`}
             >
-              Balance Due ({settledBatches.filter((b) => calcCombingBatchPaymentStats(b).hasBalanceDue).length})
+              Balance Due (
+              {settledBatches.filter((b) => calcCombingBatchPaymentStats(b).hasBalanceDue).length})
             </button>
             <button
               type="button"
@@ -396,10 +340,6 @@ export default function CombingSettledPage() {
                       <span className="text-xs text-slate-600">
                         Completed {formatDateShort(batch.completedAt || batch.batchDate)}
                       </span>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
-                        <CheckCircle2 className="size-3 text-emerald-600" />
-                        Completed & Settled
-                      </span>
                       {paymentStats.isPaid && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
                           Paid
@@ -458,7 +398,7 @@ export default function CombingSettledPage() {
                         variant="outline"
                         icon={Edit}
                         onClick={() => handleEdit(batch)}
-                        className="text-slate-700 hover:bg-slate-100 border-slate-200"
+                        className="border-slate-200 text-slate-700 hover:bg-slate-100"
                       >
                         Edit
                       </Button>
@@ -468,7 +408,7 @@ export default function CombingSettledPage() {
                         variant="outline"
                         icon={Trash2}
                         onClick={() => handleDelete(batch)}
-                        className="text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-slate-200"
+                        className="border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                         title="Delete Batch"
                       >
                         Delete
@@ -477,7 +417,7 @@ export default function CombingSettledPage() {
                   </div>
 
                   {/* Card Content Grid */}
-                  <div className="p-4 sm:p-6 space-y-4">
+                  <div className="space-y-4 p-4 sm:p-6">
                     <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
                       <div>
                         <div className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
@@ -518,7 +458,8 @@ export default function CombingSettledPage() {
                           Actual Weight Loss
                         </div>
                         <div className="mt-0.5 font-bold text-amber-700">
-                          {batch.shrinkagePct || 0}% ({batch.shrinkageQty || 0} {batch.input?.unit || 'Rolls'})
+                          {batch.shrinkagePct || 0}% ({batch.shrinkageQty || 0} {batch.input?.unit || 'Rolls'}
+                          )
                         </div>
                         <div className="text-slate-400">Measured on completion</div>
                       </div>
@@ -527,7 +468,7 @@ export default function CombingSettledPage() {
                     {/* Output Products Breakdown */}
                     {Array.isArray(batch.output) && batch.output.length > 0 && (
                       <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 text-xs">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-1.5">
+                        <div className="mb-1.5 text-[10px] font-bold tracking-wider text-emerald-800 uppercase">
                           Finished Stock Converted:
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -538,7 +479,9 @@ export default function CombingSettledPage() {
                             >
                               <span className="font-bold">{out.productName || 'Finished Fabric'}</span>
                               <span className="text-slate-400">•</span>
-                              <span className="text-emerald-700">{out.qty} {batch.input?.unit || 'Rolls'}</span>
+                              <span className="text-emerald-700">
+                                {out.qty} {batch.input?.unit || 'Rolls'}
+                              </span>
                               {out.unitCost && (
                                 <>
                                   <span className="text-slate-400">•</span>
@@ -611,7 +554,11 @@ export default function CombingSettledPage() {
         onSaved={loadData}
       />
 
-      <CombingChallanModal open={isChallanOpen} onClose={() => setIsChallanOpen(false)} batch={challanBatch} />
+      <CombingChallanModal
+        open={isChallanOpen}
+        onClose={() => setIsChallanOpen(false)}
+        batch={challanBatch}
+      />
 
       <AddCombingPaymentModal
         open={isPaymentOpen}

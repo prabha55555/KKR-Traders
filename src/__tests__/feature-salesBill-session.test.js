@@ -86,13 +86,19 @@ describe('withRefreshedPreviousBalance', () => {
     const s = session({ form: form({ previousBalance: 100 }) });
     expect(withRefreshedPreviousBalance(s, 250).form.previousBalance).toBe(250);
   });
-  test('never touches saved or edited bills, and returns the same object when nothing changed', () => {
-    const edited = session({ editingNo: '012', form: form({ previousBalance: 100 }) });
-    expect(withRefreshedPreviousBalance(edited, 250)).toBe(edited);
+  test('never touches a bill showing what is stored, a failed read, or an unchanged value', () => {
     const saved = session({ saved: true, form: form({ previousBalance: 100 }) });
     expect(withRefreshedPreviousBalance(saved, 250)).toBe(saved);
+    const openedForEdit = session({ editingNo: '012', saved: true, form: form({ previousBalance: 100 }) });
+    expect(withRefreshedPreviousBalance(openedForEdit, 250)).toBe(openedForEdit);
     const same = session({ form: form({ previousBalance: 250 }) });
     expect(withRefreshedPreviousBalance(same, 250)).toBe(same);
+    const fresh = session({ form: form({ previousBalance: 100 }) });
+    expect(withRefreshedPreviousBalance(fresh, null)).toBe(fresh);
+  });
+  test('an edited bill whose date / number changed (unsaved) follows its new place in the ledger', () => {
+    const edited = session({ editingNo: '012', saved: false, form: form({ previousBalance: 100 }) });
+    expect(withRefreshedPreviousBalance(edited, 250).form.previousBalance).toBe(250);
   });
 });
 describe('outputGuard (Generate / Share BILL)', () => {

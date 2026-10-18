@@ -205,7 +205,7 @@ describe('buildBinDetail', () => {
     });
     expect(d.payments.map((p) => [p.amount, p.method, p.type])).toEqual([
       [500, 'Cash', 'Initial'],
-      [200, 'UPI', 'Added later'],
+      [200, 'Account', 'Added later'], // a legacy UPI payment is shown as Account
     ]);
     expect(d.returns).toEqual([{ id: 'r1', date: '2026-10-01', description: 'T Shirt', qty: 1, amount: 99 }]);
   });

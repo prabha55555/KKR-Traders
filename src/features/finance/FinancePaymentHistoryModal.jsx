@@ -1,14 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Receipt, X, Banknote, Landmark, Smartphone, CheckCircle2 } from 'lucide-react';
+import { Receipt, X, Banknote, Landmark, CheckCircle2 } from 'lucide-react';
+import { accountLabelWithBank, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
+import { modeLabel } from '@/core/paymentMethods';
 import { Modal, Button, EmptyState, IconButton, useFeedback } from '@/ui';
 import { formatCurrency, formatDateShort } from '@/core/format';
 import { calculateFinanceStats } from './financeLogic';
 
+// Loan payments are Cash or Account; older ones stored as 'UPI' are shown as Account (modeLabel)
 const ICONS = {
   Cash: Banknote,
   Account: Landmark,
-  UPI: Smartphone,
 };
 
 export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }) {
@@ -113,7 +115,13 @@ export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }
       ) : (
         <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
           {payments.map((p) => {
-            const Icon = ICONS[p.mode] || Receipt;
+            // the account the money actually left decides the label (as in the balances)
+            const mode = p.sourceAccount
+              ? p.sourceAccount === 'cash'
+                ? 'Cash'
+                : 'Account'
+              : modeLabel(p.mode);
+            const Icon = ICONS[mode] || Receipt;
             return (
               <div
                 key={p.id}
@@ -122,23 +130,21 @@ export default function FinancePaymentHistoryModal({ record, onClose, onUpdate }
                 <div className="flex items-center gap-3">
                   <div
                     className={`flex size-10 shrink-0 items-center justify-center rounded-xl ring-1 ${
-                      p.mode === 'Cash'
+                      mode === 'Cash'
                         ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                        : p.mode === 'UPI'
-                          ? 'bg-purple-50 text-purple-700 ring-purple-200'
-                          : 'bg-blue-50 text-blue-700 ring-blue-200'
+                        : 'bg-blue-50 text-blue-700 ring-blue-200'
                     }`}
                   >
                     <Icon className="size-5" />
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-1.5 font-bold text-slate-900">
-                      <span>{p.mode} Payment</span>
+                      <span>{mode} Payment</span>
                       <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
                         {!p.sourceAccount || p.sourceAccount === 'cash'
-                          ? 'Cash in Hand'
+                          ? CASH_LABEL
                           : bankMap[p.sourceAccount]
-                            ? `${bankMap[p.sourceAccount].accountName} (${bankMap[p.sourceAccount].bankName || bankMap[p.sourceAccount].accountType || 'Bank'})`
+                            ? accountLabelWithBank(bankMap[p.sourceAccount])
                             : 'Bank Account'}
                       </span>
                     </div>

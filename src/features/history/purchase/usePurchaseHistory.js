@@ -6,8 +6,8 @@ import { purchaseBalanceDue } from '@/core/billing';
 import { db } from '@/core/db';
 import { filterInvoices, recentInvoices } from '../lib/filters';
 import { filterByDate, getDateWiseStatistics } from '../lib/grouping';
-import { returnSuccessMessage } from '../lib/returns';
-import { toNum } from '@/core/format';
+import { partyReturnProducts, returnSuccessMessage } from '../lib/returns';
+import { PURCHASE_LEDGER, balanceReturnsTotal } from '@/core/ledger';
 import { EMPTY_FILTERS, isUserError } from '../lib/types';
 import { toHistoryReturn } from '../sales/salesModel';
 import {
@@ -109,7 +109,10 @@ export function usePurchaseHistory(onDataChanged) {
           kind: 'payments',
           invoiceNo,
           partyName: `${PURCHASE_LABELS.party}: ${bill.supplierName}`,
-          balanceDue: purchaseBalanceDue(bill),
+          // what is still owed on the bill (returns settled on the balance deducted, refunds not)
+          balanceDue:
+            dataRef.current?.invoices.find((i) => i.invoiceNo === invoiceNo)?.adjustedBalanceDue ??
+            purchaseBalanceDue(bill),
           payments,
           canAddPayment,
         });
@@ -135,13 +138,12 @@ export function usePurchaseHistory(onDataChanged) {
           toast('Notification', 'No return records found for this invoice.', 'info');
           return;
         }
-        const bId = bill.bankAccountId || bill.payment?.bankAccountId;
         setSheet({
           kind: 'returns',
           invoiceNo,
           partyName: bill.supplierName,
-          bankAccountId: bId,
-          returns: returns.map((r) => toHistoryReturn(r, bId)),
+          bankAccountId: bill.bankAccountId || bill.payment?.bankAccountId,
+          returns: returns.map((r) => toHistoryReturn(r)),
         });
       } catch (e) {
         console.error('Error viewing return status:', e);
@@ -151,8 +153,8 @@ export function usePurchaseHistory(onDataChanged) {
     [toast],
   );
   const openAddPayment = useCallback((invoiceNo) => {
-    const balanceDue = dataRef.current?.invoices.find((i) => i.invoiceNo === invoiceNo)?.balanceDue;
-    setSheet({ kind: 'addPayment', invoiceNo, balanceDue });
+    const view = dataRef.current?.invoices.find((i) => i.invoiceNo === invoiceNo);
+    setSheet({ kind: 'addPayment', invoiceNo, balanceDue: view?.adjustedBalanceDue ?? view?.balanceDue });
   }, []);
   const openAddReturn = useCallback(
     async (invoiceNo) => {
@@ -162,41 +164,24 @@ export function usePurchaseHistory(onDataChanged) {
           toast('Error', 'Invoice not found!', 'error');
           return;
         }
-        const allBills = await db.getAllPurchaseBills();
-        const supplierBills = allBills.filter(
-          (b) =>
-            b.supplierName && b.supplierName.trim().toLowerCase() === bill.supplierName.trim().toLowerCase(),
-        );
-        // Combine products from all bills of this supplier (unique descriptions with aggregated/total quantities)
-        const productMap = new Map();
-        for (const b of supplierBills) {
-          for (const p of b.products ?? []) {
-            if (!p || !p.description) continue;
-            const desc = p.description.trim();
-            if (!productMap.has(desc)) {
-              productMap.set(desc, {
-                description: desc,
-                qty: Number(toNum(p.qty).toFixed(2)),
-                rate: Number(toNum(p.rate).toFixed(2)),
-              });
-            } else {
-              const existing = productMap.get(desc);
-              existing.qty = Number((existing.qty + toNum(p.qty)).toFixed(2));
-              if (p.rate) existing.rate = Number(toNum(p.rate).toFixed(2));
-            }
-          }
-        }
-        const aggregatedProducts = Array.from(productMap.values());
-
-        const returns = await db.getPurchaseReturnsByInvoice(invoiceNo);
+        const [allBills, allReturns] = await Promise.all([
+          db.getAllPurchaseBills(),
+          db.getAllPurchaseReturns(),
+        ]);
+        // the products of all the supplier's bills — the same list savePurchaseReturnDraft validates against
+        const { products, invoiceNos } = partyReturnProducts(PURCHASE_LEDGER, allBills, bill);
+        const returns = allReturns.filter((r) => String(r.invoiceNo) === String(invoiceNo));
         setSheet({
           kind: 'addReturn',
           invoiceNo,
           partyName: bill.supplierName,
           invoiceDate: bill.invoiceDate,
-          products: aggregatedProducts.length > 0 ? aggregatedProducts : (bill.products ?? []),
-          balanceDue: purchaseBalanceDue(bill),
-          returns: returns.map(toHistoryReturn),
+          products,
+          balanceDue: purchaseBalanceDue(bill) - balanceReturnsTotal(returns),
+          returns: returns.map((r) => toHistoryReturn(r)),
+          partyReturns: allReturns
+            .filter((r) => invoiceNos.has(String(r.invoiceNo)))
+            .map((r) => toHistoryReturn(r)),
         });
       } catch (e) {
         console.error('Error opening return dialog:', e);

@@ -46,7 +46,7 @@ export function DashboardKPIs({ data }) {
 
   return (
     <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <div className="bg-surface flex flex-col justify-between overflow-hidden rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
         <div>
           <h3 className="truncate text-sm font-medium text-slate-500">Total Sales</h3>
           <p
@@ -62,7 +62,7 @@ export function DashboardKPIs({ data }) {
         </div>
       </div>
 
-      <div className="bg-surface flex flex-col justify-between overflow-hidden rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
         <div>
           <h3 className="truncate text-sm font-medium text-slate-500">Total Purchases</h3>
           <p
@@ -77,7 +77,7 @@ export function DashboardKPIs({ data }) {
         </div>
       </div>
 
-      <div className="bg-surface flex flex-col justify-between overflow-hidden rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
         <div>
           <h3 className="truncate text-sm font-medium text-slate-500">Gross Profit</h3>
           <p
@@ -104,7 +104,7 @@ export function DashboardKPIs({ data }) {
         </div>
       </div>
 
-      <div className="bg-surface flex flex-col justify-between overflow-hidden rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
         <div>
           <h3 className="truncate text-sm font-medium text-slate-500">Total Expenses</h3>
           <p
@@ -119,7 +119,7 @@ export function DashboardKPIs({ data }) {
         </div>
       </div>
 
-      <div className="bg-surface flex flex-col justify-between overflow-hidden rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
         <div>
           <h3 className="truncate text-sm font-medium text-slate-500">Customer Outstanding</h3>
           <p
@@ -132,7 +132,7 @@ export function DashboardKPIs({ data }) {
         <p className="mt-2 truncate text-xs text-slate-500">From {customersWithDues} customers</p>
       </div>
 
-      <div className="bg-surface flex flex-col justify-between overflow-hidden rounded-xl border border-line p-4 shadow-sm">
+      <div className="flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-white p-4 shadow-sm">
         <div>
           <h3 className="truncate text-sm font-medium text-slate-500">Supplier Outstanding</h3>
           <p

@@ -1,31 +1,33 @@
 /**
- * Purchase payments from the history screen: add (cash/UPI/account split), view, undo one, undo all.
+ * Purchase payments from the history screen: add (cash / account split), view, undo one, undo all.
  * Field updates follow the LIVE versions in purchase-history.js (the later declarations of addPayment,
  * viewPaymentHistory, undoPayment and undoAllPayments), keeping the nested `payment` object and the top-level
- * `amountPaid` / `balanceDue` / `paymentBreakdown` of the bill in sync.
+ * `amountPaid` / `balanceDue` / `paymentBreakdown` of the bill in sync. A legacy `upi` amount in either split is folded
+ * into Account whenever that split is rewritten (never counted twice, never left behind).
  */
 import { purchaseAmountPaid } from '@/core/billing';
 import { db } from '@/core/db';
-import { formatCurrency, todayISO } from '@/core/format';
+import { formatCurrency, todayISO, toNum } from '@/core/format';
+import { foldBreakdown, foldPurchasePayment, normalizeMethod } from '@/core/paymentMethods';
 import { paymentTimestamp, totalOf } from '../lib/payments';
 import { userError } from '../lib/types';
 import { toHistoryPayment } from '../sales/salesModel';
 import { buildAdditionalPaymentRecords, findPayment } from '../sales/salesPayments';
 export const FAKE_INITIAL_PREFIX = 'fake_initial_';
 export const PURCHASE_BILL_NOT_FOUND = 'Purchase bill not found!';
-const ZERO = { cash: 0, upi: 0, account: 0 };
+const ZERO = { cash: 0, account: 0 };
 export const purchasePaymentSuccessMessage = (amounts) =>
   `Payment of ₹${formatCurrency(totalOf(amounts))} added successfully!`;
 // ------------------------------------------------------------------ initial payment that has no payment document
 /**
- * What was paid when the bill was written: the nested cash/upi/account split, or — for old bills without a nested
- * `payment` object — the stored paid total.
+ * What was paid when the bill was written: the nested cash / account split (plus a legacy upi amount), or — for old
+ * bills without a nested `payment` object — the stored paid total.
  *
  * Deviation: for such old bills the web took the whole top-level `amountPaid`, which already contains payments added
  * later, so those were counted twice. Their documents are subtracted here.
  */
 export function initialPaidAmount(bill, payments = []) {
-  if (bill.payment) return (bill.payment.cash || 0) + (bill.payment.upi || 0) + (bill.payment.account || 0);
+  if (bill.payment) return toNum(bill.payment.cash) + toNum(bill.payment.upi) + toNum(bill.payment.account);
   const documents = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
   return Math.max(0, (bill.amountPaid || 0) - documents);
 }
@@ -33,14 +35,14 @@ export const fakeInitialPaymentId = (invoiceNo) => `${FAKE_INITIAL_PREFIX}${invo
 /**
  * viewPaymentHistory() / generatePurchasePaymentTableData(): a bill that was paid when it was written but has no
  * 'initial' payment document (old bills) still shows that payment, as a synthetic record dated the bill date. Its
- * method is the nested split's UPI / ACCOUNT entry when present, else cash. Returns the list unchanged otherwise.
+ * method is Account when the nested split has an account (or legacy UPI) amount, else cash. Returns the list
+ * unchanged otherwise.
  */
 export function withUntrackedInitialPayment(bill, payments) {
   const amount = initialPaidAmount(bill, payments);
   if (amount <= 0 || payments.some((p) => p.paymentType === 'initial')) return [...payments];
-  let paymentMethod = 'cash';
-  if ((bill.payment?.upi ?? 0) > 0) paymentMethod = 'upi';
-  if ((bill.payment?.account ?? 0) > 0) paymentMethod = 'account';
+  const nested = foldBreakdown(bill.payment);
+  const paymentMethod = nested && nested.account > 0 ? 'account' : 'cash';
   const synthetic = {
     id: fakeInitialPaymentId(bill.invoiceNo),
     paymentDate: bill.invoiceDate || todayISO(),
@@ -58,14 +60,15 @@ export function statementPayments(bill, payments) {
 // ------------------------------------------------------------------ add
 /**
  * The bill after an additional payment (addPayment): `amountPaid` grows (top-level first, then `payment.totalPaid`),
- * `balanceDue = grandTotal - amountPaid`, the cash/upi/account breakdown grows per method, and the nested
- * `payment.totalPaid/balanceDue` follow. The nested cash/upi/account split stays the INITIAL split.
+ * `balanceDue = grandTotal - amountPaid`, the cash / account breakdown grows per method, and the nested
+ * `payment.totalPaid/balanceDue` follow. The nested cash / account split stays the INITIAL split (folded).
  *
  * PARITY NOTE: the stored `adjustedBalanceDue` is NOT refreshed (the web did not either); the screens derive it
  * from the returns collection.
  */
 export function applyAdditionalPurchasePayment(bill, amounts) {
-  const current = bill.paymentBreakdown ?? ZERO;
+  const current = foldBreakdown(bill.paymentBreakdown) ?? ZERO;
+  const added = foldBreakdown(amounts);
   const newAmountPaid = (bill.amountPaid || bill.payment?.totalPaid || 0) + totalOf(amounts);
   const balanceDue = bill.grandTotal - newAmountPaid;
   const bankAccountId =
@@ -75,14 +78,13 @@ export function applyAdditionalPurchasePayment(bill, amounts) {
     amountPaid: newAmountPaid,
     balanceDue,
     paymentBreakdown: {
-      cash: (current.cash || 0) + amounts.cash,
-      upi: (current.upi || 0) + amounts.upi,
-      account: (current.account || 0) + amounts.account,
+      cash: current.cash + added.cash,
+      account: current.account + added.account,
     },
     ...(bill.payment
       ? {
           payment: {
-            ...bill.payment,
+            ...foldPurchasePayment(bill.payment),
             totalPaid: newAmountPaid,
             balanceDue,
             ...(bankAccountId ? { bankAccountId } : {}),
@@ -140,7 +142,15 @@ export function applyUndoInitialPayment(bill, initialAmount) {
     amountPaid: newAmountPaid,
     balanceDue,
     ...(bill.payment
-      ? { payment: { ...bill.payment, cash: 0, upi: 0, account: 0, totalPaid: newAmountPaid, balanceDue } }
+      ? {
+          payment: {
+            ...foldPurchasePayment(bill.payment),
+            cash: 0,
+            account: 0,
+            totalPaid: newAmountPaid,
+            balanceDue,
+          },
+        }
       : {}),
   };
 }
@@ -158,9 +168,8 @@ export function applyUndoAllPurchasePayments(bill) {
     ...(bill.payment
       ? {
           payment: {
-            ...bill.payment,
+            ...foldPurchasePayment(bill.payment),
             cash: 0,
-            upi: 0,
             account: 0,
             totalPaid: 0,
             balanceDue: bill.grandTotal,
@@ -170,31 +179,24 @@ export function applyUndoAllPurchasePayments(bill) {
     ...(bill.paymentBreakdown ? { paymentBreakdown: { ...ZERO } } : {}),
   };
 }
-const methodKey = (method) => {
-  const m = String(method || 'cash').toLowerCase();
-  if (m === 'upi' || m === 'gpay') return 'upi';
-  if (m === 'account' || m === 'bank') return 'account';
-  return 'cash';
-};
 /**
  * After an 'initial' payment DOCUMENT is deleted the nested split must forget it too, otherwise the bill looks like it
  * still has an untracked initial payment and a second "undo" would take the amount off a second time.
- * (Not in the web, which hit exactly that.)
+ * (Not in the web, which hit exactly that.) The split is folded first, so undoing a legacy initial UPI document takes
+ * it off Account and no `upi` amount is left to conjure a phantom initial payment.
  */
 async function forgetInitialInSplit(invoiceNo, deleted) {
   const bill = await db.getPurchaseBill(invoiceNo);
   if (!bill?.payment) return;
-  const key = methodKey(deleted.paymentMethod);
-  const payment = { ...bill.payment, [key]: Math.max(0, (bill.payment[key] || 0) - deleted.amount) };
+  const key = normalizeMethod(deleted.paymentMethod);
+  const folded = foldPurchasePayment(bill.payment);
+  const payment = { ...folded, [key]: Math.max(0, folded[key] - deleted.amount) };
   await db.updatePurchaseBillFields(invoiceNo, { payment });
 }
 /**
  * Undo one payment. A payment document goes through `db.deletePurchasePayment`, which removes it and lowers
- * `amountPaid` / `balanceDue` / `payment.totalPaid`; the synthetic initial payment is reverted on the bill itself.
- *
- * PARITY NOTE: db.updatePurchaseInvoiceAfterPaymentDeletion takes the amount off the breakdown entry named by the
- * bill's legacy `paymentMethod` (default 'cash'), not the undone payment's own method (same quirk as sales);
- * amountPaid / balanceDue are right.
+ * `amountPaid` / `balanceDue` / `payment.totalPaid` and the deleted payment's own method in the (folded) breakdown;
+ * the synthetic initial payment is reverted on the bill itself.
  */
 export async function undoPurchasePayment(invoiceNo, paymentId) {
   if (paymentId.startsWith(FAKE_INITIAL_PREFIX)) {
@@ -230,7 +232,8 @@ export async function undoAllPurchasePayments(invoiceNo) {
   if (!bill) throw userError(PURCHASE_BILL_NOT_FOUND);
   const untracked = withUntrackedInitialPayment(bill, documents.map(toHistoryPayment));
   if (untracked.length === 0) return null;
-  for (const payment of documents) await db.deletePurchasePayment(payment.id);
+  // one ledger sync at the end instead of one per payment
+  for (const payment of documents) await db.deletePurchasePayment(payment.id, { syncLedger: false });
   // re-read: the deletions above saved the bill (and dropped the cache) — never write back the snapshot from before
   const fresh = await db.getPurchaseBill(invoiceNo);
   if (!fresh) throw userError(PURCHASE_BILL_NOT_FOUND);

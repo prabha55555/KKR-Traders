@@ -2,17 +2,23 @@
  * Purchase returns from the history screen: add (saveReturn), undo one, undo all
  * (purchase-history.js saveReturn / undoReturn / undoAllReturns / getAlreadyReturnedQty).
  */
-import {
-  calculateTotalPurchaseReturns,
-  purchaseBalanceDue,
-  syncSupplierLedgerOf,
-  updatePurchaseBillWithReturns,
-} from '@/core/billing';
+import { syncSupplierLedgerOf, updatePurchaseBillWithReturns } from '@/core/billing';
 import { db } from '@/core/db';
-import { validateReturnDraft } from '../lib/returns';
+import { PURCHASE_LEDGER } from '@/core/ledger';
+import { partyReturnProducts, refundSettlement, validateReturnDraft } from '../lib/returns';
 import { userError } from '../lib/types';
-/** The document written for one submitted return line (db.savePurchaseReturn adds `id` and the server `createdAt`). */
-export function buildPurchaseReturnRecord(invoiceNo, supplierName, line, now, settlement = {}) {
+/**
+ * The document written for one submitted return line (db.savePurchaseReturn adds `id` and the server `createdAt`).
+ * `settlement` = lib/returns refundSettlement(): every new return is a refund from the supplier (Cash, or 'bank' +
+ * bankAccountId), never a balance adjustment.
+ */
+export function buildPurchaseReturnRecord(
+  invoiceNo,
+  supplierName,
+  line,
+  now,
+  settlement = refundSettlement({ refundMethod: 'cash' }),
+) {
   const record = {
     invoiceNo,
     supplierName,
@@ -25,9 +31,10 @@ export function buildPurchaseReturnRecord(invoiceNo, supplierName, line, now, se
   return record;
 }
 /**
- * Validates the draft against the bill (qty left to return, balance), then saves one return document per line,
- * refreshes the bill's totalReturns / adjustedBalanceDue and re-syncs the supplier's ledger (the later bills carry the
- * reduced balance). Validation failures are returned (shown inline), unexpected failures throw.
+ * Validates the draft (qty left to return over the supplier's bills — the same product list the sheet offered, see
+ * partyReturnProducts — and the refund account), then saves one return document per line as a refund, refreshes the
+ * bill's totalReturns / adjustedBalanceDue and re-syncs the supplier's ledger. Validation failures are returned (shown
+ * inline), unexpected failures throw.
  *
  * The web ran the SALES ledger recomputation (`Utils.updateSubsequentInvoices(supplierName, …)`) here — the wrong
  * ledger; the supplier's own one is re-synced instead.
@@ -35,24 +42,20 @@ export function buildPurchaseReturnRecord(invoiceNo, supplierName, line, now, se
 export async function savePurchaseReturnDraft(invoiceNo, input, now = new Date()) {
   const bill = await db.getPurchaseBill(invoiceNo);
   if (!bill) throw userError('Invoice not found!');
-  const existingReturns = await db.getPurchaseReturnsByInvoice(invoiceNo);
-  const currentReturns = await calculateTotalPurchaseReturns(invoiceNo);
+  const [allBills, allReturns] = await Promise.all([db.getAllPurchaseBills(), db.getAllPurchaseReturns()]);
+  const { products, invoiceNos } = partyReturnProducts(PURCHASE_LEDGER, allBills, bill);
   const validation = validateReturnDraft({
     returnDate: input.returnDate,
     items: input.items,
-    products: bill.products ?? [],
-    existingReturns,
-    currentBalance: purchaseBalanceDue(bill) - currentReturns,
-    settlementType: input.settlementType,
+    products,
+    existingReturns: allReturns.filter((r) => invoiceNos.has(String(r.invoiceNo))),
+    refundMethod: input.refundMethod,
+    bankAccountId: input.bankAccountId,
   });
   if (!validation.ok) return validation;
-  const settlement = {};
-  if (input.settlementType) settlement.settlementType = input.settlementType;
-  if (input.refundMethod) settlement.refundMethod = input.refundMethod;
-  if (input.bankAccountId) settlement.bankAccountId = input.bankAccountId;
   for (const line of validation.lines) {
     await db.savePurchaseReturn(
-      buildPurchaseReturnRecord(invoiceNo, bill.supplierName, line, now, settlement),
+      buildPurchaseReturnRecord(invoiceNo, bill.supplierName, line, now, validation.settlement),
     );
   }
   await updatePurchaseBillWithReturns(invoiceNo);

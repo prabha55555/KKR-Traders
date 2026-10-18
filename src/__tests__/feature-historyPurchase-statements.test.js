@@ -43,7 +43,7 @@ const NOW = new Date(2026, 9, 5, 16, 5, 9);
 afterEach(() => jest.restoreAllMocks());
 describe('shared wording hooks used by purchase', () => {
   test('the add-payment amount message can be replaced; the sales default is unchanged', () => {
-    const none = { cash: 0, upi: 0, account: 0 };
+    const none = { cash: 0, account: 0 };
     expect(validatePaymentInput(none, '2026-10-01', 'Please enter a valid payment amount.')?.message).toBe(
       'Please enter a valid payment amount.',
     );
@@ -69,26 +69,59 @@ describe('loadSupplierStatement (searchSupplierInvoices + displaySupplierStateme
       subtotal: 2000,
       previousBalance: 600,
       grandTotal: 2600,
-      payment: { cash: 0, upi: 0, account: 0, totalPaid: 0, balanceDue: 2600 },
+      payment: { cash: 0, account: 0, totalPaid: 0, balanceDue: 2600 },
     }),
-    bill({ invoiceNo: '003', supplierName: 'Lakshmi Dyers' }),
+    bill({ invoiceNo: '003', supplierName: 'Lakshmi Dyers', supplierPhone: '9000000001' }),
   ];
   beforeEach(() => {
     jest.spyOn(db, 'getAllPurchaseBills').mockResolvedValue(bills);
     jest.spyOn(db, 'getAllPurchaseReturns').mockResolvedValue([returnDoc('002', 100)]);
     jest.spyOn(db, 'getAllPurchasePayments').mockResolvedValue([initialDoc('001', 400)]);
   });
-  test('suppliers whose name contains the text (case-insensitive) are combined, newest bill first, returns included', async () => {
+  test('the ONE supplier whose name contains the text (case-insensitive), newest bill first, ledger totals', async () => {
     const statement = await loadSupplierStatement('ganesh');
     expect(statement?.invoices.map((i) => i.invoiceNo)).toEqual(['002', '001']);
     expect(statement?.totals).toMatchObject({
       totalInvoices: 2,
-      totalCurrentBill: 3000,
+      opening: 0,
+      totalBilled: 3000,
       totalPaid: 400,
       totalReturns: 100,
-      adjustedBalanceDue: 2500,
+      balanceReturns: 100,
+      refundedReturns: 0,
+      // ledger closing: 1000 - 400 = 600 carried, + 2000 = 2600, - the (legacy, balance-settled) return 100
+      outstanding: 2500,
     });
-    expect(statement?.partyName).toBe('ganesh');
+    expect(statement?.partyName).toBe('Sri Ganesh Yarns');
+    expect(statement?.partyKey).toBe('p:9876543210');
+  });
+  test('a refunded return is listed but does not lower the outstanding balance', async () => {
+    jest
+      .spyOn(db, 'getAllPurchaseReturns')
+      .mockResolvedValue([{ ...returnDoc('002', 100), settlementType: 'refund', refundMethod: 'cash' }]);
+    const statement = await loadSupplierStatement('ganesh');
+    expect(statement?.totals).toMatchObject({
+      totalReturns: 100,
+      balanceReturns: 0,
+      refundedReturns: 100,
+      outstanding: 2600,
+    });
+  });
+  test('two suppliers with the same name (different phones) are never added up: the user picks one', async () => {
+    jest
+      .spyOn(db, 'getAllPurchaseBills')
+      .mockResolvedValue([...bills, bill({ invoiceNo: '004', supplierPhone: '9111111111' })]);
+    const result = await loadSupplierStatement('Sri Ganesh Yarns');
+    expect(result?.choices?.map((c) => [c.phone, c.count])).toEqual(
+      expect.arrayContaining([
+        ['9876543210', 2],
+        ['9111111111', 1],
+      ]),
+    );
+    const picked = await loadSupplierStatement('Sri Ganesh Yarns', 'p:9111111111');
+    expect(picked?.invoices.map((i) => i.invoiceNo)).toEqual(['004']);
+    // a typed phone number points at one supplier directly
+    expect((await loadSupplierStatement('9111111111'))?.invoices.map((i) => i.invoiceNo)).toEqual(['004']);
   });
   test('nothing matches -> null', async () => {
     expect(await loadSupplierStatement('nobody')).toBeNull();
@@ -150,7 +183,7 @@ describe('single bill statement', () => {
     expect(html).toContain('Payment - Additional (CASH)');
     expect(html).toContain('Balance Due: Rs. 600.00');
   });
-  test('returns are included: Total Returns, Adjusted Balance Due and the return table', () => {
+  test('balance-settled (legacy) returns: Returns (adjusted), Adjusted Balance Due and the return table', () => {
     const b = bill();
     const view = toHistoryPurchase(b, [], [returnDoc('001', 100)], false);
     const html = buildInvoiceStatementHtml({
@@ -163,7 +196,26 @@ describe('single bill statement', () => {
       now: NOW,
     });
     expect(html).toContain('RETURN INFORMATION');
-    expect(html).toContain('Total Returns: -Rs. 100.00');
+    expect(html).toContain('Returns (adjusted): -Rs. 100.00');
     expect(html).toContain('Adjusted Balance Due: Rs. 500.00');
+  });
+  test('a refunded return is listed as refunded and the balance due stays', () => {
+    const b = bill();
+    const refund = { ...returnDoc('001', 100), settlementType: 'refund', refundMethod: 'bank' };
+    const view = toHistoryPurchase(b, [], [refund], false);
+    const html = buildInvoiceStatementHtml({
+      invoice: view,
+      payments: [],
+      returns: view.returns,
+      totalReturns: view.totalReturns,
+      balanceReturns: view.balanceReturns,
+      adjustedBalanceDue: view.adjustedBalanceDue,
+      labels: PURCHASE_LABELS,
+      now: NOW,
+    });
+    expect(html).toContain('RETURN INFORMATION');
+    expect(html).toContain('Returns (refunded): Rs. 100.00');
+    expect(html).toContain('Balance Due: Rs. 600.00');
+    expect(html).not.toContain('Adjusted Balance Due');
   });
 });

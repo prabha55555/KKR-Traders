@@ -4,9 +4,8 @@
  *  - shareInvoicePdf():  print dialog / share sheet, then opens customer's WhatsApp — ORIGINAL page + slip image (if present)
  */
 import logoUrl from '@/assets/brand/logo.png';
-import { calculateTotalReturns } from '@/core/billing';
-import { db } from '@/core/db';
 import { printHtml, sharePdfHtml } from '@/platform';
+import { loadInvoiceContext } from './invoiceContext';
 import { buildInvoiceHtml } from './invoiceHtml';
 import { normalizeWhatsAppPhone, openWhatsApp } from './whatsapp';
 
@@ -34,79 +33,7 @@ export function getLogoSrc() {
 }
 
 async function buildContext(invoice) {
-  const invoiceNo = invoice.invoiceNo;
-  const [totalReturns, returns, rawPayments, bankAccounts] = await Promise.all([
-    calculateTotalReturns(invoiceNo),
-    db.getReturnsByInvoice(invoiceNo),
-    db.getPaymentsByInvoice(invoiceNo).catch(() => []),
-    db.getAllBankAccounts().catch(() => []),
-  ]);
-
-  const bankMap = new Map((bankAccounts || []).map((b) => [b.id, b]));
-  const defaultBank = bankAccounts?.[0];
-
-  const payments = (rawPayments || []).map((p) => {
-    const rawMethod = (p.paymentMethod || 'cash').toLowerCase();
-    const bank = p.bankAccountId
-      ? bankMap.get(p.bankAccountId)
-      : rawMethod === 'account'
-        ? defaultBank
-        : null;
-    const bankAccountName = bank
-      ? `${bank.accountName}${bank.bankName ? ` (${bank.bankName})` : ''}`
-      : bank?.accountName || '';
-    return {
-      ...p,
-      bankAccountName,
-    };
-  });
-
-  let pb = invoice.paymentBreakdown ? { ...invoice.paymentBreakdown } : null;
-  let totalPaid = invoice.amountPaid || 0;
-
-  if (payments.length > 0) {
-    let cash = 0;
-    let upi = 0;
-    let account = 0;
-    payments.forEach((p) => {
-      const m = (p.paymentMethod || 'cash').toLowerCase();
-      if (m === 'cash') cash += p.amount || 0;
-      else if (m === 'upi') upi += p.amount || 0;
-      else if (m === 'account') account += p.amount || 0;
-    });
-    pb = { cash, upi, account };
-    totalPaid = cash + upi + account;
-  }
-
-  let accountBankName = '';
-  const bankForInvoice = invoice.bankAccountId ? bankMap.get(invoice.bankAccountId) : null;
-  if (bankForInvoice) {
-    accountBankName = bankForInvoice.accountName;
-  } else {
-    const accPayment = payments.find((p) => (p.paymentMethod || '').toLowerCase() === 'account');
-    if (accPayment && accPayment.bankAccountId && bankMap.get(accPayment.bankAccountId)) {
-      accountBankName = bankMap.get(accPayment.bankAccountId).accountName;
-    } else if (defaultBank && (pb?.account > 0 || invoice.paymentMethod === 'account')) {
-      accountBankName = defaultBank.accountName;
-    }
-  }
-
-  const resolvedInvoice = {
-    ...invoice,
-    paymentBreakdown: pb,
-    amountPaid: totalPaid,
-    balanceDue: invoice.grandTotal - totalPaid,
-  };
-
-  return {
-    invoice: resolvedInvoice,
-    totalReturns,
-    adjustedBalanceDue: resolvedInvoice.balanceDue - totalReturns,
-    returns,
-    payments,
-    accountBankName,
-    logoSrc: await getLogoSrc(),
-  };
+  return { ...(await loadInvoiceContext(invoice)), logoSrc: await getLogoSrc() };
 }
 
 /** Opens the print dialog for the invoice (ORIGINAL page + attached slip image if present). */

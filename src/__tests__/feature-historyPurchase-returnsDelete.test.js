@@ -37,11 +37,18 @@ const stored = (id, returnAmount) => ({
   returnAmount,
 });
 afterEach(() => jest.restoreAllMocks());
+/** the supplier's bills and the returns collection as the save reads them */
+function mockReturnsOf(found, returns, bills = [found]) {
+  jest.spyOn(db, 'getPurchaseBill').mockResolvedValue(found);
+  jest.spyOn(db, 'getAllPurchaseBills').mockResolvedValue(bills);
+  jest.spyOn(db, 'getPurchaseReturnsByInvoice').mockImplementation(async () => [...returns]);
+  jest.spyOn(db, 'getAllPurchaseReturns').mockImplementation(async () => [...returns]);
+  jest.spyOn(db, 'syncPurchaseLedger').mockResolvedValue(null);
+}
 describe('savePurchaseReturnDraft', () => {
-  test("saves one return document per line (supplierName, not customerName), then refreshes the bill's return totals", async () => {
+  test("saves one refund document per line (supplierName, not customerName), then refreshes the bill's return totals", async () => {
     const returns = [];
-    jest.spyOn(db, 'getPurchaseBill').mockResolvedValue(bill());
-    jest.spyOn(db, 'getPurchaseReturnsByInvoice').mockImplementation(async () => [...returns]);
+    mockReturnsOf(bill(), returns);
     const saveReturn = jest.spyOn(db, 'savePurchaseReturn').mockImplementation(async (r) => {
       returns.push(r);
       return 'id';
@@ -64,33 +71,51 @@ describe('savePurchaseReturnDraft', () => {
       reason: 'damaged',
       returnDate: '2026-10-05',
       createdAt: '2026-10-05T10:00:00.000Z',
+      settlementType: 'refund',
+      refundMethod: 'cash',
     });
+    // a refund from the supplier does not lower what is owed on the bill
     expect(saveBill).toHaveBeenCalledWith(
-      expect.objectContaining({ totalReturns: 200, adjustedBalanceDue: 500 }),
+      expect.objectContaining({ totalReturns: 200, adjustedBalanceDue: 700 }),
     );
     // PARITY NOTE: the web also ran the SALES ledger recomputation with the supplier name; not ported
     expect(sales).not.toHaveBeenCalled();
   });
-  test('the return may not exceed the current balance (nested balance minus earlier returns); nothing is written', async () => {
-    jest.spyOn(db, 'getPurchaseBill').mockResolvedValue(bill());
-    jest.spyOn(db, 'getPurchaseReturnsByInvoice').mockResolvedValue([stored('r0', 100)]);
+  test('no balance cap: a refund larger than the balance is saved; an Account refund stores its bank account', async () => {
+    const returns = [stored('r0', 100)];
+    mockReturnsOf(bill(), returns);
+    const saveReturn = jest.spyOn(db, 'savePurchaseReturn').mockImplementation(async (r) => {
+      returns.push(r);
+      return 'id';
+    });
+    jest.spyOn(db, 'savePurchaseBill').mockResolvedValue(true);
+    const result = await savePurchaseReturnDraft('001', {
+      returnDate: '2026-10-05',
+      items: [item('8', '100')],
+      settlementType: 'refund',
+      refundMethod: 'bank',
+      bankAccountId: 'sbi',
+    });
+    expect(result).toEqual({ ok: true, total: 800 });
+    expect(saveReturn).toHaveBeenCalledWith(
+      expect.objectContaining({ settlementType: 'refund', refundMethod: 'bank', bankAccountId: 'sbi' }),
+    );
+  });
+  test('an Account refund needs an account; nothing is written', async () => {
+    mockReturnsOf(bill(), []);
     const saveReturn = jest.spyOn(db, 'savePurchaseReturn');
     const result = await savePurchaseReturnDraft('001', {
       returnDate: '2026-10-05',
-      items: [item('7', '100')],
+      items: [item('1')],
+      refundMethod: 'bank',
     });
-    expect(result).toMatchObject({
-      ok: false,
-      title: 'Error',
-      message: 'Return amount (₹700.00) cannot exceed current balance (₹600.00)',
-    });
+    expect(result).toMatchObject({ ok: false, message: 'Please select the account for this refund.' });
     expect(saveReturn).not.toHaveBeenCalled();
   });
-  test("quantity left to return comes from the bill's products and the stored returns", async () => {
-    jest
-      .spyOn(db, 'getPurchaseBill')
-      .mockResolvedValue(bill({ payment: { cash: 0, upi: 0, account: 0, totalPaid: 0, balanceDue: 5000 } }));
-    jest.spyOn(db, 'getPurchaseReturnsByInvoice').mockResolvedValue([{ ...stored('r0', 100), qty: 9 }]);
+  test("quantity left to return comes from the supplier's bills' products and the stored returns", async () => {
+    mockReturnsOf(bill({ payment: { cash: 0, account: 0, totalPaid: 0, balanceDue: 5000 } }), [
+      { ...stored('r0', 100), qty: 9 },
+    ]);
     const result = await savePurchaseReturnDraft('001', { returnDate: '2026-10-05', items: [item('2')] });
     expect(result).toMatchObject({
       ok: false,
@@ -123,6 +148,9 @@ describe('savePurchaseReturnDraft', () => {
       reason: '',
       returnDate: '2026-10-05',
       createdAt: '2026-10-05T00:00:00.000Z',
+      // without a settlement argument a return is still a cash refund (never a balance adjustment)
+      settlementType: 'refund',
+      refundMethod: 'cash',
     });
   });
 });

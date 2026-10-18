@@ -12,6 +12,7 @@ import {
   purchaseFormTotals,
   savePurchaseBillWithPayments,
 } from '@/core/services/purchaseBill';
+import { accountLabel } from '@/core/accountLabel';
 import { formatCurrency } from '@/core/format';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
 import { shareAcknowledgement, validateAcknowledgement } from '../acknowledgement';
@@ -90,7 +91,7 @@ export function usePurchaseBillForm() {
     const timer = setTimeout(() => {
       previousBalanceFor({ supplierName, supplierPhone, invoiceNo, invoiceDate })
         .then((value) => {
-          if (!cancelled)
+          if (!cancelled && value !== null)
             setForm((f) => (f.previousBalance === value ? f : { ...f, previousBalance: value }));
         })
         .catch((e) => console.error('Error calculating previous balance:', e));
@@ -127,7 +128,7 @@ export function usePurchaseBillForm() {
     if (check.overwrites) {
       const ok = await confirm({
         title: 'Bill number already exists',
-        message: `Purchase bill ${form.invoiceNo.trim()} already exists. Saving will overwrite it. Continue?`,
+        message: `Purchase bill ${form.invoiceNo.trim()} already exists. Saving will move it to the Recycle Bin with its payments and returns, and its amount will no longer count in that supplier's balance. Continue?`,
         tone: 'danger',
         confirmText: 'Overwrite',
       });
@@ -138,9 +139,7 @@ export function usePurchaseBillForm() {
     try {
       const balances = await loadLiveAccountBalances();
       const cashAmt = parseFloat(form.cash) || 0;
-      const upiAmt = parseFloat(form.upi) || 0;
-      const accAmt = parseFloat(form.account) || 0;
-      const bankAmt = upiAmt + accAmt;
+      const bankAmt = parseFloat(form.account) || 0;
 
       if (cashAmt > 0 && cashAmt > balances.cashBalance) {
         const ok = await confirm({
@@ -157,9 +156,10 @@ export function usePurchaseBillForm() {
         const targetId = form.bankAccountId || balances.bankAccounts[0]?.id;
         const targetBank = balances.bankAccounts.find((b) => b.id === targetId);
         if (targetBank && bankAmt > targetBank.currentBalance) {
+          const bankName = accountLabel(targetBank);
           const ok = await confirm({
-            title: `Insufficient Balance in ${targetBank.accountName}`,
-            message: `Paying ₹${formatCurrency(bankAmt)} exceeds the available balance in ${targetBank.accountName} (₹${formatCurrency(targetBank.currentBalance)}).\n\nDo you want to proceed with account overdraft?`,
+            title: `Insufficient Balance in ${bankName}`,
+            message: `Paying ₹${formatCurrency(bankAmt)} exceeds the available balance in ${bankName} (₹${formatCurrency(targetBank.currentBalance)}).\n\nDo you want to proceed with account overdraft?`,
             tone: 'warning',
             confirmText: 'Proceed Anyway',
             cancelText: 'Cancel & Adjust',
@@ -175,7 +175,7 @@ export function usePurchaseBillForm() {
     try {
       await loading.run(
         'Saving Bill',
-        () => savePurchaseBillWithPayments(form),
+        () => savePurchaseBillWithPayments(form, { replaceExisting: check.overwrites }),
         'Please wait while we save your invoice...',
       );
       toast('Bill Saved', 'Purchase Bill saved successfully!', 'success');

@@ -1,6 +1,8 @@
 /** WhatsApp text of the combined statement (shareCombinedStatementViaWhatsApp) and the phone check its sender uses. */
 import { COMPANY, COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
 import { digitsOnly, formatCurrency, formatDateIN } from '@/core/format';
+import { foldBreakdown } from '@/core/paymentMethods';
+import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from './statement';
 import { displayInvoiceNo } from './types';
 const HEAVY = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
 const LIGHT = '────────────────────────────────';
@@ -17,11 +19,10 @@ function invoiceBlock(invoice, isLast, labels) {
   if (invoice.previousBalance > 0) lines.push(`   Previous Balance: ${rs(invoice.previousBalance)}`);
   if (invoice.discountAmount) lines.push(`   Discount Amount: -${rs(invoice.discountAmount)}`);
   lines.push(`   Total Amount: ${rs(invoice.grandTotal)}`, `   Amount Paid: ${rs(invoice.amountPaid)}`);
-  const pb = invoice.paymentBreakdown;
+  const pb = foldBreakdown(invoice.paymentBreakdown);
   if (pb) {
     const parts = [];
     if (pb.cash > 0) parts.push(`💵 Cash: ${rs(pb.cash)}`);
-    if (pb.upi > 0) parts.push(`📱 UPI: ${rs(pb.upi)}`);
     if (pb.account > 0) {
       const accLabel = invoice.bankAccountName
         ? `🏦 Account (${invoice.bankAccountName}): ${rs(pb.account)}`
@@ -30,7 +31,10 @@ function invoiceBlock(invoice, isLast, labels) {
     }
     if (parts.length > 0) lines.push(`💳 ${parts.join(' | ')}`);
   }
-  if (invoice.totalReturns > 0) lines.push(`   Returns: -${rs(invoice.totalReturns)}`);
+  const adjusted = balanceReturnsOf(invoice);
+  const refunded = refundedReturnsOf(invoice);
+  if (adjusted > 0) lines.push(`   Returns: -${rs(adjusted)}`);
+  if (refunded > 0) lines.push(`   Returns (refunded): ${rs(refunded)}`);
   lines.push('');
   if (invoice.products.length > 0) {
     lines.push('📦 *PRODUCTS:*');
@@ -53,15 +57,18 @@ function invoiceBlock(invoice, isLast, labels) {
   }
   if (invoice.products.length > 0 || invoice.returns.length > 0) lines.push('');
   lines.push(
-    invoice.totalReturns > 0
-      ? `✅ *ADJUSTED BALANCE DUE: ${rs(invoice.adjustedBalanceDue)}*`
-      : `✅ *BALANCE DUE: ${rs(invoice.balanceDue)}*`,
+    adjusted > 0
+      ? `✅ *ADJUSTED BALANCE DUE: ${rs(invoiceDue(invoice))}*`
+      : `✅ *BALANCE DUE: ${rs(invoiceDue(invoice))}*`,
   );
   return lines.join('\n');
 }
-/** The statement text exactly as the web composed it (sections, figures, order), minus the empty filler lines. */
+/**
+ * The statement text as the web composed it (sections, order), minus the empty filler lines. The outstanding balance
+ * is the party's ledger balance (buildCombinedStatement totals.outstanding).
+ */
 export function buildCombinedStatementMessage(statement, labels) {
-  const { invoices, totals, mostRecent } = statement;
+  const { invoices, totals } = statement;
   const party = labels.party;
   const hasReturns = totals.totalReturns > 0;
   const lines = [
@@ -84,18 +91,19 @@ export function buildCombinedStatementMessage(statement, labels) {
     '*OVERALL ACCOUNT SUMMARY*',
     LIGHT,
     `📊 Total Invoices: ${totals.totalInvoices}`,
-    `💰 Total Current Bill Amount: ${rs(totals.totalCurrentBill)}`,
+    ...(totals.opening ? [`📒 Opening Balance: ${rs(totals.opening)}`] : []),
+    `💰 Total Bill Amount: ${rs(totals.totalBilled)}`,
     `💳 Total Amount Paid: ${rs(totals.totalPaid)}`,
   ];
   if (totals.totalCash > 0) lines.push(`   💵 Cash: ${rs(totals.totalCash)}`);
-  if (totals.totalUpi > 0) lines.push(`   📱 UPI: ${rs(totals.totalUpi)}`);
   if (totals.totalAccount > 0) lines.push(`   🏦 Account: ${rs(totals.totalAccount)}`);
-  if (hasReturns) lines.push(`🔄 Total Returns: -${rs(totals.totalReturns)}`);
+  if (totals.balanceReturns > 0) lines.push(`🔄 Total Returns: -${rs(totals.balanceReturns)}`);
+  if (totals.refundedReturns > 0) lines.push(`🔄 Returns (refunded): ${rs(totals.refundedReturns)}`);
   lines.push(
     '',
-    hasReturns
-      ? `✅ *ADJUSTED OUTSTANDING BALANCE: ${rs(totals.adjustedBalanceDue)}*`
-      : `✅ *OUTSTANDING BALANCE: ${rs(mostRecent.balanceDue)}*`,
+    totals.balanceReturns > 0
+      ? `✅ *ADJUSTED OUTSTANDING BALANCE: ${rs(totals.outstanding)}*`
+      : `✅ *OUTSTANDING BALANCE: ${rs(totals.outstanding)}*`,
     '',
   );
   if (hasReturns)
@@ -105,7 +113,7 @@ export function buildCombinedStatementMessage(statement, labels) {
     LIGHT,
     ...invoices.map(
       (i) =>
-        `• #${displayInvoiceNo(labels, i.invoiceNo)} - ${formatDateIN(i.invoiceDate)} - Due: ${rs(i.totalReturns > 0 ? i.adjustedBalanceDue : i.balanceDue)}`,
+        `• #${displayInvoiceNo(labels, i.invoiceNo)} - ${formatDateIN(i.invoiceDate)} - Due: ${rs(invoiceDue(i))}`,
     ),
     '',
     HEAVY,

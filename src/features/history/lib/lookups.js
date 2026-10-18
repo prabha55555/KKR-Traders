@@ -3,7 +3,7 @@
  * latestInvoicePerCustomer) so rendering thousands of invoices never queries per invoice.
  */
 import { toNum } from '@/core/format';
-import { compareNewestFirst } from './filters';
+import { groupParties } from '@/core/ledger';
 export function indexByInvoiceNo(items) {
   const map = new Map();
   for (const item of items) {
@@ -13,19 +13,23 @@ export function indexByInvoiceNo(items) {
   }
   return map;
 }
-/** Sum of `returnAmount` with the web's parseFloat(x) || 0 coercion. */
+/** Sum of `returnAmount` with the web's parseFloat(x) || 0 coercion (ALL returns, refunded or not). */
 export function sumReturnAmounts(returns) {
   return returns.reduce((sum, r) => sum + toNum(r.returnAmount), 0);
 }
 export function sumPaymentAmounts(payments) {
   return payments.reduce((sum, p) => sum + p.amount, 0);
 }
-/** party name -> invoiceNo of that party's newest invoice (date, then invoice number, descending) over ALL invoices. */
-export function latestInvoiceNoPerParty(invoices, partyName) {
-  const latest = new Map();
-  [...invoices].sort(compareNewestFirst).forEach((invoice) => {
-    const party = partyName(invoice);
-    if (!latest.has(party)) latest.set(party, invoice.invoiceNo);
-  });
+/**
+ * Invoice numbers of each party's newest bill over ALL bills (`kind` = SALES_LEDGER / PURCHASE_LEDGER): parties are
+ * grouped exactly like the ledger chains them (phone first, see core/ledger groupParties) and "newest" is the last
+ * bill in ledger order — the bill whose closing balance is what the party owes now.
+ */
+export function latestInvoiceNoPerParty(kind, bills) {
+  const latest = new Set();
+  for (const party of groupParties(kind, bills)) {
+    const last = party.bills[party.bills.length - 1];
+    if (last) latest.add(last.invoiceNo);
+  }
   return latest;
 }

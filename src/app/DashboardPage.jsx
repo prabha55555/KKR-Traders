@@ -14,19 +14,16 @@ import {
   Sparkles,
   Landmark,
   Layers,
-  ChevronDown,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { COMPANY, PRODUCT, SERVICES } from '@/core/branding';
 import { formatDateShort, todayISO } from '@/core/format';
-import { Button, cn, useFeedback } from '@/ui';
+import { Button, useFeedback } from '@/ui';
 import { useAuth } from './AuthProvider';
 import { BrandLockup } from './Brand';
 import { GoldWaves, Sparkle } from './Decor';
 import { InstallButton, OfflineBanner, useInstallPrompt } from './pwa';
-import { NAV_CATEGORIES } from './ModuleLayout';
 
 const MODULE_CARDS = [
   {
@@ -78,64 +75,6 @@ function greeting() {
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
-function HeaderDropdown({ category }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener('pointerdown', handleDown);
-    return () => window.removeEventListener('pointerdown', handleDown);
-  }, [open]);
-
-  const Icon = category.icon;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-brand-200 transition hover:bg-white/10 hover:text-white"
-      >
-        <Icon className="size-3.5 text-gold-300" />
-        <span>{category.title}</span>
-        <ChevronDown
-          className={cn(
-            'size-3 text-brand-300 transition-transform duration-150',
-            open && 'rotate-180 text-gold-300',
-          )}
-        />
-      </button>
-
-      {open && (
-        <div className="absolute top-full left-0 z-50 mt-2 w-56 animate-fade-in rounded-2xl border border-white/15 bg-brand-900/95 p-1.5 shadow-pop backdrop-blur-md">
-          <div className="px-2.5 py-1 text-[10px] font-bold tracking-wider text-gold-400 uppercase">
-            {category.title}
-          </div>
-          <div className="space-y-0.5">
-            {category.items.map(({ to, label, icon: SubIcon }) => (
-              <Link
-                key={to}
-                to={to}
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs font-medium text-brand-200 transition hover:bg-white/10 hover:text-white"
-              >
-                <SubIcon className="size-3.5 text-gold-300" />
-                <span className="truncate">{label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const { logout, username } = useAuth();
   const { confirm } = useFeedback();
@@ -162,11 +101,6 @@ export default function DashboardPage() {
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-3 py-5">
             <BrandLockup />
-            <div className="hidden items-center gap-1 rounded-full bg-white/5 px-2 py-1 ring-1 ring-white/10 backdrop-blur lg:flex">
-              {NAV_CATEGORIES.filter((c) => !c.isDirect).map((category) => (
-                <HeaderDropdown key={category.id} category={category} />
-              ))}
-            </div>
             <div className="flex items-center gap-2">
               <InstallButton className="hidden sm:inline-flex" />
               <Button variant="danger" size="sm" icon={LogOut} onClick={onLogout}>
@@ -183,7 +117,9 @@ export default function DashboardPage() {
             <h1 className="mt-2 max-w-2xl font-display text-3xl leading-[1.12] font-extrabold sm:text-5xl">
               Welcome to <span className="text-gold-gradient">{PRODUCT.name}</span>
             </h1>
-            <p className="mt-3 max-w-xl text-base text-brand-200 sm:text-lg">{COMPANY.tagline}.</p>
+            {COMPANY.tagline ? (
+              <p className="mt-3 max-w-xl text-base text-brand-200 sm:text-lg">{COMPANY.tagline}.</p>
+            ) : null}
             <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm text-brand-100 ring-1 ring-white/10 backdrop-blur">
               <CalendarDays className="size-4 text-gold-400" /> {formatDateShort(todayISO())}
             </div>
@@ -193,7 +129,7 @@ export default function DashboardPage() {
 
       {/* ------------------------------------------------------------ content */}
       <main className="pb-safe relative mx-auto -mt-20 max-w-7xl px-4 pb-12 sm:-mt-24 sm:px-6 lg:px-8">
-        <section aria-label="Modules" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 md:gap-4">
+        <section aria-label="Modules" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {MODULE_CARDS.map(({ to, title, text, icon: Icon, points }, i) => (
             <Link
               key={to}
@@ -221,37 +157,6 @@ export default function DashboardPage() {
               </ul>
             </Link>
           ))}
-        </section>
-
-        <section
-          aria-label="Features"
-          className="relative mt-10 mb-2 overflow-hidden rounded-3xl border border-line bg-white shadow-card sm:mt-16"
-        >
-          <div className="px-6 py-10 sm:px-12 sm:py-12 md:flex md:items-center md:justify-between md:gap-8">
-            <div className="md:flex-1">
-              <h3 className="font-display text-2xl font-extrabold text-brand-900 sm:text-3xl">
-                Ready to scale your operations?
-              </h3>
-              <p className="mt-3 max-w-lg text-base leading-relaxed text-slate-600">
-                Experience seamless accounting, lightning-fast invoicing, and effortless inventory tracking —
-                everything you need in one unified space.
-              </p>
-            </div>
-            <div className="mt-8 flex flex-wrap gap-3 md:mt-0 md:w-[320px] md:shrink-0 md:flex-col md:items-end md:justify-center">
-              <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition ring-inset hover:bg-gold-50 hover:text-brand-900 hover:ring-gold-200">
-                <Sparkles className="size-4 text-gold-500" />
-                Smart Automation
-              </div>
-              <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition ring-inset hover:bg-emerald-50 hover:text-emerald-900 hover:ring-emerald-200">
-                <Globe className="size-4 text-emerald-500" />
-                Cloud Synced
-              </div>
-              <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 transition ring-inset hover:bg-sky-50 hover:text-sky-900 hover:ring-sky-200">
-                <PieChart className="size-4 text-sky-500" />
-                Real-time Analytics
-              </div>
-            </div>
-          </div>
         </section>
 
         {showIosHint ? (

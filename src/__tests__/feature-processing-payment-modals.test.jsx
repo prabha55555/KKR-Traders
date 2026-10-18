@@ -37,35 +37,33 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
 
     it('renders with prefilled balance due and allows switching payment modes without errors', async () => {
       renderWithFeedback(
-        <AddDyeingPaymentModal
-          open={true}
-          batch={mockBatch}
-          onClose={vi.fn()}
-          onPaymentAdded={vi.fn()}
-        />,
+        <AddDyeingPaymentModal open={true} batch={mockBatch} onClose={vi.fn()} onPaymentAdded={vi.fn()} />,
       );
 
       // Verify header and balance
       expect(screen.getByText(/Pay Dyer — Batch #B-101/i)).toBeInTheDocument();
       expect(screen.getByText(/₹3,000/)).toBeInTheDocument();
 
-      // Click on "Bank" mode
-      const bankModeButton = screen.getByRole('button', { name: /Bank/i });
-      fireEvent.click(bankModeButton);
+      // Only two methods: Cash and Account (UPI is an Account payment)
+      expect(screen.queryByRole('button', { name: /UPI/i })).not.toBeInTheDocument();
+
+      // Click on "Account" mode
+      const accountModeButton = screen.getByRole('button', { name: /^Account$/i });
+      fireEvent.click(accountModeButton);
 
       // Verify the Select Bank Account dropdown appears and does NOT crash
       await waitFor(() => {
         expect(screen.getByLabelText(/Select Bank Account/i)).toBeInTheDocument();
       });
+      // Option labels are just the account name; the balance is shown on its own line
+      expect(screen.getByRole('option', { name: 'HDFC Business' })).toBeInTheDocument();
+      expect(screen.getByText(/Available:/i)).toBeInTheDocument();
+      expect(screen.getByText(/₹50,000/)).toBeInTheDocument();
 
       // Change selected bank account in dropdown
       const bankSelect = screen.getByLabelText(/Select Bank Account/i);
       fireEvent.change(bankSelect, { target: { value: 'acc_2' } });
-
-      // Click on "UPI" mode
-      const upiModeButton = screen.getByRole('button', { name: /UPI/i });
-      fireEvent.click(upiModeButton);
-      expect(screen.getByLabelText(/Select Bank Account/i)).toBeInTheDocument();
+      expect(screen.getByText(/₹12,000/)).toBeInTheDocument();
 
       // Click back on "Cash" mode
       const cashModeButton = screen.getByRole('button', { name: /Cash/i });
@@ -85,20 +83,15 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
 
     it('renders with prefilled full charge and allows switching to Bank mode and selecting account', async () => {
       renderWithFeedback(
-        <AddCombingPaymentModal
-          open={true}
-          batch={mockBatch}
-          onClose={vi.fn()}
-          onPaymentAdded={vi.fn()}
-        />,
+        <AddCombingPaymentModal open={true} batch={mockBatch} onClose={vi.fn()} onPaymentAdded={vi.fn()} />,
       );
 
       // Verify header
       expect(screen.getByText(/Pay Mill \/ Processor — Batch #CB-202/i)).toBeInTheDocument();
 
-      // Switch to Bank
-      const bankModeButton = screen.getByRole('button', { name: /Bank/i });
-      fireEvent.click(bankModeButton);
+      // Switch to Account
+      const accountModeButton = screen.getByRole('button', { name: /^Account$/i });
+      fireEvent.click(accountModeButton);
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Select Bank Account/i)).toBeInTheDocument();
@@ -108,6 +101,100 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
       const bankSelect = screen.getByLabelText(/Select Bank Account/i);
       fireEvent.change(bankSelect, { target: { value: 'acc_1' } });
       expect(bankSelect.value).toBe('acc_1');
+    });
+  });
+
+  describe('Account payments keep the stored mode value', () => {
+    it("records an Account payment as mode 'Bank' with the selected account", async () => {
+      const mockBatch = {
+        batchId: 'B-505',
+        processorName: 'Sri Balaji Dyeing',
+        totalDyeingCost: 4000,
+        payments: [],
+      };
+      const spy = vi
+        .spyOn(dyeingService, 'addDyeingBatchPayment')
+        .mockResolvedValue({ batch: mockBatch, payment: {} });
+
+      renderWithFeedback(
+        <AddDyeingPaymentModal open={true} batch={mockBatch} onClose={vi.fn()} onPaymentAdded={vi.fn()} />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /^Account$/i }));
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: 'SBI Current' })).toBeInTheDocument();
+      });
+      fireEvent.change(screen.getByLabelText(/Select Bank Account/i), { target: { value: 'acc_2' } });
+      fireEvent.submit(document.getElementById('dyeing-payment-form'));
+
+      await waitFor(() => expect(spy).toHaveBeenCalled());
+      expect(spy).toHaveBeenCalledWith(
+        'B-505',
+        expect.objectContaining({
+          amount: 4000,
+          mode: 'Bank',
+          bankAccountId: 'acc_2',
+          bankAccountName: 'SBI Current',
+        }),
+      );
+    });
+
+    it('names an account that only has a bank name (new 2-field accounts)', async () => {
+      accountsLogic.loadLiveAccountBalances.mockResolvedValue({
+        cashBalance: 0,
+        bankAccounts: [{ id: 'acc_9', bankName: 'Canara Bank', currentBalance: 700 }],
+      });
+      const mockBatch = { batchId: 'CB-9', processorName: 'Mill', totalProcessingCost: 100, payments: [] };
+      const spy = vi
+        .spyOn(combingService, 'addCombingBatchPayment')
+        .mockResolvedValue({ batch: mockBatch, payment: {} });
+
+      renderWithFeedback(
+        <AddCombingPaymentModal open={true} batch={mockBatch} onClose={vi.fn()} onPaymentAdded={vi.fn()} />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /^Account$/i }));
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: 'Canara Bank' })).toBeInTheDocument();
+      });
+      expect(screen.getByText(/₹700/)).toBeInTheDocument();
+      fireEvent.submit(document.getElementById('combing-payment-form'));
+
+      await waitFor(() => expect(spy).toHaveBeenCalled());
+      expect(spy.mock.calls[0][1]).toMatchObject({
+        mode: 'Bank',
+        bankAccountId: 'acc_9',
+        bankAccountName: 'Canara Bank',
+      });
+    });
+  });
+
+  describe('Payment history mode badges', () => {
+    it('shows legacy UPI and Bank payments as Account, and Cash as Cash in Hand', () => {
+      const mockBatch = {
+        batchId: 'B-606',
+        processorName: 'Sri Balaji Dyeing',
+        totalDyeingCost: 9000,
+        payments: [
+          { id: 'a', amount: 1000, mode: 'UPI', date: '2026-10-01', bankAccountName: 'HDFC Business' },
+          { id: 'b', amount: 2000, mode: 'Bank', date: '2026-10-02', bankAccountName: 'SBI Current' },
+          { id: 'c', amount: 3000, mode: 'Cash', date: '2026-10-03' },
+        ],
+      };
+
+      renderWithFeedback(
+        <DyeingPaymentHistoryModal
+          open={true}
+          batch={mockBatch}
+          onClose={vi.fn()}
+          onOpenAddPayment={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Account: HDFC Business')).toBeInTheDocument();
+      expect(screen.getByText('Account: SBI Current')).toBeInTheDocument();
+      expect(screen.getByText('Cash in Hand')).toBeInTheDocument();
+      expect(screen.queryByText(/UPI/)).not.toBeInTheDocument();
     });
   });
 

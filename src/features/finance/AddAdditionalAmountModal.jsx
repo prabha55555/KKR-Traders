@@ -1,114 +1,132 @@
-import { ArrowDownLeft, ArrowUpRight, PlusCircle, Save } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Save, Scale } from 'lucide-react';
 import { useState } from 'react';
 
-import { todayISO } from '@/core/format';
+import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
+import { formatCurrency, todayISO, toNum } from '@/core/format';
 import { Button, DateField, Grid, Modal, NumberField, SelectField, TextField } from '@/ui';
+
+import { buildCashBalanceEdit } from './accountsLogic';
 
 const FORM_ID = 'add-additional-amount-form';
 
-const REASON_OPTIONS_IN = [
-  { value: 'Owner Capital / Personal Funds', label: 'Owner Capital / Personal Investment' },
-  { value: 'Direct Cash Deposit', label: 'Direct Cash Deposit' },
-  { value: 'Other Business Income', label: 'Other Business Income / Commission' },
-  { value: 'Interest / Incentive / Cashback', label: 'Bank Interest / Cashback / Incentive' },
-  { value: 'Counter Cash Top-Up', label: 'Counter Cash Top-Up / Change Added' },
-  { value: 'Balance Correction / Adjustment', label: 'Balance Correction / Audit Adjustment' },
-  { value: 'Other', label: 'Other (Specify in Remarks)' },
-];
+const rs = (n) => {
+  const val = toNum(n);
+  return val < 0 ? `-₹${formatCurrency(Math.abs(val))}` : `₹${formatCurrency(val)}`;
+};
 
-const REASON_OPTIONS_OUT = [
-  { value: 'Owner Drawings / Personal Use', label: 'Owner Drawings / Personal Withdrawal' },
-  { value: 'Bank Charges / Maintenance Fee', label: 'Bank Charges / SMS / Maintenance Fee' },
-  { value: 'Cash Adjustment / Discrepancy', label: 'Cash Adjustment / Drawer Shortage' },
-  { value: 'Other', label: 'Other (Specify in Remarks)' },
-];
+const TITLES = {
+  in: 'Add Amount',
+  out: 'Deduct Amount',
+  set: 'Edit Cash Balance',
+};
 
+/**
+ * Manual entries on an account, saved as ONE account_transactions doc through `onSave`:
+ *  - 'in'  (+ Add)        → { fromAccount: null, toAccount: account, type: 'Additional Amount' }
+ *  - 'out' (− Deduct)     → { fromAccount: account, toAccount: null, type: 'Manual Deduction' }
+ *  - 'set' (Edit Balance, Cash only) → the difference between the counted cash and `cashBalance`
+ *    (see buildCashBalanceEdit).
+ */
 export default function AddAdditionalAmountModal({
   accounts = [],
+  cashBalance = 0,
   initialAccountId = 'cash',
   initialMode = 'in',
   onClose,
   onSave,
   saving,
 }) {
-  const [mode, setMode] = useState(initialMode); // 'in' (Add Amount) | 'out' (Deduct Amount)
+  const [mode, setMode] = useState(initialMode); // 'in' | 'out' | 'set'
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     date: todayISO(),
-    account: initialAccountId || 'cash',
+    account: initialMode === 'set' ? 'cash' : initialAccountId || 'cash',
     amount: '',
-    reason: initialMode === 'out' ? REASON_OPTIONS_OUT[0].value : REASON_OPTIONS_IN[0].value,
+    target: '',
     notes: '',
   });
 
+  const isCash = form.account === 'cash';
   const accountOptions = [
-    { value: 'cash', label: 'Cash in Hand (Drawer)' },
-    ...accounts.map((a) => ({
-      value: a.id,
-      label: `${a.accountName} (${a.bankName || a.accountType})`,
-    })),
+    { value: 'cash', label: CASH_LABEL },
+    ...accounts.map((a) => ({ value: a.id, label: accountLabel(a) })),
   ];
 
-  const reasonOptions = mode === 'in' ? REASON_OPTIONS_IN : REASON_OPTIONS_OUT;
+  const targetNum = parseFloat(form.target);
+  const hasTarget = form.target !== '' && Number.isFinite(targetNum);
+  const delta = hasTarget ? Math.round((targetNum - toNum(cashBalance)) * 100) / 100 : 0;
 
-  const handleModeChange = (newMode) => {
-    setMode(newMode);
-    setForm((prev) => ({
-      ...prev,
-      reason: newMode === 'out' ? REASON_OPTIONS_OUT[0].value : REASON_OPTIONS_IN[0].value,
-    }));
+  const changeMode = (next) => {
+    setMode(next);
+    setError('');
+    if (next === 'set') setForm((prev) => ({ ...prev, account: 'cash' }));
+  };
+
+  const changeAccount = (account) => {
+    setForm((prev) => ({ ...prev, account }));
+    // Edit Balance is a cash-only action
+    if (account !== 'cash' && mode === 'set') setMode('in');
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setError('');
+
+    if (mode === 'set') {
+      if (!hasTarget || targetNum < 0) {
+        setError('Enter the cash you actually have (0 or more)');
+        return;
+      }
+      const tx = buildCashBalanceEdit({
+        cashBalance,
+        target: targetNum,
+        date: form.date,
+        notes: form.notes,
+      });
+      if (!tx) {
+        setError('Balance unchanged');
+        return;
+      }
+      onSave(tx);
+      return;
+    }
+
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) return;
-
-    if (mode === 'in') {
-      onSave({
-        date: form.date,
-        fromAccount: null, // external / manual addition
-        toAccount: form.account,
-        amount: amt,
-        type: 'Additional Amount',
-        category: form.reason,
-        notes: form.notes.trim(),
-      });
-    } else {
-      onSave({
-        date: form.date,
-        fromAccount: form.account,
-        toAccount: null, // external / manual deduction
-        amount: amt,
-        type: 'Manual Deduction',
-        category: form.reason,
-        notes: form.notes.trim(),
-      });
-    }
+    onSave(
+      mode === 'in'
+        ? {
+            date: form.date,
+            fromAccount: null, // added from outside the system
+            toAccount: form.account,
+            amount: amt,
+            type: 'Additional Amount',
+            notes: form.notes.trim(),
+          }
+        : {
+            date: form.date,
+            fromAccount: form.account,
+            toAccount: null, // removed to outside the system
+            amount: amt,
+            type: 'Manual Deduction',
+            notes: form.notes.trim(),
+          },
+    );
   };
+
+  const modes = [
+    { value: 'in', label: '+ Add', icon: ArrowDownLeft, active: 'bg-emerald-600 text-white shadow-sm' },
+    { value: 'out', label: '− Deduct', icon: ArrowUpRight, active: 'bg-rose-600 text-white shadow-sm' },
+    ...(isCash
+      ? [{ value: 'set', label: 'Edit Balance', icon: Scale, active: 'bg-brand-800 text-white shadow-sm' }]
+      : []),
+  ];
 
   return (
     <Modal
       open={true}
       onClose={saving ? undefined : onClose}
-      title={
-        <div className="flex items-center gap-2">
-          <div
-            className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${
-              mode === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-            }`}
-          >
-            {mode === 'in' ? <ArrowDownLeft className="size-4.5" /> : <ArrowUpRight className="size-4.5" />}
-          </div>
-          <div>
-            <div className="text-base font-bold text-slate-900">
-              {mode === 'in' ? 'Add Additional Amount' : 'Record Manual Deduction'}
-            </div>
-            <div className="text-xs font-normal text-slate-500">
-              Manual balance adjustment for Bank Accounts or Cash in Hand
-            </div>
-          </div>
-        </div>
-      }
+      title={TITLES[mode] || TITLES.in}
       size="md"
       footer={
         <>
@@ -118,84 +136,113 @@ export default function AddAdditionalAmountModal({
           <Button
             type="submit"
             form={FORM_ID}
-            variant="primary"
+            variant={mode === 'out' ? 'danger' : mode === 'set' ? 'secondary' : 'success'}
             icon={Save}
             loading={saving}
-            className={`max-sm:flex-1 ${
-              mode === 'in' ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-rose-700 hover:bg-rose-800'
-            }`}
+            className="max-sm:flex-1"
           >
-            {saving ? 'Saving...' : mode === 'in' ? 'Add Amount' : 'Record Deduction'}
+            {saving
+              ? 'Saving...'
+              : mode === 'in'
+                ? 'Add Amount'
+                : mode === 'out'
+                  ? 'Record Deduction'
+                  : 'Update Balance'}
           </Button>
         </>
       }
     >
       <form id={FORM_ID} onSubmit={handleSubmit} className="space-y-4">
-        {/* Toggle Mode: Inflow (+) vs Outflow (-) */}
-        <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
-          <button
-            type="button"
-            onClick={() => handleModeChange('in')}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition ${
-              mode === 'in' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ArrowDownLeft className="size-4" />
-            <span>+ Add Amount (Inflow)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleModeChange('out')}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition ${
-              mode === 'out' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ArrowUpRight className="size-4" />
-            <span>- Deduct Amount (Outflow)</span>
-          </button>
+        <div
+          className={`grid gap-2 rounded-xl bg-slate-100 p-1 ${modes.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}
+        >
+          {modes.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              aria-pressed={mode === m.value}
+              onClick={() => changeMode(m.value)}
+              className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-1 text-xs font-bold transition sm:text-sm ${
+                mode === m.value ? m.active : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <m.icon className="size-4 shrink-0" aria-hidden />
+              <span>{m.label}</span>
+            </button>
+          ))}
         </div>
 
-        <Grid>
-          <SelectField
-            label={mode === 'in' ? 'Deposit Into (Account)' : 'Deduct From (Account)'}
-            value={form.account}
-            onChange={(account) => setForm((prev) => ({ ...prev, account }))}
-            options={accountOptions}
-            required
-          />
-
-          <NumberField
-            label="Amount (₹)"
-            placeholder="0.00"
-            value={form.amount}
-            onChange={(amount) => setForm((prev) => ({ ...prev, amount }))}
-            required
-            autoFocus
-          />
-
-          <DateField
-            label="Entry Date"
-            value={form.date}
-            onChange={(date) => setForm((prev) => ({ ...prev, date }))}
-            required
-          />
-
-          <SelectField
-            label="Reason / Category"
-            value={form.reason}
-            onChange={(reason) => setForm((prev) => ({ ...prev, reason }))}
-            options={reasonOptions}
-            required
-          />
-
-          <TextField
-            label="Remarks / Reference (optional)"
-            placeholder="e.g. Personal fund addition, counter top-up, cheque #12345"
-            value={form.notes}
-            onChange={(notes) => setForm((prev) => ({ ...prev, notes }))}
-            className="sm:col-span-2"
-          />
-        </Grid>
+        {mode === 'set' ? (
+          <>
+            <div className="flex items-center justify-between rounded-xl border border-line bg-slate-50/80 px-3.5 py-2.5 text-sm">
+              <span className="font-semibold text-slate-600">Current cash (system)</span>
+              <span className="font-display font-extrabold text-slate-900 tabular-nums">
+                {rs(cashBalance)}
+              </span>
+            </div>
+            <Grid cols={{ base: 1, sm: 2 }}>
+              <NumberField
+                label="Actual cash in hand (₹)"
+                value={form.target}
+                onChange={(target) => {
+                  setForm((prev) => ({ ...prev, target }));
+                  setError('');
+                }}
+                error={error}
+                hint={
+                  hasTarget && Math.abs(delta) >= 0.01
+                    ? `Difference: ${delta > 0 ? '+' : '−'}₹${formatCurrency(Math.abs(delta))}`
+                    : 'Only the difference is recorded, as one entry you can undo.'
+                }
+                required
+                autoFocus
+              />
+              <DateField
+                label="Entry Date"
+                value={form.date}
+                onChange={(date) => setForm((prev) => ({ ...prev, date }))}
+                required
+              />
+              <TextField
+                label="Remarks (optional)"
+                placeholder="e.g. Cash counted at closing"
+                value={form.notes}
+                onChange={(notes) => setForm((prev) => ({ ...prev, notes }))}
+                className="sm:col-span-2"
+              />
+            </Grid>
+          </>
+        ) : (
+          <Grid cols={{ base: 1, sm: 2 }}>
+            <SelectField
+              label={mode === 'in' ? 'Add To' : 'Deduct From'}
+              value={form.account}
+              onChange={changeAccount}
+              options={accountOptions}
+              required
+            />
+            <NumberField
+              label="Amount (₹)"
+              placeholder="0.00"
+              value={form.amount}
+              onChange={(amount) => setForm((prev) => ({ ...prev, amount }))}
+              required
+              autoFocus
+            />
+            <DateField
+              label="Entry Date"
+              value={form.date}
+              onChange={(date) => setForm((prev) => ({ ...prev, date }))}
+              required
+            />
+            <TextField
+              label="Remarks / Reference (optional)"
+              placeholder="e.g. Owner capital, bank charges, cheque #12345"
+              value={form.notes}
+              onChange={(notes) => setForm((prev) => ({ ...prev, notes }))}
+            />
+          </Grid>
+        )}
       </form>
     </Modal>
   );

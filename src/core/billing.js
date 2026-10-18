@@ -4,10 +4,12 @@
  */
 import { db } from './db';
 import { getFinancialYear, toNum } from './format';
+import { normalizeMethod } from './paymentMethods';
 import {
   PURCHASE_LEDGER,
   SALES_LEDGER,
-  partyMatcher,
+  isBalanceReturn,
+  partyBills,
   previousBalanceAt,
   returnsTotalsByInvoice,
   roundMoney,
@@ -32,26 +34,28 @@ export function buildProductLines(rows, opts = {}) {
 /** Sales: grand total = subtotal + previous balance + opening balance - discount (may be negative). */
 export function calcSalesTotals(i) {
   const grandTotal = i.subtotal + i.previousBalance + (i.manualPreviousBalance || 0) - (i.discount || 0);
-  const totalPaid = (i.cash || 0) + (i.upi || 0) + (i.account || 0) + (i.additionalPaid || 0);
+  const totalPaid = (i.cash || 0) + (i.account || 0) + (i.additionalPaid || 0);
   return { grandTotal, totalPaid, balanceDue: grandTotal - totalPaid };
 }
-/** Purchase: identical, except the grand total never goes below zero (purchase.js). */
+/**
+ * Purchase: identical (payments added later are not part of the create form). The web floored the grand total at
+ * zero, which silently threw away an advance / credit with the supplier; like sales, a negative total is kept and
+ * carried into the next bill (see core/ledger.js).
+ */
 export function calcPurchaseTotals(i) {
-  const t = calcSalesTotals({ ...i, additionalPaid: 0 });
-  const grandTotal = t.grandTotal < 0 ? 0 : t.grandTotal;
-  return { grandTotal, totalPaid: t.totalPaid, balanceDue: grandTotal - t.totalPaid };
+  return calcSalesTotals({ ...i, additionalPaid: 0 });
 }
-/** Rebuild the cash/upi/account split from stored 'initial' payments (script.js loadInvoiceForEditing). */
+/**
+ * Rebuild the cash/account split from stored payment documents (script.js loadInvoiceForEditing). Legacy UPI / GPay /
+ * bank documents count as Account (see core/paymentMethods).
+ */
 export function breakdownFromPayments(payments) {
   return payments.reduce(
     (acc, p) => {
-      const method = String(p.paymentMethod || 'cash').toLowerCase();
-      if (method === 'upi') acc.upi += p.amount;
-      else if (method === 'account' || method === 'bank') acc.account += p.amount;
-      else acc.cash += p.amount;
+      acc[normalizeMethod(p.paymentMethod)] += toNum(p.amount);
       return acc;
     },
-    { cash: 0, upi: 0, account: 0 },
+    { cash: 0, account: 0 },
   );
 }
 // ====================================================================== purchase bill field access
@@ -138,15 +142,31 @@ export async function calculateTotalReturns(invoiceNo) {
     return 0;
   }
 }
+/** Returns of one bill: `total` (all) and `balance` (only those settled against the balance, not refunded). */
+function splitReturns(returns) {
+  return returns.reduce(
+    (acc, r) => {
+      const amount = toNum(r.returnAmount);
+      acc.total += amount;
+      if (isBalanceReturn(r)) acc.balance += amount;
+      return acc;
+    },
+    { total: 0, balance: 0 },
+  );
+}
+/**
+ * Stores totalReturns (all returns) and adjustedBalanceDue = balanceDue - returns settled against the balance (a
+ * return refunded in cash / bank does not lower what is owed; the web subtracted it as well).
+ */
 export async function updateInvoiceWithReturns(invoiceNo) {
   try {
-    const totalReturns = await calculateTotalReturns(invoiceNo);
+    const returns = splitReturns(await db.getReturnsByInvoice(invoiceNo));
     const invoice = await db.getInvoice(invoiceNo);
     if (invoice) {
       await db.saveInvoice({
         ...invoice,
-        totalReturns,
-        adjustedBalanceDue: invoice.balanceDue - totalReturns,
+        totalReturns: roundMoney(returns.total),
+        adjustedBalanceDue: roundMoney(toNum(invoice.balanceDue) - returns.balance),
       });
     }
   } catch (error) {
@@ -162,15 +182,16 @@ export async function calculateTotalPurchaseReturns(invoiceNo) {
     return 0;
   }
 }
+/** Purchase equivalent of updateInvoiceWithReturns. */
 export async function updatePurchaseBillWithReturns(invoiceNo) {
   try {
-    const totalReturns = await calculateTotalPurchaseReturns(invoiceNo);
+    const returns = splitReturns(await db.getPurchaseReturnsByInvoice(invoiceNo));
     const bill = await db.getPurchaseBill(invoiceNo);
     if (bill) {
       await db.savePurchaseBill({
         ...bill,
-        totalReturns,
-        adjustedBalanceDue: purchaseBalanceDue(bill) - totalReturns,
+        totalReturns: roundMoney(returns.total),
+        adjustedBalanceDue: roundMoney(purchaseBalanceDue(bill) - returns.balance),
       });
     }
   } catch (error) {
@@ -248,8 +269,8 @@ export async function calculatePreviousBalanceAtTime(
   invoiceDate = null,
 ) {
   try {
-    const [invoices, returns] = await Promise.all([db.getAllInvoices(), db.getAllReturns()]);
-    const bills = invoices.filter(partyMatcher(SALES_LEDGER, customerName, customerPhone));
+    const [invoices, returns] = await Promise.all([db.getAllInvoices(), db.getAllReturns({ strict: true })]);
+    const bills = partyBills(SALES_LEDGER, invoices, customerName, customerPhone);
     const result = previousBalanceAt(
       bills,
       SALES_LEDGER,
@@ -267,7 +288,8 @@ export async function calculatePreviousBalanceAtTime(
   }
 }
 /**
- * Supplier equivalent (purchase bills + purchase returns). Reads both the nested `payment` object of new bills and
+ * Supplier equivalent (purchase bills + purchase returns). A failed read is reported as `failed` (callers keep the
+ * value they have instead of showing 0). Reads both the nested `payment` object of new bills and
  * the top-level fields of edited / legacy bills — the web read only the top-level `balanceDue`, so a bill created on
  * the purchase screen carried 0 until it was edited.
  */
@@ -279,13 +301,10 @@ export async function calculateSupplierPreviousBalanceAtTime(
 ) {
   try {
     const [bills, returns] = await Promise.all([
-      db.getAllPurchaseBills(),
-      db.getAllPurchaseReturns().catch((error) => {
-        console.error('Error loading purchase returns:', error);
-        return [];
-      }),
+      db.getAllPurchaseBills({ strict: true }),
+      db.getAllPurchaseReturns(),
     ]);
-    const own = bills.filter(partyMatcher(PURCHASE_LEDGER, supplierName, supplierPhone));
+    const own = partyBills(PURCHASE_LEDGER, bills, supplierName, supplierPhone);
     const result = previousBalanceAt(
       own,
       PURCHASE_LEDGER,
@@ -316,12 +335,15 @@ export async function saveCustomerDetails(name, address, phone) {
     return;
   }
   try {
-    await db.saveCustomer({
-      phone: phone.trim(),
-      name: name ? name.trim() : '',
-      address: address ? address.trim() : '',
-      lastUpdated: new Date().toISOString(),
-    });
+    await db.saveCustomer(
+      {
+        phone: phone.trim(),
+        name: name ? name.trim() : '',
+        address: address ? address.trim() : '',
+        lastUpdated: new Date().toISOString(),
+      },
+      { merge: true },
+    );
   } catch (error) {
     console.error('Error saving customer details:', error);
   }

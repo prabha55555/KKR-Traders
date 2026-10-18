@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFeedback } from '@/ui';
+import { statementState } from '../lib/statement';
 import { isUserError } from '../lib/types';
 import {
   exportCombinedSupplierStatement,
@@ -14,6 +15,8 @@ export function usePurchaseStatement() {
   const [state, setState] = useState({ status: 'idle' });
   const [busy, setBusy] = useState(null);
   const lastQuery = useRef('');
+  /** the ledger party on screen (picked or the only match): a refresh rebuilds exactly that party's statement */
+  const lastParty = useRef(null);
   const generate = useCallback(async () => {
     const supplierName = query.trim();
     if (!supplierName) {
@@ -21,19 +24,37 @@ export function usePurchaseStatement() {
       return;
     }
     lastQuery.current = supplierName;
+    lastParty.current = null;
     setState({ status: 'loading' });
     try {
-      const statement = await loadSupplierStatement(supplierName);
-      setState(statement ? { status: 'ready', statement } : { status: 'empty', query: supplierName });
+      const result = await loadSupplierStatement(supplierName);
+      lastParty.current = result?.partyKey ?? null;
+      setState(statementState(result, supplierName));
     } catch (error) {
       console.error('Error searching supplier invoices:', error);
       setState({ status: 'error' });
       toast('Error', 'Error searching supplier invoices.', 'error');
     }
   }, [query, toast]);
+  /** One of several matching parties was picked. */
+  const choose = useCallback(
+    async (partyKey) => {
+      lastParty.current = partyKey;
+      setState({ status: 'loading' });
+      try {
+        setState(statementState(await loadSupplierStatement(lastQuery.current, partyKey), lastQuery.current));
+      } catch (error) {
+        console.error('Error loading supplier statement:', error);
+        setState({ status: 'error' });
+        toast('Error', 'Error searching supplier invoices.', 'error');
+      }
+    },
+    [toast],
+  );
   const clear = useCallback(() => {
     setQuery('');
     lastQuery.current = '';
+    lastParty.current = null;
     setState({ status: 'idle' });
   }, []);
   /** After a payment / return changed the numbers: silently rebuild the statement that is on screen. */
@@ -41,8 +62,8 @@ export function usePurchaseStatement() {
     const supplierName = lastQuery.current;
     if (!supplierName) return;
     try {
-      const statement = await loadSupplierStatement(supplierName);
-      setState(statement ? { status: 'ready', statement } : { status: 'empty', query: supplierName });
+      const result = await loadSupplierStatement(supplierName, lastParty.current ?? undefined);
+      setState(statementState(result, supplierName));
     } catch (error) {
       console.error('Error refreshing supplier statement:', error);
     }
@@ -93,6 +114,7 @@ export function usePurchaseStatement() {
     state,
     busy,
     generate,
+    choose,
     clear,
     refresh,
     downloadPdf,

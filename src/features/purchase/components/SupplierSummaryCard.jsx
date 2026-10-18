@@ -4,7 +4,10 @@ import { Card, KeyValue, TotalInvoicesClickable } from '@/ui';
 import { formatRupees } from '@/core/format';
 import { RevealablePhone } from './RevealablePhone';
 
-/** One supplier of the Supplier Details list on phones / tablets (a row of the desktop table). */
+/**
+ * One supplier of the Supplier Details list on phones / tablets (a row of the desktop table). Balance Due is the
+ * supplier's ledger balance; below zero it is an advance / credit with the supplier.
+ */
 export function SupplierSummaryCard({ supplier }) {
   const owing = supplier.balanceDue > 0;
   return (
@@ -34,10 +37,7 @@ export function SupplierSummaryCard({ supplier }) {
             />
           }
         />
-        <KeyValue
-          label="Opening Balance"
-          value={formatRupees(supplier.firstBillPreviousBalance + supplier.totalManualAdjustments)}
-        />
+        <KeyValue label="Opening Balance" value={formatRupees(supplier.openingBalance)} />
         <KeyValue label="Total Amount" value={formatRupees(supplier.totalAmount)} />
         <KeyValue label="Amount Paid" value={formatRupees(supplier.totalPaid)} />
         <KeyValue label="Discount" value={formatRupees(supplier.totalDiscount)} />

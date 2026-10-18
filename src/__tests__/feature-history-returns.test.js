@@ -1,12 +1,16 @@
 import { db } from '@/core/db';
+import { SALES_LEDGER } from '@/core/ledger';
 import {
+  aggregatePartyProducts,
   alreadyReturnedQty,
   chooseReturnProduct,
   newReturnItem,
+  partyReturnProducts,
+  refundSettlement,
   returnItemAmount,
   returnItemDescription,
   returnSuccessMessage,
-  returnSummary,
+  returnTotal,
   returnedQtyByDescription,
   validateReturnDraft,
 } from '@/features/history/lib/returns';
@@ -28,7 +32,6 @@ const validate = (over = {}) =>
     items: [shirt('1')],
     products,
     existingReturns: [],
-    currentBalance: 1000,
     ...over,
   });
 describe('return line editing', () => {
@@ -49,16 +52,13 @@ describe('return line editing', () => {
     expect(returnItemAmount({ qty: '2', rate: '250.5' })).toBe(501);
     expect(returnItemAmount({ qty: '', rate: 'x' })).toBe(0);
   });
-  test('summary: new adjusted balance = current balance - this return', () => {
+  test('return amount = sum of the lines', () => {
     expect(
-      returnSummary(
-        [
-          { qty: '2', rate: '100' },
-          { qty: '1', rate: '50.5' },
-        ],
-        1000,
-      ),
-    ).toEqual({ total: 250.5, newAdjustedBalance: 749.5 });
+      returnTotal([
+        { qty: '2', rate: '100' },
+        { qty: '1', rate: '50.5' },
+      ]),
+    ).toBe(250.5);
   });
   test('returned quantity per product', () => {
     const returns = [
@@ -129,13 +129,32 @@ describe('validateReturnDraft (order and wording of saveReturn)', () => {
       total: 100,
     });
   });
-  test('the total must not exceed the current balance', () => {
-    expect(validate({ items: [shirt('5')], currentBalance: 400 })).toEqual({
-      ok: false,
-      title: 'Error',
-      message: 'Return amount (₹500.00) cannot exceed current balance (₹400.00)',
+  test('a return is a refund: there is no cap against the bill balance', () => {
+    expect(validate({ items: [shirt('5')], currentBalance: 0 })).toMatchObject({ ok: true, total: 500 });
+  });
+  test('refund settlement: Cash by default; Account is stored as refundMethod "bank" and needs the account', () => {
+    expect(validate().settlement).toEqual({ settlementType: 'refund', refundMethod: 'cash' });
+    expect(validate({ refundMethod: 'cash', bankAccountId: 'b1' }).settlement).toEqual({
+      settlementType: 'refund',
+      refundMethod: 'cash',
     });
-    expect(validate({ items: [shirt('5')], currentBalance: 500 })).toMatchObject({ ok: true });
+    expect(validate({ refundMethod: 'bank', bankAccountId: 'b1' }).settlement).toEqual({
+      settlementType: 'refund',
+      refundMethod: 'bank',
+      bankAccountId: 'b1',
+    });
+    // 'account' (and legacy 'upi') mean the same
+    expect(validate({ refundMethod: 'account', bankAccountId: 'b1' }).settlement.refundMethod).toBe('bank');
+    expect(validate({ refundMethod: 'bank' })).toEqual({
+      ok: false,
+      title: 'Warning',
+      message: 'Please select the account for this refund.',
+    });
+    // an old caller asking for a balance adjustment still gets a refund
+    expect(refundSettlement({ settlementType: 'adjustment' })).toEqual({
+      settlementType: 'refund',
+      refundMethod: 'cash',
+    });
   });
   test('success: lines carry description, qty, rate, rounded amount, reason (untrimmed) and the date', () => {
     const result = validate({
@@ -144,6 +163,7 @@ describe('validateReturnDraft (order and wording of saveReturn)', () => {
     expect(result).toEqual({
       ok: true,
       total: 450.5,
+      settlement: { settlementType: 'refund', refundMethod: 'cash' },
       lines: [
         {
           description: 'Shirt',
@@ -189,7 +209,9 @@ function mockStore(inv, initialReturns = []) {
   const savedInvoices = [];
   const events = [];
   jest.spyOn(db, 'getInvoice').mockResolvedValue(inv);
+  jest.spyOn(db, 'getAllInvoices').mockResolvedValue([inv]);
   jest.spyOn(db, 'getReturnsByInvoice').mockImplementation(async () => [...returns]);
+  jest.spyOn(db, 'getAllReturns').mockImplementation(async () => [...returns]);
   jest.spyOn(db, 'saveReturn').mockImplementation(async (r) => {
     events.push('saveReturn');
     returns.push({ ...r, id: `r${returns.length + 1}` });
@@ -212,7 +234,7 @@ function mockStore(inv, initialReturns = []) {
 }
 afterEach(() => jest.restoreAllMocks());
 describe('saveSalesReturn', () => {
-  test('writes one return document per line, then refreshes the invoice totals and later invoices', async () => {
+  test('writes one refund document per line, then refreshes the invoice totals and later invoices (balance unchanged)', async () => {
     const store = mockStore(invoice());
     const now = new Date('2026-10-03T08:00:00.000Z');
     const result = await saveSalesReturn(
@@ -235,6 +257,8 @@ describe('saveSalesReturn', () => {
         reason: 'torn',
         returnDate: '2026-10-03',
         createdAt: now.toISOString(),
+        settlementType: 'refund',
+        refundMethod: 'cash',
       },
       {
         invoiceNo: '003',
@@ -246,13 +270,15 @@ describe('saveSalesReturn', () => {
         reason: '',
         returnDate: '2026-10-03',
         createdAt: now.toISOString(),
+        settlementType: 'refund',
+        refundMethod: 'cash',
       },
     ]);
-    // updateInvoiceWithReturns: totalReturns + adjustedBalanceDue = balanceDue - totalReturns
+    // updateInvoiceWithReturns: totalReturns counts every return; a refund does not lower the balance due
     expect(store.savedInvoices[0]).toMatchObject({
       invoiceNo: '003',
       totalReturns: 450.5,
-      adjustedBalanceDue: 249.5,
+      adjustedBalanceDue: 700,
     });
     expect(store.events).toEqual(['saveReturn', 'saveReturn', 'saveInvoice', 'subsequent:SLN TEX:003']);
   });
@@ -268,17 +294,61 @@ describe('saveSalesReturn', () => {
     });
     expect(store.events).toEqual([]);
   });
-  test('the balance check uses balanceDue minus the returns already stored', async () => {
-    const store = mockStore(invoice({ balanceDue: 300 }), [
-      { id: 'r0', invoiceNo: '003', description: 'Gift', qty: 1, returnAmount: 100 },
-    ]);
-    const result = await saveSalesReturn('003', { returnDate: '2026-10-03', items: [shirt('3')] });
-    expect(result).toEqual({
-      ok: false,
-      title: 'Error',
-      message: 'Return amount (₹300.00) cannot exceed current balance (₹200.00)',
+  test('no balance cap: a refund larger than the balance due is saved; an Account refund stores its bank', async () => {
+    const store = mockStore(invoice({ balanceDue: 50 }));
+    const result = await saveSalesReturn('003', {
+      returnDate: '2026-10-03',
+      items: [shirt('3')],
+      settlementType: 'refund',
+      refundMethod: 'bank',
+      bankAccountId: 'hdfc',
     });
+    expect(result).toEqual({ ok: true, total: 300 });
+    expect(store.returns[0]).toMatchObject({
+      settlementType: 'refund',
+      refundMethod: 'bank',
+      bankAccountId: 'hdfc',
+    });
+    expect(store.savedInvoices[0]).toMatchObject({ totalReturns: 300, adjustedBalanceDue: 50 });
+  });
+  test('an Account refund without an account is rejected; nothing is written', async () => {
+    const store = mockStore(invoice());
+    const result = await saveSalesReturn('003', {
+      returnDate: '2026-10-03',
+      items: [shirt('1')],
+      refundMethod: 'bank',
+    });
+    expect(result).toMatchObject({ ok: false, message: 'Please select the account for this refund.' });
     expect(store.events).toEqual([]);
+  });
+  test("the product picked in the sheet is the same one validated: the party's bills in ledger order", async () => {
+    // two bills of the same customer; the sheet lists Shirt (5 + 3 sold) then Trouser then Cap
+    const older = invoice({
+      invoiceNo: '001',
+      invoiceDate: '2026-09-01',
+      products: [products[0], products[1]],
+    });
+    const newer = invoice({
+      invoiceNo: '003',
+      products: [
+        { description: 'Cap', qty: 4, rate: 20 },
+        { description: 'Shirt', qty: 3, rate: 110 },
+      ],
+    });
+    const other = invoice({ invoiceNo: '002', customerName: 'Other', customerPhone: '9000000000' });
+    const sheet = partyReturnProducts(SALES_LEDGER, [newer, other, older], newer);
+    expect(sheet.products.map((p) => p.description)).toEqual(['Shirt', 'Trouser', 'Cap']);
+    expect(sheet.products[0]).toEqual({ description: 'Shirt', qty: 8, rate: 110 });
+    expect([...sheet.invoiceNos].sort()).toEqual(['001', '003']);
+    // the service builds the very same list, so choice 2 is "Cap" on both sides
+    const store = mockStore(newer);
+    jest.spyOn(db, 'getAllInvoices').mockResolvedValue([older, other, newer]);
+    const result = await saveSalesReturn('003', {
+      returnDate: '2026-10-03',
+      items: [item({ choice: 2, qty: '4', rate: '20' })],
+    });
+    expect(result).toEqual({ ok: true, total: 80 });
+    expect(store.returns[0]).toMatchObject({ description: 'Cap', qty: 4 });
   });
   test('unknown invoice is reported, nothing is written', async () => {
     jest.spyOn(db, 'getInvoice').mockResolvedValue(null);
@@ -308,7 +378,25 @@ describe('saveSalesReturn', () => {
       'reason',
       'returnDate',
       'createdAt',
+      'settlementType',
+      'refundMethod',
     ]);
+  });
+  test("aggregatePartyProducts: one line per description, quantities added, the latest bill's rate", () => {
+    expect(
+      aggregatePartyProducts([
+        {
+          invoiceNo: '2',
+          invoiceDate: '2026-10-02',
+          products: [{ description: ' Shirt ', qty: 1, rate: 120 }],
+        },
+        {
+          invoiceNo: '1',
+          invoiceDate: '2026-10-01',
+          products: [{ description: 'Shirt', qty: 2, rate: 100 }, null],
+        },
+      ]),
+    ).toEqual([{ description: 'Shirt', qty: 3, rate: 120 }]);
   });
 });
 describe('undo returns', () => {

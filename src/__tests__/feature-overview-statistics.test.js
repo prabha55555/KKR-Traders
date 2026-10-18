@@ -112,3 +112,94 @@ describe('Statistics & Dashboard Analytics', () => {
     expect(isWithinRange('2024-01-01', range)).toBe(false);
   });
 });
+
+describe('computeAnalytics: ledger-consistent outstanding and bill values', () => {
+  const base = { purchaseBills: [], expenses: [], purchaseReturns: [], customers: [], suppliers: [] };
+
+  it('customer outstanding = ledger closing per party (carried returns not subtracted twice, refunds ignored)', () => {
+    const salesBills = [
+      // opening 1000; #1 500 unpaid with a 200 balance return -> 1300; #2 100 -> 1400
+      {
+        invoiceNo: '1',
+        invoiceDate: '2026-01-01',
+        customerName: 'Ravi',
+        customerPhone: '9000000001',
+        previousBalance: 1000,
+        subtotal: 500,
+        grandTotal: 1500,
+        amountPaid: 0,
+        balanceDue: 1500,
+      },
+      {
+        invoiceNo: '2',
+        invoiceDate: '2026-01-02',
+        customerName: 'Ravi',
+        customerPhone: '9000000001',
+        previousBalance: 1300,
+        subtotal: 100,
+        grandTotal: 1400,
+        amountPaid: 0,
+        balanceDue: 1400,
+      },
+      // same name, different phone: a separate customer owing 100 (a 30 cash refund does not lower it)
+      {
+        invoiceNo: '3',
+        invoiceDate: '2026-01-02',
+        customerName: 'Ravi',
+        customerPhone: '9000000002',
+        subtotal: 100,
+        grandTotal: 100,
+        amountPaid: 0,
+        balanceDue: 100,
+      },
+    ];
+    const salesReturns = [
+      { invoiceNo: '1', returnAmount: 200 },
+      { invoiceNo: '3', returnAmount: 30, settlementType: 'refund', refundMethod: 'cash' },
+    ];
+    const a = computeAnalytics({ ...base, salesBills, salesReturns }, 'all');
+    expect(a.customerOutstanding).toBe(1500);
+    expect(a.customersWithDues).toBe(2);
+    // Sales = the bills' own amounts (600 + 100), not grandTotal (which carries the previous balance)
+    expect(a.current.salesAmount).toBe(700);
+  });
+
+  it('purchases KPI sums the bill amount; a supplier credit (negative closing) is not outstanding', () => {
+    const purchaseBills = [
+      {
+        invoiceNo: 'P-1',
+        invoiceDate: '2026-01-01',
+        supplierName: 'Mill',
+        subtotal: 1000,
+        grandTotal: 1000,
+        balanceDue: 1000,
+      },
+      {
+        invoiceNo: 'P-2',
+        invoiceDate: '2026-01-02',
+        supplierName: 'Mill',
+        subtotal: 500,
+        previousBalance: 1000,
+        grandTotal: 1500,
+        balanceDue: 1500,
+      },
+      {
+        invoiceNo: 'P-3',
+        invoiceDate: '2026-01-03',
+        supplierName: 'Mill',
+        subtotal: 200,
+        previousBalance: 1500,
+        grandTotal: 1700,
+        payment: { totalPaid: 2000 },
+      },
+    ];
+    const a = computeAnalytics(
+      { ...base, salesBills: [], salesReturns: [], purchaseBills, purchaseReturns: [] },
+      'all',
+    );
+    expect(a.current.purchasesAmount).toBe(1700);
+    // closing: 1000 -> 1500 -> 1500 + 200 - 2000 = -300 (advance with the supplier)
+    expect(a.suppliersOutstanding).toBe(0);
+    expect(a.suppliersWithDues).toBe(0);
+  });
+});

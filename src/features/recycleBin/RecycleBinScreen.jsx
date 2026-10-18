@@ -100,7 +100,8 @@ export default function RecycleBinScreen({ kind, title }) {
       toast('Item restored successfully!', undefined, 'success');
     } catch (e) {
       console.error('Error restoring item:', e);
-      toast('Failed to restore item', undefined, 'error');
+      const reason = e instanceof Error && e.message.includes('already exists') ? e.message : undefined;
+      toast('Failed to restore item', reason, 'error');
     }
   };
 

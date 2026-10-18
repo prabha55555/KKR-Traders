@@ -1,3 +1,4 @@
+import { getDoc } from 'firebase/firestore';
 import { db } from '@/core/db';
 import { isUserError } from '@/features/history/lib/types';
 import {
@@ -39,48 +40,57 @@ afterEach(() => jest.restoreAllMocks());
 describe('add payment field updates (what the live addPayment wrote)', () => {
   test('amountPaid and balanceDue appear at the top level, the breakdown grows, payment.totalPaid/balanceDue follow', () => {
     const base = bill();
-    const next = applyAdditionalPurchasePayment(base, { cash: 100, upi: 50, account: 0 });
+    const next = applyAdditionalPurchasePayment(base, { cash: 100, account: 50 });
     expect(next).toMatchObject({
       amountPaid: 5150,
       balanceDue: 2850,
-      paymentBreakdown: { cash: 100, upi: 50, account: 0 },
-      payment: { cash: 5000, upi: 0, account: 0, totalPaid: 5150, balanceDue: 2850 },
+      paymentBreakdown: { cash: 100, account: 50 },
+      payment: { cash: 5000, account: 0, totalPaid: 5150, balanceDue: 2850 },
     });
-    // the nested cash/upi/account stay the INITIAL split; the original object is untouched
+    // only Cash and Account are written: the legacy upi key of the nested split is folded away
+    expect(next.paymentBreakdown).toEqual({ cash: 100, account: 50 });
+    expect(next.payment).not.toHaveProperty('upi');
+    // the nested cash / account stay the INITIAL split; the original object is untouched
     expect(base.payment).toEqual({ cash: 5000, upi: 0, account: 0, totalPaid: 5000, balanceDue: 3000 });
     expect(base.amountPaid).toBeUndefined();
   });
   test('top-level amountPaid is read before payment.totalPaid; an existing breakdown keeps growing', () => {
     const next = applyAdditionalPurchasePayment(
-      bill({ amountPaid: 6000, balanceDue: 2000, paymentBreakdown: { cash: 1000, upi: 0, account: 0 } }),
-      { cash: 0, upi: 0, account: 400 },
+      bill({ amountPaid: 6000, balanceDue: 2000, paymentBreakdown: { cash: 1000, account: 0 } }),
+      { cash: 0, account: 400 },
     );
-    expect(next).toMatchObject({
-      amountPaid: 6400,
-      balanceDue: 1600,
-      paymentBreakdown: { cash: 1000, upi: 0, account: 400 },
-    });
+    expect(next).toMatchObject({ amountPaid: 6400, balanceDue: 1600 });
+    expect(next.paymentBreakdown).toEqual({ cash: 1000, account: 400 });
+  });
+  test('a legacy breakdown with a UPI amount: folded into Account before adding, the upi key is gone', () => {
+    const next = applyAdditionalPurchasePayment(
+      bill({
+        amountPaid: 6000,
+        balanceDue: 2000,
+        paymentBreakdown: { cash: 1000, upi: 300, account: 0 },
+        payment: { cash: 5000, upi: 0, account: 0, totalPaid: 6000, balanceDue: 2000 },
+      }),
+      { cash: 0, account: 200 },
+    );
+    expect(next.paymentBreakdown).toEqual({ cash: 1000, account: 500 });
+    expect(next.payment).toEqual({ cash: 5000, account: 0, totalPaid: 6200, balanceDue: 1800 });
   });
   test('a bill without a nested payment object gets no nested object', () => {
     const next = applyAdditionalPurchasePayment(
       bill({ payment: undefined, amountPaid: 1000, balanceDue: 7000 }),
-      {
-        cash: 500,
-        upi: 0,
-        account: 0,
-      },
+      { cash: 500, account: 0 },
     );
     expect(next).toMatchObject({ amountPaid: 1500, balanceDue: 6500 });
     expect(next.payment).toBeUndefined();
   });
   test('success message is the total only (no breakdown line, unlike sales)', () => {
-    expect(purchasePaymentSuccessMessage({ cash: 100, upi: 50, account: 0 })).toBe(
+    expect(purchasePaymentSuccessMessage({ cash: 100, account: 50 })).toBe(
       'Payment of ₹150.00 added successfully!',
     );
   });
 });
 describe('addPurchasePayment', () => {
-  test('saves the bill first, then one payment document per method; no later-bills recalculation', async () => {
+  test('saves the bill first, then one Cash / Account payment document per method, then re-syncs the supplier ledger', async () => {
     const events = [];
     const saved = [];
     const records = [];
@@ -95,13 +105,17 @@ describe('addPurchasePayment', () => {
       records.push(p);
       return 'id';
     });
+    jest.spyOn(db, 'syncPurchaseLedger').mockImplementation(async () => {
+      events.push('sync');
+      return null;
+    });
     await addPurchasePayment(
       '001',
-      { cash: 100, upi: 50, account: 0 },
+      { cash: 100, account: 50, bankAccountId: 'bank1' },
       '2026-10-03',
       new Date(2026, 9, 5, 10, 20, 30),
     );
-    expect(events).toEqual(['saveBill', 'savePayment:cash', 'savePayment:upi']);
+    expect(events).toEqual(['saveBill', 'savePayment:cash', 'savePayment:account', 'sync']);
     expect(saved[0]).toMatchObject({ amountPaid: 5150, balanceDue: 2850 });
     expect(records).toEqual([
       {
@@ -115,17 +129,17 @@ describe('addPurchasePayment', () => {
         invoiceNo: '001',
         paymentDate: '2026-10-03T10:20:30',
         amount: 50,
-        paymentMethod: 'upi',
+        paymentMethod: 'account',
         paymentType: 'additional',
+        // the bank goes on the Account document only
+        bankAccountId: 'bank1',
       },
     ]);
   });
   test('unknown bill -> user-facing "Purchase bill not found!" and nothing is written', async () => {
     jest.spyOn(db, 'getPurchaseBill').mockResolvedValue(null);
     const save = jest.spyOn(db, 'savePurchaseBill');
-    const error = await addPurchasePayment('999', { cash: 1, upi: 0, account: 0 }, '2026-10-03').catch(
-      (e) => e,
-    );
+    const error = await addPurchasePayment('999', { cash: 1, account: 0 }, '2026-10-03').catch((e) => e);
     expect(isUserError(error)).toBe(true);
     expect(error.message).toBe('Purchase bill not found!');
     expect(save).not.toHaveBeenCalled();
@@ -144,6 +158,7 @@ describe('the initial payment without a payment document', () => {
   });
   test('a synthetic initial payment (dated the bill date, id fake_initial_<no>) is put first when no initial document exists', () => {
     const list = withUntrackedInitialPayment(
+      // a legacy nested split with a UPI amount: the synthetic payment is an Account payment
       bill({ payment: { cash: 0, upi: 2000, account: 0, totalPaid: 2000, balanceDue: 0 } }),
       [view({ id: 'a', paymentType: 'additional', amount: 50 })],
     );
@@ -152,14 +167,15 @@ describe('the initial payment without a payment document', () => {
       id: 'fake_initial_001',
       paymentDate: '2026-10-01',
       amount: 2000,
-      paymentMethod: 'upi',
+      paymentMethod: 'account',
       paymentType: 'initial',
     });
   });
-  test('method precedence is cash < upi < account; nothing is added when an initial document exists or nothing was paid', () => {
+  test('Account when the split has an account (or legacy upi) amount, else Cash; nothing is added when an initial document exists or nothing was paid', () => {
     const split = (cash, upi, account) =>
       bill({ payment: { cash, upi, account, totalPaid: cash + upi + account, balanceDue: 0 } });
     expect(withUntrackedInitialPayment(split(10, 20, 30), [])[0].paymentMethod).toBe('account');
+    expect(withUntrackedInitialPayment(split(10, 20, 0), [])[0].paymentMethod).toBe('account');
     expect(withUntrackedInitialPayment(split(10, 0, 0), [])[0].paymentMethod).toBe('cash');
     expect(withUntrackedInitialPayment(split(10, 0, 0), [view({ paymentType: 'initial' })])).toHaveLength(1);
     expect(withUntrackedInitialPayment(split(0, 0, 0), [])).toEqual([]);
@@ -183,7 +199,7 @@ describe('undo field updates', () => {
     expect(applyUndoInitialPayment(bill(), 5000)).toEqual({
       amountPaid: 0,
       balanceDue: 8000,
-      payment: { cash: 0, upi: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
+      payment: { cash: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
     });
   });
   test('undoing the initial payment keeps later payments: 6000 paid = 5000 initial + 1000 later', () => {
@@ -210,8 +226,8 @@ describe('undo field updates', () => {
     ).toEqual({
       amountPaid: 0,
       balanceDue: 8000,
-      payment: { cash: 0, upi: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
-      paymentBreakdown: { cash: 0, upi: 0, account: 0 },
+      payment: { cash: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
+      paymentBreakdown: { cash: 0, account: 0 },
     });
   });
 });
@@ -220,6 +236,7 @@ describe('undoPurchasePayment', () => {
     jest.spyOn(db, 'getPurchaseBill').mockResolvedValue(bill());
     jest.spyOn(db, 'getPurchasePaymentsByInvoice').mockResolvedValue([]);
     const update = jest.spyOn(db, 'updatePurchaseBillFields').mockResolvedValue();
+    jest.spyOn(db, 'syncPurchaseLedger').mockResolvedValue(null);
     const del = jest.spyOn(db, 'deletePurchasePayment');
     const result = await undoPurchasePayment('001', 'fake_initial_001');
     expect(result).toEqual({ initialWithoutDocument: true });
@@ -227,7 +244,7 @@ describe('undoPurchasePayment', () => {
     expect(update).toHaveBeenCalledWith('001', {
       amountPaid: 0,
       balanceDue: 8000,
-      payment: { cash: 0, upi: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
+      payment: { cash: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
     });
   });
   test('an additional payment document goes through db.deletePurchasePayment (which recomputes the bill) and nothing else', async () => {
@@ -256,7 +273,25 @@ describe('undoPurchasePayment', () => {
     const update = jest.spyOn(db, 'updatePurchaseBillFields').mockResolvedValue();
     await undoPurchasePayment('001', 'purchase_payment_001_initial_cash');
     expect(update).toHaveBeenCalledWith('001', {
-      payment: { cash: 0, upi: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
+      payment: { cash: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
+    });
+  });
+  test('undoing a legacy UPI initial document takes it off Account (folded), so no upi amount is left behind', async () => {
+    jest
+      .spyOn(db, 'getPurchasePaymentsByInvoice')
+      .mockResolvedValue([stored('purchase_payment_001_initial_upi', 2000, 'initial', 'upi')]);
+    jest.spyOn(db, 'deletePurchasePayment').mockResolvedValue(true);
+    jest.spyOn(db, 'getPurchaseBill').mockResolvedValue(
+      bill({
+        amountPaid: 0,
+        balanceDue: 8000,
+        payment: { cash: 0, upi: 2000, account: 0, totalPaid: 0, balanceDue: 8000 },
+      }),
+    );
+    const update = jest.spyOn(db, 'updatePurchaseBillFields').mockResolvedValue();
+    await undoPurchasePayment('001', 'purchase_payment_001_initial_upi');
+    expect(update).toHaveBeenCalledWith('001', {
+      payment: { cash: 0, account: 0, totalPaid: 0, balanceDue: 8000 },
     });
   });
   test('unknown id -> user-facing error, nothing deleted', async () => {
@@ -319,5 +354,55 @@ describe('undoAllPurchasePayments', () => {
     const update = jest.spyOn(db, 'updatePurchaseBillFields');
     expect(await undoAllPurchasePayments('001')).toBeNull();
     expect(update).not.toHaveBeenCalled();
+  });
+});
+describe('db.updatePurchaseInvoiceAfterPaymentDeletion / deletePurchasePayment (what "undo one" relies on)', () => {
+  const capture = (found) => {
+    const saved = [];
+    jest.spyOn(db, 'getPurchaseBill').mockResolvedValue(found);
+    jest.spyOn(db, 'savePurchaseBill').mockImplementation(async (b) => {
+      saved.push(b);
+      return true;
+    });
+    const sync = jest.spyOn(db, 'syncPurchaseLedger').mockResolvedValue(null);
+    return { saved, sync };
+  };
+  test("the amount comes off the deleted payment's OWN method; legacy upi amounts are folded into Account", async () => {
+    const { saved, sync } = capture(
+      bill({
+        amountPaid: 6400,
+        balanceDue: 1600,
+        paymentBreakdown: { cash: 1000, upi: 400, account: 0 },
+        payment: { cash: 5000, upi: 0, account: 0, totalPaid: 6400, balanceDue: 1600 },
+      }),
+    );
+    // the (legacy) UPI payment of 400 was undone
+    await db.updatePurchaseInvoiceAfterPaymentDeletion('001', 400, { paymentMethod: 'upi' });
+    expect(saved[0]).toMatchObject({ amountPaid: 6000, balanceDue: 2000 });
+    expect(saved[0].paymentBreakdown).toEqual({ cash: 1000, account: 0 });
+    expect(saved[0].payment).toEqual({ cash: 5000, account: 0, totalPaid: 6000, balanceDue: 2000 });
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+  test('a cash payment comes off cash (never below 0); syncLedger:false skips the ledger sync', async () => {
+    const { saved, sync } = capture(
+      bill({ amountPaid: 6000, balanceDue: 2000, paymentBreakdown: { cash: 50, account: 950 } }),
+    );
+    await db.updatePurchaseInvoiceAfterPaymentDeletion('001', 100, {
+      paymentMethod: 'cash',
+      syncLedger: false,
+    });
+    expect(saved[0].paymentBreakdown).toEqual({ cash: 0, account: 950 });
+    expect(saved[0]).toMatchObject({ amountPaid: 5900, balanceDue: 2100 });
+    expect(sync).not.toHaveBeenCalled();
+  });
+  test('deletePurchasePayment passes the stored payment method through', async () => {
+    jest.spyOn(db, 'ref').mockReturnValue({});
+    jest.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ invoiceNo: '001', amount: 100, paymentMethod: 'account' }),
+    });
+    const update = jest.spyOn(db, 'updatePurchaseInvoiceAfterPaymentDeletion').mockResolvedValue();
+    await db.deletePurchasePayment('p1', { syncLedger: false });
+    expect(update).toHaveBeenCalledWith('001', 100, { syncLedger: false, paymentMethod: 'account' });
   });
 });

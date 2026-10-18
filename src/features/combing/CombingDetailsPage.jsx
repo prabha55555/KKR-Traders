@@ -10,7 +10,6 @@ import {
   Pencil,
   Phone,
   Plus,
-  RefreshCw,
   Trash2,
   User,
   Users,
@@ -28,14 +27,18 @@ import {
   LoadingState,
   Modal,
   Page,
+  RefreshButton,
   SearchBar,
   StatCard,
   TextField,
-  cn,
   useFeedback,
 } from '@/ui';
-import CombingNavTabs from './CombingNavTabs';
-import { calcProcessorBalanceSummary, emptyProcessor, filterProcessors, validateProcessor } from './combingLogic';
+import {
+  calcProcessorBalanceSummary,
+  emptyProcessor,
+  filterProcessors,
+  validateProcessor,
+} from './combingLogic';
 import { deleteProcessorRecord, getAllProcessorsList, saveProcessorRecord } from './combingService';
 
 export default function CombingDetailsPage() {
@@ -120,14 +123,14 @@ export default function CombingDetailsPage() {
       setSaving(true);
       await saveProcessorRecord(form);
       toast(
-        editingProcessor ? 'Combating Unit Updated' : 'Combating Unit Added',
+        editingProcessor ? 'Combing Unit Updated' : 'Combing Unit Added',
         `${form.processorName} has been saved to your directory.`,
         'success',
       );
       setIsModalOpen(false);
       loadProcessors(true);
     } catch (err) {
-      toast('Save Failed', err.message || 'Could not save combating unit details.', 'error');
+      toast('Save Failed', err.message || 'Could not save combing unit details.', 'error');
     } finally {
       setSaving(false);
     }
@@ -137,7 +140,7 @@ export default function CombingDetailsPage() {
     const name = proc.processorName || proc.name;
     const ok = await confirm({
       title: `Delete ${name}?`,
-      message: `Are you sure you want to remove "${name}" (${proc.ownerName}) from your combating directory?`,
+      message: `Are you sure you want to remove "${name}" (${proc.ownerName}) from your combing directory?`,
       tone: 'danger',
       confirmText: 'Delete Unit',
     });
@@ -145,7 +148,7 @@ export default function CombingDetailsPage() {
 
     try {
       await deleteProcessorRecord(proc.id || proc.phone);
-      toast('Combating Unit Removed', `${name} was removed.`, 'success');
+      toast('Combing Unit Removed', `${name} was removed.`, 'success');
       loadProcessors(true);
     } catch (err) {
       toast('Delete Failed', err.message || 'Could not delete unit.', 'error');
@@ -154,15 +157,15 @@ export default function CombingDetailsPage() {
 
   if (loading && processors.length === 0) {
     return (
-      <Page title="Combating Details" icon={Users}>
-        <LoadingState label="Loading combating units directory…" />
+      <Page title="Combing Units" icon={Users}>
+        <LoadingState label="Loading combing units directory…" />
       </Page>
     );
   }
 
   if (error && processors.length === 0) {
     return (
-      <Page title="Combating Details" icon={Users}>
+      <Page title="Combing Units" icon={Users}>
         <ErrorState message={error} onRetry={() => loadProcessors(false)} />
       </Page>
     );
@@ -170,72 +173,32 @@ export default function CombingDetailsPage() {
 
   return (
     <Page
-      title={
-        <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Users className="size-6 text-brand-600" />
-              <h1 className="font-display text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                Combating Details
-              </h1>
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-              Directory of combing mills, combating units, contact persons and addresses
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              icon={RefreshCw}
-              onClick={() => loadProcessors(true)}
-              loading={refreshing}
-              title="Refresh combating units"
-            >
-              Refresh
-            </Button>
-          </div>
-        </div>
+      title="Combing Units"
+      icon={Users}
+      actions={
+        <RefreshButton
+          onClick={() => loadProcessors(true)}
+          loading={refreshing}
+          title="Refresh combing units"
+        />
       }
     >
       <div className="space-y-6">
-        {/* Navigation Tabs */}
-        <CombingNavTabs
-          counts={{
-            ongoing: batches.filter((b) => b.status !== 'COMPLETED').length,
-            settled: batches.filter((b) => b.status === 'COMPLETED').length,
-            processors: processors.length,
-          }}
-        />
-
-        {/* Combating Metrics KPI Strip */}
+        {/* Combing Metrics KPI Strip */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Combing Units" value={processors.length} icon={Building2} tint="brand" />
+          <StatCard label="Total Batches" value={overallSummary.batchCount} icon={Layers} tint="sky" />
           <StatCard
-            label="Combating Units"
-            value={processors.length}
-            icon={Building2}
-            tone="brand"
-            subtext="Registered mills"
-          />
-          <StatCard
-            label="Total Batches"
-            value={overallSummary.batchCount}
-            icon={Layers}
-            tone="info"
-            subtext="Across all mills"
-          />
-          <StatCard
-            label="Processing Charges"
+            label={`Processing Charges · Paid ₹${formatCurrency(overallSummary.totalPaid)}`}
             value={`₹${formatCurrency(overallSummary.totalCharges)}`}
             icon={Banknote}
-            tone="brand"
-            subtext={`Paid: ₹${formatCurrency(overallSummary.totalPaid)}`}
+            tint="brand"
           />
           <StatCard
             label="Processor Balance"
             value={`₹${formatCurrency(overallSummary.balanceDue)}`}
             icon={AlertCircle}
-            tone={overallSummary.balanceDue > 0 ? 'danger' : 'success'}
-            subtext={overallSummary.balanceDue > 0 ? 'Outstanding payable' : 'All settled'}
+            tint={overallSummary.balanceDue > 0 ? 'red' : 'green'}
           />
         </div>
 
@@ -245,15 +208,15 @@ export default function CombingDetailsPage() {
             value={searchTerm}
             onChange={setSearchTerm}
             placeholder="Search by mill name, owner, phone or address..."
-            className="flex-1 max-w-lg"
+            className="max-w-lg flex-1"
           />
           <Badge
             tone="brand"
             className="self-start px-3 py-1.5 text-xs font-semibold tabular-nums sm:self-auto"
           >
             {searchTerm.trim()
-              ? `${filteredProcessors.length} of ${processors.length} Combating Units`
-              : `${processors.length} Combating Units`}
+              ? `${filteredProcessors.length} of ${processors.length} Combing Units`
+              : `${processors.length} Combing Units`}
           </Badge>
         </div>
 
@@ -261,19 +224,15 @@ export default function CombingDetailsPage() {
         {filteredProcessors.length === 0 ? (
           <EmptyState
             icon={Building2}
-            title={
-              searchTerm.trim()
-                ? 'No matching combating units'
-                : 'No combing & combating units saved yet'
-            }
+            title={searchTerm.trim() ? 'No matching combing units' : 'No combing units saved yet'}
             message={
               searchTerm.trim()
-                ? `No combating unit matches "${searchTerm}". Try a different name or phone number.`
-                : 'Add your combing mills and combating units to easily load them when creating batches.'
+                ? `No combing unit matches "${searchTerm}". Try a different name or phone number.`
+                : 'Add your combing mills and units to easily load them when creating batches.'
             }
             action={
               <Button variant="primary" icon={Plus} onClick={handleOpenAdd}>
-                Add First Combating Unit
+                Add First Combing Unit
               </Button>
             }
           />
@@ -287,38 +246,36 @@ export default function CombingDetailsPage() {
               return (
                 <div
                   key={proc.id || proc.phone || name}
-                  className="group relative rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs transition duration-150 hover:border-slate-300 hover:shadow-card space-y-3"
+                  className="group relative space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs transition duration-150 hover:border-slate-300 hover:shadow-card sm:p-5"
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     {/* Left: Mill Icon + Name & Owner */}
-                    <div className="flex items-center gap-3.5 min-w-0 lg:w-72 xl:w-80 shrink-0">
+                    <div className="flex min-w-0 shrink-0 items-center gap-3.5 lg:w-72 xl:w-80">
                       <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-700 shadow-2xs">
                         <Building2 className="size-5 text-slate-700" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-display text-base font-bold text-slate-900 truncate">
-                          {name}
-                        </h3>
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 mt-0.5">
-                          <User className="size-3.5 text-gold-600 shrink-0" />
+                        <h3 className="truncate font-display text-base font-bold text-slate-900">{name}</h3>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                          <User className="size-3.5 shrink-0 text-gold-600" />
                           <span className="truncate">{proc.ownerName || 'Contact Person N/A'}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Middle: Phone with Quick Call/WhatsApp & Location */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-w-0 border-t border-slate-100 pt-3 lg:border-t-0 lg:pt-0">
+                    <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2 lg:border-t-0 lg:pt-0">
                       {/* Phone with one-tap Call and WhatsApp */}
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-slate-900 tabular-nums">
-                          <Phone className="size-3.5 text-gold-600 shrink-0" />
+                        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-slate-900 tabular-nums">
+                          <Phone className="size-3.5 shrink-0 text-gold-600" />
                           <span>{proc.phone || 'N/A'}</span>
                         </div>
                         {cleanPhone && (
-                          <div className="flex items-center gap-1 ml-1">
+                          <div className="ml-1 flex items-center gap-1">
                             <a
                               href={`tel:${cleanPhone}`}
-                              className="flex size-7 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-white hover:text-brand-800 hover:border-slate-300 shadow-2xs"
+                              className="flex size-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 shadow-2xs transition hover:border-slate-300 hover:bg-white hover:text-brand-800 sm:size-8"
                               title={`Call ${proc.phone}`}
                             >
                               <Phone className="size-3.5" />
@@ -327,7 +284,7 @@ export default function CombingDetailsPage() {
                               href={`https://wa.me/91${cleanPhone}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex size-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100 hover:border-emerald-300 shadow-2xs"
+                              className="flex size-10 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 shadow-2xs transition hover:border-emerald-300 hover:bg-emerald-100 sm:size-8"
                               title={`WhatsApp ${proc.phone}`}
                             >
                               <MessageCircle className="size-3.5" />
@@ -337,8 +294,8 @@ export default function CombingDetailsPage() {
                       </div>
 
                       {/* Address */}
-                      <div className="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
-                        <MapPin className="size-3.5 text-gold-600 shrink-0 mt-0.5" />
+                      <div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
+                        <MapPin className="mt-0.5 size-3.5 shrink-0 text-gold-600" />
                         <span className="truncate" title={proc.address}>
                           {proc.address || 'Address not specified'}
                         </span>
@@ -346,10 +303,10 @@ export default function CombingDetailsPage() {
                     </div>
 
                     {/* Right: Actions */}
-                    <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 border-t border-slate-100 pt-3 lg:border-t-0 lg:pt-0 shrink-0">
+                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 sm:justify-end lg:border-t-0 lg:pt-0">
                       <Link
                         to={`/combing/batches?search=${encodeURIComponent(name)}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-2.5 py-1.5 text-xs font-semibold text-brand-800 transition hover:bg-brand-100 hover:border-brand-300"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-2.5 py-1.5 text-xs font-semibold text-brand-800 transition hover:border-brand-300 hover:bg-brand-100"
                       >
                         <span>View Batches</span>
                         <ExternalLink className="size-3 text-brand-600" />
@@ -359,7 +316,7 @@ export default function CombingDetailsPage() {
                         <button
                           type="button"
                           onClick={() => handleOpenEdit(proc)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:outline-none active:scale-95"
                           aria-label={`Edit ${name}`}
                         >
                           <Pencil className="size-3.5 text-slate-500" />
@@ -368,7 +325,7 @@ export default function CombingDetailsPage() {
                         <button
                           type="button"
                           onClick={() => handleDelete(proc)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-2xs transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-2xs transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none active:scale-95"
                           aria-label={`Delete ${name}`}
                         >
                           <Trash2 className="size-3.5 text-slate-400" />
@@ -395,9 +352,7 @@ export default function CombingDetailsPage() {
                       </div>
                       <div>
                         <span className="text-slate-500">Balance Due:</span>{' '}
-                        <b
-                          className={summary.balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700'}
-                        >
+                        <b className={summary.balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700'}>
                           ₹{formatCurrency(summary.balanceDue)}
                         </b>
                       </div>
@@ -428,9 +383,9 @@ export default function CombingDetailsPage() {
       <button
         type="button"
         onClick={handleOpenAdd}
-        aria-label="Add New Combating Unit"
-        title="Add New Combating Unit"
-        className="no-print fixed right-5 bottom-[calc(4.6rem+env(safe-area-inset-bottom))] sm:bottom-6 z-30 flex size-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-xl border-2 border-white transition hover:bg-slate-800 active:scale-95 focus-visible:outline-none"
+        aria-label="Add New Combing Unit"
+        title="Add New Combing Unit"
+        className="no-print fixed right-5 bottom-[calc(4.6rem+env(safe-area-inset-bottom))] z-30 flex size-14 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white shadow-xl transition hover:bg-slate-800 focus-visible:outline-none active:scale-95 lg:bottom-6"
       >
         <Plus className="size-6 stroke-[2.5]" aria-hidden />
       </button>
@@ -442,13 +397,11 @@ export default function CombingDetailsPage() {
         title={
           <div className="flex items-center gap-2">
             <Building2 className="size-5 text-brand-600" />
-            <span>
-              {editingProcessor ? 'Edit Combating Details' : 'Add New Combating Unit'}
-            </span>
+            <span>{editingProcessor ? 'Edit Combing Unit' : 'Add New Combing Unit'}</span>
           </div>
         }
         footer={
-          <div className="flex items-center justify-end gap-2 w-full">
+          <div className="flex w-full items-center justify-end gap-2">
             <Button variant="ghost" onClick={() => setIsModalOpen(false)} disabled={saving}>
               Cancel
             </Button>
@@ -459,14 +412,14 @@ export default function CombingDetailsPage() {
               icon={editingProcessor ? Pencil : Plus}
               loading={saving}
             >
-              {editingProcessor ? 'Save Changes' : 'Add Combating Unit'}
+              {editingProcessor ? 'Save Changes' : 'Add Combing Unit'}
             </Button>
           </div>
         }
       >
         <form id="processor-form" onSubmit={handleSave} className="space-y-4">
           <TextField
-            label="Combing Mill / Combating Unit Name *"
+            label="Combing Mill / Unit Name *"
             value={form.processorName}
             onChange={(v) => setForm((prev) => ({ ...prev, processorName: v }))}
             placeholder="e.g. Sri Lakshmi Combing & Mills"

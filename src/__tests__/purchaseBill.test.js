@@ -20,7 +20,6 @@ const form = (over = {}) => ({
   manualPreviousBalance: '0',
   discountAmount: '50',
   cash: '300',
-  upi: '0',
   account: '100',
   ...over,
 });
@@ -60,8 +59,10 @@ describe('buildPurchaseBill (schema must match what purchase.js wrote)', () => {
       manualPreviousBalance: 0,
       discount: 50,
       grandTotal: 1050,
-      payment: { cash: 300, upi: 0, account: 100, totalPaid: 400, balanceDue: 650 },
+      payment: { cash: 300, account: 100, totalPaid: 400, balanceDue: 650 },
     });
+    expect(bill.payment).not.toHaveProperty('upi');
+    expect(emptyPurchaseForm()).not.toHaveProperty('upi');
     expect(bill.products).toEqual([{ description: 'Yarn 30s', qty: 5, rate: 200, amount: 1000 }]);
     expect(bill).not.toHaveProperty('amountPaid');
     expect(bill).not.toHaveProperty('discountAmount');
@@ -99,4 +100,30 @@ test('acknowledgement message', async () => {
   expect(msg).toContain('1. Yarn 30s - Qty: 5 - Amount: ₹1000.00');
   expect(msg).toContain('Total Amount: ₹1050.00');
   expect(msg).toContain(`${COMPANY.displayName} has received the products mentioned above.`);
+});
+
+test('acknowledgement: legacy UPI / GPay / bank payment documents are summed into one Account line', async () => {
+  jest.spyOn(db, 'getPurchasePaymentsByInvoice').mockResolvedValue([
+    { amount: 300, paymentMethod: 'cash', paymentType: 'initial', paymentDate: '2026-10-03' },
+    {
+      amount: 50,
+      paymentMethod: 'upi',
+      paymentType: 'initial',
+      paymentDate: '2026-10-03',
+      bankAccountId: 'b1',
+    },
+    { amount: 30, paymentMethod: 'GPAY', paymentType: 'additional', paymentDate: '2026-10-04' },
+    { amount: 20, paymentMethod: 'account', paymentType: 'additional', paymentDate: '2026-10-05' },
+  ]);
+  jest.spyOn(db, 'getPurchaseReturnsByInvoice').mockResolvedValue([]);
+  jest
+    .spyOn(db, 'getAllBankAccounts')
+    .mockResolvedValue([{ id: 'b1', accountName: 'HDFC', bankName: 'HDFC' }]);
+  const msg = await buildAcknowledgementMessage(form({ bankAccountId: 'b1' }));
+  expect(msg).toContain('- Cash Paid: ₹300.00');
+  expect(msg).toContain('- Account Paid (HDFC): ₹100.00');
+  expect(msg).toContain('- Total Amount Paid: ₹400.00');
+  expect(msg).not.toMatch(/UPI/);
+  expect(msg).toContain('(Account: HDFC)'); // a new-style account (name = bank) is not printed as "HDFC (HDFC)"
+  expect(msg).toContain('(Cash in Hand)');
 });

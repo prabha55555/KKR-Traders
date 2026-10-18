@@ -68,7 +68,13 @@ export async function updateSupplier(original, input) {
   const bills = await db.getAllPurchaseBills();
   const { billUpdates } = planSupplierEdit(original, next, bills);
   await Promise.all(billUpdates.map((u) => db.updatePurchaseBillFields(u.invoiceNo, u.fields)));
-  await db.saveSupplier({ name: next.name, phone: next.phone, address: next.address });
+  await db.saveSupplier({ name: next.name, phone: next.phone, address: next.address }, { merge: true });
+  // the rewritten bills may now form one chain (or have left another): keep the stored balances in step
+  if (billUpdates.length) {
+    await db.syncPurchaseLedger({ supplierName: next.name, supplierPhone: next.phone });
+    if (phoneChanged)
+      await db.syncPurchaseLedger({ supplierName: original.name, supplierPhone: original.phone });
+  }
   if (phoneChanged) {
     try {
       await db.deleteSupplier(original.phone);

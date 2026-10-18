@@ -13,8 +13,8 @@ export const COMPANY = {
   email: '',
   website: '',
   hours: '',
-  /** payment number printed under the amount in words (omitted when empty) */
-  gpay: '90872 93268, 9092779599',
+  /** "Payment No" printed under the amount in words, for customers paying to the account (omitted when empty) */
+  paymentNo: '90872 93268, 9092779599',
   /** shown in the WhatsApp statement footer (omitted when empty) */
   whatsappLocation: 'Tirupur',
   whatsappPhones: '90872 93268, 9092779599',

@@ -8,6 +8,7 @@ import { ChevronDown, User } from 'lucide-react';
 import { memo, useState } from 'react';
 import { formatCurrency } from '@/core/format';
 import { cn } from '@/ui';
+import { invoiceDue } from '../lib/statement';
 import { displayInvoiceNo } from '../lib/types';
 import {
   InvoiceActionButtons,
@@ -24,7 +25,8 @@ const rs = (n) => `₹${formatCurrency(n)}`;
 export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, labels, actions }) {
   const [showProducts, setShowProducts] = useState(false);
   const no = invoice.invoiceNo;
-  const due = invoice.totalReturns > 0 ? invoice.adjustedBalanceDue : invoice.balanceDue;
+  // returns settled on the balance are deducted; refunded returns do not change what is owed
+  const due = invoiceDue(invoice);
 
   return (
     <article className="flex h-full flex-col rounded-2xl border border-line bg-white p-3.5 shadow-card transition duration-200 hover:shadow-lift sm:p-4">

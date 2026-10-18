@@ -1,15 +1,17 @@
 /**
- * PartyStatementSection – "Customer / Supplier Statement": search by (part of) a party's name -> combined summary of
- * all matching invoices, with the combined PDF, the simplified ("easy") PDF and a WhatsApp message.
+ * PartyStatementSection – "Customer / Supplier Statement": search by a party's name (or part of it) or phone -> the
+ * combined summary of that ONE party's invoices (several matching parties: pick one first), with the combined PDF,
+ * the simplified ("easy") PDF and a WhatsApp message. The balance tile is the party's ledger outstanding.
  * Desktop: search on the left, results on the right. Phones/tablets: collapsed behind the heading until needed.
  *
  * Props:
  *   labels            { party, formatInvoiceNo? }
  *   query / onQueryChange(text)
  *   state             StatementState: { status: 'idle' | 'loading' | 'error' } | { status: 'empty', query } |
+ *                     { status: 'choose', query, parties: [{ key, name, phone, count }] } |
  *                     { status: 'ready', statement }  (statement = lib/statement.js buildCombinedStatement())
  *   busy              null | 'pdf' | 'easy' | 'whatsapp'  (which export is running)
- *   onGenerate() · onClear() · onDownloadPdf() · onDownloadEasyPdf() · onShareWhatsApp()
+ *   onGenerate() · onClear() · onChooseParty(key) · onDownloadPdf() · onDownloadEasyPdf() · onShareWhatsApp()
  */
 import {
   ChevronDown,
@@ -17,6 +19,7 @@ import {
   FileSearch,
   FileText,
   MessageCircle,
+  Phone,
   ReceiptText,
   RotateCcw,
   User,
@@ -25,7 +28,7 @@ import { useState } from 'react';
 import { formatCurrency, formatDateIN } from '@/core/format';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { Badge, Button, EmptyState, TextField, cn } from '@/ui';
-import { statementBalanceLabel } from '../lib/statement';
+import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from '../lib/statement';
 import { displayInvoiceNo } from '../lib/types';
 import { SkeletonBlock } from './Skeleton';
 
@@ -58,7 +61,7 @@ function Tile({ label, value, tone, highlight }) {
 
 function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, onShareWhatsApp }) {
   const { totals } = statement;
-  const balance = totals.adjustedBalanceDue;
+  const balance = totals.outstanding;
   return (
     <div>
       <h3 className="mb-3 flex items-center gap-2 border-b border-line pb-2.5 font-display text-lg font-extrabold text-brand-800">
@@ -71,14 +74,20 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
       </h3>
       <div className="mb-4 flex flex-wrap gap-2">
         <Tile label="Total Invoices" value={String(totals.totalInvoices)} />
-        <Tile label="Total Current Bill Amount" value={rs(totals.totalCurrentBill)} />
+        {totals.opening ? <Tile label="Opening Balance" value={rs(totals.opening)} /> : null}
+        <Tile label="Total Bill Amount" value={rs(totals.totalBilled)} />
         <Tile label="Total Paid" value={rs(totals.totalPaid)} />
-        {totals.totalDiscount > 0 ? <Tile label="Total Discount" value={rs(totals.totalDiscount)} /> : null}
-        {totals.totalReturns > 0 ? (
-          <Tile label="Total Returns" value={`-${rs(totals.totalReturns)}`} tone="text-amber-600" />
+        {totals.totalDiscount > 0 ? (
+          <Tile label="Discount (included)" value={rs(totals.totalDiscount)} />
+        ) : null}
+        {totals.balanceReturns > 0 ? (
+          <Tile label="Returns Deducted" value={`-${rs(totals.balanceReturns)}`} tone="text-amber-600" />
+        ) : null}
+        {totals.refundedReturns > 0 ? (
+          <Tile label="Returns (refunded)" value={rs(totals.refundedReturns)} tone="text-amber-600" />
         ) : null}
         <Tile
-          label={statementBalanceLabel(totals)}
+          label="Outstanding Balance"
           value={rs(balance)}
           tone={balance > 0 ? 'text-red-300' : balance < 0 ? 'text-emerald-300' : undefined}
           highlight
@@ -88,6 +97,8 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
       <ul className="max-h-96 space-y-2 overflow-y-auto pr-1">
         {statement.invoices.map((invoice) => {
           const hasReturns = invoice.totalReturns > 0;
+          const adjusted = balanceReturnsOf(invoice);
+          const refunded = refundedReturnsOf(invoice);
           return (
             <li
               key={invoice.invoiceNo}
@@ -102,9 +113,10 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
                   {invoice.previousBalance > 0 ? ` - Prev Bal: ${rs(invoice.previousBalance)}` : ''}
                   {invoice.discountAmount ? ` - Discount: ${rs(invoice.discountAmount)}` : ''}
                   {` - Paid: ${rs(invoice.amountPaid)}`}
-                  {hasReturns ? ` - Returns: ${rs(invoice.totalReturns)}` : ''}
-                  {` - Due: ${rs(hasReturns ? invoice.adjustedBalanceDue : invoice.balanceDue)}`}
-                  {hasReturns ? ' (Adjusted)' : ''}
+                  {adjusted > 0 ? ` - Returns: ${rs(adjusted)}` : ''}
+                  {refunded > 0 ? ` - Refunded: ${rs(refunded)}` : ''}
+                  {` - Due: ${rs(invoiceDue(invoice))}`}
+                  {adjusted > 0 ? ' (Adjusted)' : ''}
                 </p>
               </div>
               {hasReturns ? (
@@ -154,6 +166,42 @@ function Results({ statement, labels, busy, onDownloadPdf, onDownloadEasyPdf, on
   );
 }
 
+/** Several parties match the typed text: one statement per party, so the user picks which one. */
+function PartyChoices({ state, labels, onChoose }) {
+  return (
+    <div>
+      <p className="mb-2 text-sm font-semibold text-slate-600">
+        {`${state.parties.length} ${labels.party.toLowerCase()}s match "${state.query}" — pick one:`}
+      </p>
+      <ul className="space-y-2">
+        {state.parties.map((party) => (
+          <li key={party.key}>
+            <button
+              type="button"
+              onClick={() => onChoose?.(party.key)}
+              className="flex min-h-11 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-l-[3px] border-line border-l-gold-400 bg-white px-3 py-2 text-left text-sm shadow-sm transition hover:bg-gold-50/60 focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:outline-none"
+            >
+              <span className="flex min-w-0 items-center gap-2 font-display font-bold text-brand-800">
+                <User className="size-4 shrink-0 text-slate-400" aria-hidden />
+                <span className="truncate">{party.name || '-'}</span>
+              </span>
+              <span className="flex items-center gap-3 text-xs text-slate-500 tabular-nums">
+                {party.phone ? (
+                  <span className="flex items-center gap-1">
+                    <Phone className="size-3.5" aria-hidden />
+                    {party.phone}
+                  </span>
+                ) : null}
+                <span>{`${party.count} invoice${party.count === 1 ? '' : 's'}`}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function PartyStatementSection(props) {
   const { labels, query, onQueryChange, state, onGenerate, onClear } = props;
   const { isExpanded } = useBreakpoint();
@@ -174,7 +222,7 @@ export function PartyStatementSection(props) {
     >
       <TextField
         type="search"
-        placeholder={`Enter ${party} name`}
+        placeholder={`Enter ${party} name or phone`}
         aria-label={`${labels.party} name`}
         leftIcon={User}
         autoComplete="off"
@@ -205,6 +253,8 @@ export function PartyStatementSection(props) {
         title={`No invoices found for ${party}: "${state.query}"`}
         className="py-10"
       />
+    ) : state.status === 'choose' ? (
+      <PartyChoices state={state} labels={labels} onChoose={props.onChooseParty} />
     ) : state.status === 'error' ? (
       <EmptyState title={`Error loading ${party} statement.`} className="py-10" />
     ) : state.status === 'ready' ? (
@@ -218,7 +268,7 @@ export function PartyStatementSection(props) {
       />
     ) : isExpanded ? (
       <p className="flex h-full min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/40 px-6 py-8 text-center text-sm text-slate-500">
-        {`Type part of a ${party}'s name and press Generate Combined Statement to see all their invoices, totals and the PDF / WhatsApp options here.`}
+        {`Type a ${party}'s name (or part of it) or phone and press Generate Combined Statement to see all their invoices, totals and the PDF / WhatsApp options here.`}
       </p>
     ) : null;
 

@@ -136,6 +136,7 @@ export default function SalesBillPage() {
           rows={form.rows}
           shortcuts={bill.shortcuts}
           onChange={(rows) => bill.patch({ rows })}
+          showAvgCost
         />
       </Card>
       <Card>

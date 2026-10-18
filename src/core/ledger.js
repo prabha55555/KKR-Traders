@@ -5,14 +5,19 @@
  * All bills of one party form a running-balance chain in chronological order (bill date, then bill number, then
  * creation time — the same order the history screens use):
  *
- *   previousBalance(n) = closingBalance(n - 1)      the first bill keeps its stored previousBalance (the opening anchor)
- *   grandTotal(n)      = subtotal + previousBalance + manualPreviousBalance - discount     (purchase: never below 0)
- *   balanceDue(n)      = grandTotal - amountPaid
- *   closingBalance(n)  = balanceDue - returns       (= adjustedBalanceDue, what the next bill carries forward)
+ *   previousBalance(first) = the party's OPENING balance (see partyOpening)
+ *   previousBalance(n)     = closingBalance(n - 1)
+ *   grandTotal(n)          = subtotal + previousBalance + manualPreviousBalance - discount
+ *   balanceDue(n)          = grandTotal - amountPaid
+ *   closingBalance(n)      = balanceDue - returns settled against the balance   (= adjustedBalanceDue)
  *
  * previousBalance / grandTotal / balanceDue / totalReturns / adjustedBalanceDue stored on a bill are therefore
  * DERIVED values: whenever a bill, its payments or its returns change, the whole chain is rebuilt from fresh data
  * (db.syncSalesLedger / db.syncPurchaseLedger) and only the fields that differ are written back.
+ *
+ * The opening is a property of the PARTY, not of whichever bill happens to sort first: the sync stamps it on every
+ * bill of the party as `ledgerOpening`, so moving a bill's date, deleting the first bill or restoring one can never
+ * turn a carried balance into an opening (which would count it twice).
  */
 import { toNum } from './format';
 
@@ -20,7 +25,9 @@ import { toNum } from './format';
 export const roundMoney = (n) => Math.round((toNum(n) + Number.EPSILON) * 100) / 100 || 0;
 
 const EPSILON = 0.005;
-const differs = (stored, computed) => stored === undefined || stored === null || Math.abs(toNum(stored) - computed) > EPSILON;
+const differs = (stored, computed) =>
+  stored === undefined || stored === null || Math.abs(toNum(stored) - computed) > EPSILON;
+const isAmount = (v) => v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v));
 
 // ------------------------------------------------------------------ the two kinds of ledger
 /** Sales invoices: discount is `discountAmount` (legacy `discount`), paid is the top-level `amountPaid`. */
@@ -29,11 +36,11 @@ export const SALES_LEDGER = {
   phone: (b) => b.customerPhone,
   discount: (b) => (b.discountAmount !== undefined ? toNum(b.discountAmount) : toNum(b.discount)),
   paid: (b) => (b.amountPaid !== undefined ? toNum(b.amountPaid) : undefined),
-  floorGrandTotal: false,
 };
 /**
  * Purchase bills: discount is `discount` (older `discountAmount`); paid lives in the nested `payment.totalPaid` (new
  * bills) and/or the top-level `amountPaid` (edited / legacy bills) — read like core/billing `purchaseAmountPaid`.
+ * Like sales, a total below zero is kept (an advance / credit with the supplier carries into the next bill).
  */
 export const PURCHASE_LEDGER = {
   name: (b) => b.supplierName,
@@ -43,24 +50,59 @@ export const PURCHASE_LEDGER = {
     b.payment?.totalPaid === undefined && b.amountPaid === undefined
       ? undefined
       : toNum(b.payment?.totalPaid) || toNum(b.amountPaid),
-  floorGrandTotal: true,
 };
 
 // ------------------------------------------------------------------ who belongs to a party
-const cleanPhone = (p) => String(p ?? '').trim();
-const cleanName = (n) => String(n ?? '').trim().toLowerCase();
+/** Last 10 digits: '+91 98765 43210', '098765 43210' and '9876543210' are the same phone. */
+export const normalizePhone = (p) =>
+  String(p ?? '')
+    .replace(/\D/g, '')
+    .slice(-10);
+const cleanName = (n) =>
+  String(n ?? '')
+    .trim()
+    .toLowerCase();
 /**
- * A bill belongs to the party when both have a phone and the phones are equal; otherwise when the (trimmed,
- * case-insensitive) names are equal. Same rule the bill screens always used to find a party's earlier bills.
+ * The bills of one party, chosen so that two different parties can never be merged:
+ *  - bills with the party's phone;
+ *  - bills WITHOUT a phone and with the party's name: once synced they carry `ledgerParty` (the phone of the chain
+ *    they were put in, '' = a phone-less chain of that name) and stay there; an unstamped one joins only while its
+ *    name is not used by a different phone;
+ *  - a party without a phone takes the phone of its name when exactly one phone uses that name (unless `stamp` says
+ *    which chain it is: a bill's own `ledgerParty`), otherwise it is the phone-less bills of that name.
+ * Returns `{ phone, members }` — `phone` is the resolved party phone ('' for a phone-less chain).
  */
-export function partyMatcher(kind, name, phone) {
-  const p = cleanPhone(phone);
+export function resolveParty(kind, bills, name, phone, stamp) {
   const n = cleanName(name);
-  return (bill) => {
-    const bp = cleanPhone(kind.phone(bill));
-    if (p && bp) return bp === p;
-    return n !== '' && cleanName(kind.name(bill)) === n;
-  };
+  let p = normalizePhone(phone);
+  const namePhones = new Set();
+  if (n) {
+    bills.forEach((b) => {
+      const bp = normalizePhone(kind.phone(b));
+      if (bp && cleanName(kind.name(b)) === n) namePhones.add(bp);
+    });
+  }
+  if (!p && stamp !== undefined && stamp !== null) p = normalizePhone(stamp);
+  else if (!p && namePhones.size === 1) [p] = namePhones;
+  const nameIsOnlyThisParty = [...namePhones].every((x) => x === p);
+  const members = bills.filter((b) => {
+    const bp = normalizePhone(kind.phone(b));
+    if (bp) return p !== '' && bp === p;
+    if (n === '' || cleanName(kind.name(b)) !== n) return false;
+    if (b.ledgerParty !== undefined && b.ledgerParty !== null) return normalizePhone(b.ledgerParty) === p;
+    return p === '' || nameIsOnlyThisParty;
+  });
+  return { phone: p, members };
+}
+/** The bills of one party (see resolveParty). */
+export const partyBills = (kind, bills, name, phone, stamp) =>
+  resolveParty(kind, bills, name, phone, stamp).members;
+/** Same customer / supplier on both bills (used to decide whether an edit moved a bill to another party). */
+export function sameParty(kind, a, b) {
+  const pa = normalizePhone(kind.phone(a));
+  const pb = normalizePhone(kind.phone(b));
+  if (pa || pb) return pa === pb;
+  return cleanName(kind.name(a)) === cleanName(kind.name(b));
 }
 
 // ------------------------------------------------------------------ chronological order
@@ -70,82 +112,135 @@ const dayMillis = (value) => {
   return Number.isNaN(t) ? null : t;
 };
 const billNumber = (invoiceNo) => {
-  const m = String(invoiceNo ?? '').match(/\d+/);
-  return m ? parseInt(m[0], 10) : null;
+  const digits = String(invoiceNo ?? '').match(/\d+/g);
+  // the LAST digit run is the running number: 'INV/2026-27/012' -> 12, 'P-5' -> 5, 'A012B' -> 12
+  return digits ? parseInt(digits[digits.length - 1], 10) : null;
 };
-/** [date, number, createdAt] — missing values sort first for stored bills (they are the oldest data). */
+/** [date, number, whole number text, createdAt] — missing values sort first for stored bills (oldest data). */
 function storedKey(bill) {
-  return [dayMillis(bill.invoiceDate) ?? -Infinity, billNumber(bill.invoiceNo) ?? -Infinity, String(bill.createdAt ?? '')];
+  return [
+    dayMillis(bill.invoiceDate) ?? -Infinity,
+    billNumber(bill.invoiceNo) ?? -Infinity,
+    String(bill.invoiceNo ?? ''),
+    String(bill.createdAt ?? ''),
+  ];
 }
 /** A bill being composed: a missing date / number means "after everything already stored". */
 function pendingKey(target) {
-  return [dayMillis(target.invoiceDate) ?? Infinity, billNumber(target.invoiceNo) ?? Infinity, '￿'];
+  const hasNo = String(target.invoiceNo ?? '').trim() !== '';
+  return [
+    dayMillis(target.invoiceDate) ?? Infinity,
+    (hasNo ? billNumber(target.invoiceNo) : null) ?? Infinity,
+    hasNo ? String(target.invoiceNo).trim() : '￿',
+    '￿',
+  ];
 }
+const naturalCompare = (a, b) => a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' });
 function compareKeys(a, b) {
   if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
   if (a[1] !== b[1]) return a[1] < b[1] ? -1 : 1;
-  if (a[2] !== b[2]) return a[2] < b[2] ? -1 : 1;
+  const text = naturalCompare(a[2], b[2]);
+  if (text !== 0) return text;
+  if (a[3] !== b[3]) return a[3] < b[3] ? -1 : 1;
   return 0;
 }
 /** Oldest first: bill date, then bill number (numbers restart every financial year), then creation time. */
 export const compareLedgerOrder = (a, b) => compareKeys(storedKey(a), storedKey(b));
 
+// ------------------------------------------------------------------ opening balance of a party
+/**
+ * The party's opening balance: the `ledgerOpening` the sync stamped on its bills, or — for a party never synced
+ * before — the stored previous balance of its first bill (what that bill was written with: the customer's / supplier's
+ * opening balance, or the balance from before this app). `null` when there are no bills.
+ */
+export function partyOpening(bills) {
+  if (!bills.length) return null;
+  const ordered = [...bills].sort(compareLedgerOrder);
+  const stamped = ordered.find((b) => isAmount(b.ledgerOpening));
+  return roundMoney(stamped ? stamped.ledgerOpening : ordered[0].previousBalance);
+}
+
 // ------------------------------------------------------------------ the chain
-function subtotalOf(bill) {
-  if (bill.subtotal !== undefined && bill.subtotal !== null && Number.isFinite(Number(bill.subtotal)))
-    return toNum(bill.subtotal);
+function subtotalOf(bill, kind) {
+  if (isAmount(bill.subtotal)) return toNum(bill.subtotal);
   if (Array.isArray(bill.products) && bill.products.length > 0)
     return bill.products.reduce((sum, p) => sum + toNum(p.amount ?? toNum(p.qty) * toNum(p.rate)), 0);
   // nothing to rebuild it from: keep what the bill says it was
-  return toNum(bill.grandTotal) - toNum(bill.previousBalance) - toNum(bill.manualPreviousBalance);
+  return (
+    toNum(bill.grandTotal) -
+    toNum(bill.previousBalance) -
+    toNum(bill.manualPreviousBalance) +
+    kind.discount(bill)
+  );
 }
-/** Sum of `returnAmount` per bill number. */
+/** A return refunded in cash / bank (money handed over) does not change what is owed; only adjustments do. */
+export const isBalanceReturn = (r) => !(r?.settlementType === 'refund' || r?.refundMethod);
+/** Per bill number: `total` of all returns (shown as "Total Returns") and `balance` = those settled on the balance. */
 export function returnsTotalsByInvoice(returns) {
   const totals = new Map();
   (returns || []).forEach((r) => {
     const key = String(r.invoiceNo);
-    totals.set(key, (totals.get(key) || 0) + toNum(r.returnAmount));
+    const t = totals.get(key) || { total: 0, balance: 0 };
+    const amount = toNum(r.returnAmount);
+    t.total += amount;
+    if (isBalanceReturn(r)) t.balance += amount;
+    totals.set(key, t);
   });
   return totals;
 }
 /**
  * Rebuilds a party's chain. `bills` = that party's bills in any order; `returnsByInvoice` from returnsTotalsByInvoice;
- * `opening` overrides the first bill's previous balance (used when the old first bill was deleted).
+ * `opening` = the party's opening balance (default: partyOpening(bills)).
  * Returns one row per bill, oldest first, with every derived value.
  */
 export function computeLedger(bills, kind, { returnsByInvoice = new Map(), opening } = {}) {
   const ordered = [...bills].sort(compareLedgerOrder);
-  let carried = 0;
-  return ordered.map((bill, index) => {
-    const previousBalance = roundMoney(
-      index === 0 ? (opening !== undefined ? opening : toNum(bill.previousBalance)) : carried,
+  const start =
+    opening !== undefined && opening !== null ? roundMoney(opening) : (partyOpening(ordered) ?? 0);
+  let carried = start;
+  return ordered.map((bill) => {
+    const previousBalance = roundMoney(carried);
+    const grandTotal = roundMoney(
+      subtotalOf(bill, kind) + previousBalance + toNum(bill.manualPreviousBalance) - kind.discount(bill),
     );
-    const raw = subtotalOf(bill) + previousBalance + toNum(bill.manualPreviousBalance) - kind.discount(bill);
-    const grandTotal = roundMoney(kind.floorGrandTotal && raw < 0 ? 0 : raw);
     // a legacy bill without any "paid" field: what it says it still owes is the truth
     const storedPaid = kind.paid(bill);
     const amountPaid = roundMoney(
-      storedPaid !== undefined ? storedPaid : toNum(bill.grandTotal) - toNum(bill.balanceDue ?? bill.payment?.balanceDue),
+      storedPaid !== undefined
+        ? storedPaid
+        : toNum(bill.grandTotal) - toNum(bill.balanceDue ?? bill.payment?.balanceDue),
     );
     const balanceDue = roundMoney(grandTotal - amountPaid);
-    const totalReturns = roundMoney(returnsByInvoice.get(String(bill.invoiceNo)) || 0);
-    const closingBalance = roundMoney(balanceDue - totalReturns);
+    const returns = returnsByInvoice.get(String(bill.invoiceNo)) || { total: 0, balance: 0 };
+    const totalReturns = roundMoney(returns.total);
+    const closingBalance = roundMoney(balanceDue - returns.balance);
     carried = closingBalance;
-    return { bill, previousBalance, grandTotal, amountPaid, balanceDue, totalReturns, closingBalance };
+    return {
+      bill,
+      opening: start,
+      previousBalance,
+      grandTotal,
+      amountPaid,
+      balanceDue,
+      totalReturns,
+      closingBalance,
+    };
   });
 }
 
 /**
  * The previous balance of a bill at its place in the chain: the closing balance of the bill just before it.
  * `target` = { invoiceNo, invoiceDate } of the bill being written or edited; a stored bill with the same number is
- * the bill itself (being edited / overwritten) and is left out. Without a predecessor the bill is the party's first:
- * `anchor` is then the opening balance (`null` = no earlier data, the caller decides).
+ * the bill itself (being edited / overwritten) and is left out. Without a predecessor the bill is the party's first
+ * and starts from the party's opening (`null` = the party has no bills at all, the caller decides).
  */
 export function previousBalanceAt(bills, kind, target, { returnsByInvoice } = {}) {
-  const self = target.invoiceNo ? bills.find((b) => String(b.invoiceNo) === String(target.invoiceNo).trim()) : null;
+  const no = String(target.invoiceNo ?? '').trim();
+  const self = no ? bills.find((b) => String(b.invoiceNo).trim() === no) : null;
   const others = self ? bills.filter((b) => b !== self) : bills;
-  const rows = computeLedger(others, kind, { returnsByInvoice });
-  const probe = pendingKey({ invoiceDate: target.invoiceDate || self?.invoiceDate, invoiceNo: target.invoiceNo });
+  const opening = partyOpening(bills);
+  const rows = computeLedger(others, kind, { returnsByInvoice, opening });
+  const probe = pendingKey({ invoiceDate: target.invoiceDate || self?.invoiceDate, invoiceNo: no });
   const before = rows.filter((r) => compareKeys(storedKey(r.bill), probe) < 0);
   const last = before[before.length - 1];
   if (last) {
@@ -156,11 +251,77 @@ export function previousBalanceAt(bills, kind, target, { returnsByInvoice } = {}
       totalPreviousBills: roundMoney(before.reduce((sum, r) => sum + r.grandTotal, 0)),
     };
   }
-  // first bill of the party: keep its own opening, or take over the opening of the bills it now precedes
-  let anchor = null;
-  if (self) anchor = toNum(self.previousBalance);
-  else if (rows.length > 0) anchor = rows[0].previousBalance;
-  return { previousBalance: anchor, previousBill: null, count: 0, totalPreviousBills: 0 };
+  return { previousBalance: opening, previousBill: null, count: 0, totalPreviousBills: 0 };
+}
+
+// ------------------------------------------------------------------ party summaries (Customer / Supplier Details, dashboard, statements)
+/** What one bill itself charged: subtotal + its opening-balance entry − discount (no carried balance). */
+export const billAmount = (bill, kind) =>
+  roundMoney(subtotalOf(bill, kind) + toNum(bill.manualPreviousBalance) - kind.discount(bill));
+/** Sum of the returns that lower what is owed (not the ones refunded in cash / bank). */
+export const balanceReturnsTotal = (returns) =>
+  roundMoney((returns || []).filter(isBalanceReturn).reduce((sum, r) => sum + toNum(r.returnAmount), 0));
+/**
+ * All bills grouped into parties exactly the way the ledger chains them (phone, else a phone-less bill's
+ * `ledgerParty` stamp, else the single phone using its name, else its name). Each group: `{ key, phone, name, bills }`
+ * with the bills oldest first and `name` / `phone` taken from the latest bill.
+ */
+export function groupParties(kind, bills) {
+  const namePhones = new Map();
+  bills.forEach((b) => {
+    const bp = normalizePhone(kind.phone(b));
+    const n = cleanName(kind.name(b));
+    if (!bp || !n) return;
+    if (!namePhones.has(n)) namePhones.set(n, new Set());
+    namePhones.get(n).add(bp);
+  });
+  const groups = new Map();
+  bills.forEach((b) => {
+    const bp = normalizePhone(kind.phone(b));
+    const n = cleanName(kind.name(b));
+    let key;
+    if (bp) key = `p:${bp}`;
+    else if (b.ledgerParty !== undefined && b.ledgerParty !== null) {
+      const stamped = normalizePhone(b.ledgerParty);
+      key = stamped ? `p:${stamped}` : `n:${n}`;
+    } else {
+      const phones = namePhones.get(n);
+      key = phones && phones.size === 1 ? `p:${[...phones][0]}` : `n:${n}`;
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(b);
+  });
+  return [...groups.entries()].map(([key, list]) => {
+    const ordered = [...list].sort(compareLedgerOrder);
+    const latest = ordered[ordered.length - 1];
+    const latestWithPhone = [...ordered].reverse().find((b) => String(kind.phone(b) ?? '').trim());
+    return {
+      key,
+      phone: latestWithPhone ? String(kind.phone(latestWithPhone)).trim() : '',
+      name: String(kind.name(latest) ?? '').trim(),
+      bills: ordered,
+    };
+  });
+}
+/**
+ * One party's position from its bills: `balance` = what is owed now (closing of the latest bill; negative = advance /
+ * credit), `opening`, `billed` (Σ bill amounts, no carried balances), `paid`, `returns` (all) and `balanceReturns`.
+ */
+export function partySummary(kind, bills, { returnsByInvoice = new Map(), opening } = {}) {
+  const rows = computeLedger(bills, kind, { returnsByInvoice, opening });
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    opening: rows.length ? rows[0].opening : roundMoney(opening ?? 0),
+    balance: last ? last.closingBalance : roundMoney(opening ?? 0),
+    billed: roundMoney(rows.reduce((sum, r) => sum + billAmount(r.bill, kind), 0)),
+    paid: roundMoney(rows.reduce((sum, r) => sum + r.amountPaid, 0)),
+    returns: roundMoney(rows.reduce((sum, r) => sum + r.totalReturns, 0)),
+    balanceReturns: roundMoney(
+      rows.reduce((sum, r) => sum + (returnsByInvoice.get(String(r.bill.invoiceNo))?.balance || 0), 0),
+    ),
+    latest: last ? last.bill : null,
+  };
 }
 
 // ------------------------------------------------------------------ what to write back
@@ -168,10 +329,7 @@ export function previousBalanceAt(bills, kind, target, { returnsByInvoice } = {}
 export function salesLedgerChanges(row) {
   const { bill } = row;
   const fields = {};
-  if (differs(bill.previousBalance, row.previousBalance)) fields.previousBalance = row.previousBalance;
-  if (differs(bill.grandTotal, row.grandTotal)) fields.grandTotal = row.grandTotal;
-  if (differs(bill.balanceDue, row.balanceDue)) fields.balanceDue = row.balanceDue;
-  returnFieldChanges(bill, row, fields);
+  commonChanges(bill, row, fields);
   return Object.keys(fields).length ? fields : null;
 }
 /**
@@ -181,16 +339,17 @@ export function salesLedgerChanges(row) {
 export function purchaseLedgerChanges(row) {
   const { bill } = row;
   const fields = {};
+  commonChanges(bill, row, fields);
+  if (bill.payment && typeof bill.payment === 'object' && differs(bill.payment.balanceDue, row.balanceDue))
+    fields['payment.balanceDue'] = row.balanceDue;
+  return Object.keys(fields).length ? fields : null;
+}
+function commonChanges(bill, row, fields) {
+  if (differs(bill.ledgerOpening, row.opening)) fields.ledgerOpening = row.opening;
   if (differs(bill.previousBalance, row.previousBalance)) fields.previousBalance = row.previousBalance;
   if (differs(bill.grandTotal, row.grandTotal)) fields.grandTotal = row.grandTotal;
   if (differs(bill.balanceDue, row.balanceDue)) fields.balanceDue = row.balanceDue;
-  if (bill.payment && typeof bill.payment === 'object' && differs(bill.payment.balanceDue, row.balanceDue))
-    fields['payment.balanceDue'] = row.balanceDue;
-  returnFieldChanges(bill, row, fields);
-  return Object.keys(fields).length ? fields : null;
-}
-/** totalReturns / adjustedBalanceDue: refreshed when present, added only when the bill actually has returns. */
-function returnFieldChanges(bill, row, fields) {
+  // totalReturns / adjustedBalanceDue: refreshed when present, added only when the bill actually has returns
   const has = bill.totalReturns !== undefined || bill.adjustedBalanceDue !== undefined;
   if (!has && row.totalReturns === 0) return;
   if (differs(bill.totalReturns, row.totalReturns)) fields.totalReturns = row.totalReturns;

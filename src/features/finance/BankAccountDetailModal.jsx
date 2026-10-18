@@ -1,30 +1,22 @@
 import {
   ArrowDownLeft,
-  ArrowRightLeft,
   ArrowUpRight,
-  Banknote,
   Building2,
   CalendarDays,
   Check,
   Copy,
-  CreditCard,
   Edit,
-  Landmark,
   PlusCircle,
-  Receipt,
   RotateCcw,
-  Search,
-  ShoppingCart,
-  TrendingDown,
-  TrendingUp,
-  Wallet,
+  Scale,
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { accountLabel, CASH_LABEL } from '@/core/accountLabel';
 import { db } from '@/core/db';
 import { formatCurrency, formatDateShort, formatDateIN, toNum } from '@/core/format';
-import { Badge, Button, EmptyState, IconButton, Modal, useFeedback } from '@/ui';
+import { Button, DateField, IconButton, Modal, SearchBar, useFeedback } from '@/ui';
 import { getAccountActivity, toDateKey } from './accountsLogic';
 
 const rs = (n) => {
@@ -97,7 +89,7 @@ export default function BankAccountDetailModal({
   allData,
   onClose,
   onEdit,
-  onTransfer,
+  onEditBalance,
   onAddAmount,
   onRefresh,
 }) {
@@ -108,6 +100,14 @@ export default function BankAccountDetailModal({
   const [copied, setCopied] = useState(false);
 
   const isCash = account?.id === 'cash';
+  const name = isCash ? CASH_LABEL : accountLabel(account);
+  // Older accounts may still carry a separate bank name, account number, type and notes: show them only when present
+  const legacyBank =
+    !isCash && account?.bankName && account.bankName.trim().toLowerCase() !== name.toLowerCase()
+      ? account.bankName.trim()
+      : '';
+  const hasMetadata =
+    !isCash && !!(legacyBank || account?.accountNumber || account?.accountType || account?.notes);
 
   const activity = useMemo(() => {
     return getAccountActivity({
@@ -155,7 +155,7 @@ export default function BankAccountDetailModal({
       title: 'Undo Transaction?',
       message: `Are you sure you want to undo this ${item.type || 'entry'} of ${rs(
         item.amount,
-      )}? This will reverse the effect on ${isCash ? 'Cash in Hand' : account.accountName || 'this account'}.`,
+      )}? This will reverse the effect on ${name}.`,
       tone: 'danger',
       confirmText: 'Undo Entry',
     });
@@ -273,63 +273,26 @@ export default function BankAccountDetailModal({
     <Modal
       open={true}
       onClose={onClose}
-      title={
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-gold-100 text-brand-900 ring-1 ring-gold-200">
-            {isCash ? <Banknote className="size-5" /> : <Building2 className="size-5" />}
-          </div>
-          <div>
-            <h2 className="font-display text-lg leading-tight font-bold text-slate-900">
-              {account.accountName || (isCash ? 'Cash in Hand' : 'Bank Account Details')}
-            </h2>
-            <div className="flex items-center gap-2 text-xs font-normal text-slate-500">
-              <span>{isCash ? 'Physical Cash Drawer' : account.bankName || 'Bank Account'}</span>
-              {!isCash && account.accountType && (
-                <>
-                  <span>•</span>
-                  <Badge tone="brand">{account.accountType}</Badge>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      }
+      title={name}
       size="xl"
       footer={
-        <div className="flex w-full items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            {onAddAmount && (
-              <Button
-                variant="primary"
-                size="sm"
-                icon={PlusCircle}
-                onClick={onAddAmount}
-                className="bg-emerald-700 text-xs text-white hover:bg-emerald-800"
-              >
-                + Add Amount
-              </Button>
-            )}
-            {onTransfer && (
-              <Button
-                variant="outline"
-                size="sm"
-                icon={ArrowRightLeft}
-                onClick={onTransfer}
-                className="text-xs"
-              >
-                Transfer Funds
-              </Button>
-            )}
-            {onEdit && !isCash && (
-              <Button variant="outline" size="sm" icon={Edit} onClick={onEdit} className="text-xs">
-                Edit Account
-              </Button>
-            )}
-          </div>
-          <Button variant="secondary" size="sm" onClick={onClose} className="text-xs">
-            Close
-          </Button>
-        </div>
+        <>
+          {onAddAmount && (
+            <Button variant="success" size="sm" icon={PlusCircle} onClick={onAddAmount}>
+              + Add Amount
+            </Button>
+          )}
+          {isCash && onEditBalance && (
+            <Button variant="edit" size="sm" icon={Scale} onClick={onEditBalance}>
+              Edit Balance
+            </Button>
+          )}
+          {onEdit && !isCash && (
+            <Button variant="edit" size="sm" icon={Edit} onClick={onEdit}>
+              Edit Account
+            </Button>
+          )}
+        </>
       }
     >
       <div className="space-y-5">
@@ -388,44 +351,42 @@ export default function BankAccountDetailModal({
           </div>
         </div>
 
-        {/* ACCOUNT METADATA & QUICK INFO */}
-        {!isCash && (
+        {/* DETAILS OF OLDER ACCOUNTS (bank name / number / type / notes), only when present */}
+        {hasMetadata && (
           <div className="rounded-2xl border border-line bg-slate-50/70 p-3.5 sm:p-4">
             <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-              <div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase">Bank Name</span>
-                <p className="mt-0.5 font-bold text-slate-800">{account.bankName || 'Not Specified'}</p>
-              </div>
-              <div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase">Account Number</span>
-                <div className="mt-0.5 flex items-center gap-1.5 font-mono font-bold text-slate-800">
-                  <span>{account.accountNumber || '—'}</span>
-                  {account.accountNumber && (
-                    <button
-                      type="button"
-                      onClick={handleCopyAccNumber}
-                      title="Copy Account Number"
-                      className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-                    >
-                      {copied ? (
-                        <Check className="size-3.5 text-emerald-600" />
-                      ) : (
-                        <Copy className="size-3.5" />
-                      )}
-                    </button>
-                  )}
+              {legacyBank && (
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase">Bank Name</span>
+                  <p className="mt-0.5 font-bold text-slate-800">{legacyBank}</p>
                 </div>
-              </div>
-              <div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase">Account Type</span>
-                <p className="mt-0.5 font-bold text-slate-800">{account.accountType || 'Current'}</p>
-              </div>
-              <div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase">Notes</span>
-                <p className="mt-0.5 truncate text-slate-600" title={account.notes}>
-                  {account.notes || 'No notes added'}
-                </p>
-              </div>
+              )}
+              {account.accountNumber && (
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase">Account Number</span>
+                  <div className="mt-0.5 flex items-center gap-1 font-mono font-bold text-slate-800">
+                    <span className="break-all">{account.accountNumber}</span>
+                    <IconButton
+                      icon={copied ? Check : Copy}
+                      label="Copy Account Number"
+                      onClick={handleCopyAccNumber}
+                      className="text-slate-400 hover:text-slate-700"
+                    />
+                  </div>
+                </div>
+              )}
+              {account.accountType && (
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase">Account Type</span>
+                  <p className="mt-0.5 font-bold text-slate-800">{account.accountType}</p>
+                </div>
+              )}
+              {account.notes && (
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase">Notes</span>
+                  <p className="mt-0.5 break-words text-slate-600">{account.notes}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -439,24 +400,26 @@ export default function BankAccountDetailModal({
             </div>
             <div className="space-y-1.5 text-xs text-slate-600">
               <div className="flex justify-between">
-                <span>{isCash ? 'Sales Collections (Cash):' : 'Sales Collections (UPI/Bank):'}</span>
+                <span>{isCash ? 'Sales Collections (Cash):' : 'Sales Collections (Account):'}</span>
                 <span className="font-bold text-emerald-700">{rs(activity.breakdown.salesInflow)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Loans Borrowed (Finance):</span>
                 <span className="font-bold text-teal-700">{rs(activity.breakdown.loanInflow)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Transfers In (From Cash/Banks):</span>
-                <span className="font-bold text-indigo-700">{rs(activity.breakdown.transferInflow)}</span>
-              </div>
+              {activity.breakdown.transferInflow > 0 && (
+                <div className="flex justify-between">
+                  <span>Transfers In (From Cash/Banks):</span>
+                  <span className="font-bold text-indigo-700">{rs(activity.breakdown.transferInflow)}</span>
+                </div>
+              )}
               {(activity.breakdown.additionalInflow > 0 ||
                 (!activity.breakdown.salesInflow &&
                   !activity.breakdown.loanInflow &&
                   !activity.breakdown.transferInflow &&
                   activity.totalInflows > 0)) && (
                 <div className="flex justify-between">
-                  <span>Additional Amounts (Capital / Deposits):</span>
+                  <span>Added Amounts &amp; Balance Edits:</span>
                   <span className="font-bold text-emerald-700">
                     +{rs(activity.breakdown.additionalInflow)}
                   </span>
@@ -491,13 +454,15 @@ export default function BankAccountDetailModal({
                 <span>Loan Repayments:</span>
                 <span className="font-bold text-purple-700">{rs(activity.breakdown.loanRepayOutflow)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Transfers Out (To Cash/Banks):</span>
-                <span className="font-bold text-orange-700">{rs(activity.breakdown.transferOutflow)}</span>
-              </div>
+              {activity.breakdown.transferOutflow > 0 && (
+                <div className="flex justify-between">
+                  <span>Transfers Out (To Cash/Banks):</span>
+                  <span className="font-bold text-orange-700">{rs(activity.breakdown.transferOutflow)}</span>
+                </div>
+              )}
               {activity.breakdown.manualDeductionOutflow > 0 && (
                 <div className="flex justify-between">
-                  <span>Manual Deductions (Drawings / Fees):</span>
+                  <span>Deductions &amp; Other Payments:</span>
                   <span className="font-bold text-rose-700">
                     -{rs(activity.breakdown.manualDeductionOutflow)}
                   </span>
@@ -532,9 +497,7 @@ export default function BankAccountDetailModal({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500">
-                Datewise itemized deposits, payouts, transfers and expense debits
-              </p>
+              <p className="text-[11px] text-slate-500">Datewise itemized money in and out of this account</p>
             </div>
 
             {/* FILTER DIRECTION BUTTONS */}
@@ -542,7 +505,7 @@ export default function BankAccountDetailModal({
               <button
                 type="button"
                 onClick={() => setFilterType('all')}
-                className={`rounded-lg px-2.5 py-1 font-semibold transition ${
+                className={`min-h-8 rounded-lg px-3 font-semibold transition ${
                   filterType === 'all'
                     ? 'bg-white text-brand-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
@@ -553,7 +516,7 @@ export default function BankAccountDetailModal({
               <button
                 type="button"
                 onClick={() => setFilterType('in')}
-                className={`rounded-lg px-2.5 py-1 font-semibold transition ${
+                className={`min-h-8 rounded-lg px-3 font-semibold transition ${
                   filterType === 'in'
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
@@ -564,7 +527,7 @@ export default function BankAccountDetailModal({
               <button
                 type="button"
                 onClick={() => setFilterType('out')}
-                className={`rounded-lg px-2.5 py-1 font-semibold transition ${
+                className={`min-h-8 rounded-lg px-3 font-semibold transition ${
                   filterType === 'out'
                     ? 'bg-rose-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
@@ -578,87 +541,54 @@ export default function BankAccountDetailModal({
           {/* DATEWISE SEARCH & FILTER CONTROLS BAR */}
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-slate-50/70 p-2 sm:p-2.5">
             {/* Specific Date Picker Search */}
-            <div className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2 py-1 text-xs shadow-sm focus-within:border-brand-500">
-              <CalendarDays className="size-3.5 shrink-0 text-slate-400" />
-              <input
-                type="date"
-                value={searchDate}
-                onChange={(e) => setSearchDate(e.target.value)}
-                title="Search by specific date"
-                className="cursor-pointer bg-transparent text-xs font-medium text-slate-800 outline-none"
-              />
-              {searchDate && (
-                <button
-                  type="button"
-                  onClick={() => setSearchDate('')}
-                  title="Clear date filter"
-                  className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <X className="size-3" />
-                </button>
-              )}
-            </div>
+            <DateField
+              value={searchDate}
+              onChange={setSearchDate}
+              aria-label="Search by specific date"
+              className="w-full sm:w-44"
+            />
 
             {/* Quick Date Chips */}
             <div className="flex items-center gap-1">
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant={searchDate === todayKey ? 'secondary' : 'outline'}
                 onClick={() => setSearchDate(searchDate === todayKey ? '' : todayKey)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  searchDate === todayKey
-                    ? 'bg-brand-900 text-gold-300 shadow-sm'
-                    : 'border border-line bg-white text-slate-600 hover:bg-slate-100'
-                }`}
               >
                 Today
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                size="sm"
+                variant={searchDate === yesterdayKey ? 'secondary' : 'outline'}
                 onClick={() => setSearchDate(searchDate === yesterdayKey ? '' : yesterdayKey)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  searchDate === yesterdayKey
-                    ? 'bg-brand-900 text-gold-300 shadow-sm'
-                    : 'border border-line bg-white text-slate-600 hover:bg-slate-100'
-                }`}
               >
                 Yesterday
-              </button>
+              </Button>
             </div>
 
             {/* Keyword / Text Search */}
-            <div className="relative min-w-[140px] flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search description, party, date, amount..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-7 w-full rounded-lg border border-line bg-white pr-7 pl-8 text-xs text-slate-800 placeholder-slate-400 focus:border-brand-500 focus:outline-none"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute top-1/2 right-2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
-                >
-                  <X className="size-3" />
-                </button>
-              )}
-            </div>
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search description, party, date, amount..."
+              aria-label="Search transactions"
+              className="min-w-[160px] flex-1"
+            />
 
             {/* Reset All Filters Button */}
             {(searchDate || searchQuery || filterType !== 'all') && (
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant="outlineDanger"
+                icon={X}
                 onClick={() => {
                   setSearchDate('');
                   setSearchQuery('');
                   setFilterType('all');
                 }}
-                className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
               >
                 Clear All
-              </button>
+              </Button>
             )}
           </div>
 
@@ -672,9 +602,10 @@ export default function BankAccountDetailModal({
               <button
                 type="button"
                 onClick={() => setSearchDate('')}
-                className="ml-1 text-brand-700 hover:text-brand-950"
+                aria-label="Clear date filter"
+                className="ml-1 rounded-full p-1 text-brand-700 hover:bg-brand-100 hover:text-brand-950"
               >
-                <X className="size-3" />
+                <X className="size-3.5" />
               </button>
             </div>
           )}
@@ -687,7 +618,7 @@ export default function BankAccountDetailModal({
               <p className="mt-0.5 text-xs text-slate-500">
                 {searchDate || searchQuery || filterType !== 'all'
                   ? 'No entries match your date or search filters.'
-                  : 'No sales, purchases, loans or transfers recorded for this account yet.'}
+                  : 'No sales, purchases, loans or entries recorded for this account yet.'}
               </p>
               {(searchDate || searchQuery || filterType !== 'all') && (
                 <button
@@ -704,7 +635,7 @@ export default function BankAccountDetailModal({
               )}
             </div>
           ) : (
-            <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+            <div className="space-y-3">
               {groupedByDate.map((group) => {
                 const isToday = group.dateKey === todayKey;
                 const isYesterday = group.dateKey === yesterdayKey;
@@ -817,18 +748,19 @@ export default function BankAccountDetailModal({
                                 {rs(item.amount)}
                               </div>
                               {canUndo(item) && (
-                                <button
-                                  type="button"
+                                <Button
+                                  size="sm"
+                                  variant="outlineDanger"
+                                  icon={RotateCcw}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleUndo(item);
                                   }}
-                                  className="mt-1 inline-flex items-center gap-1 rounded border border-transparent px-1.5 py-0.5 text-[11px] font-semibold text-rose-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-800"
                                   title="Undo this transaction"
+                                  className="mt-1"
                                 >
-                                  <RotateCcw className="size-3" />
-                                  <span>Undo</span>
-                                </button>
+                                  Undo
+                                </Button>
                               )}
                             </div>
                           </div>

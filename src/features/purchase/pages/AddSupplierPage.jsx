@@ -22,6 +22,7 @@ import {
   usePagination,
 } from '@/ui';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import FloatingAddButton from '@/features/overview/components/FloatingAddButton';
 import { SupplierDirectory } from '../components/SupplierDirectory';
 import { SupplierFormFields } from '../components/SupplierFormFields';
 import { useSupplierDirectory } from '../hooks/useSupplierDirectory';
@@ -117,7 +118,17 @@ export default function AddSupplierPage() {
     <Page
       title="Add Supplier"
       icon={UserPlus}
-      actions={<RefreshButton loading={dir.refreshing} onClick={dir.refresh} />}
+      actions={
+        <>
+          {/* tablets: the add popup opens from here (the floating button is phone-only) */}
+          {isExpanded ? null : (
+            <Button icon={UserPlus} onClick={() => setIsAddOpen(true)} className="max-sm:hidden">
+              Add Supplier
+            </Button>
+          )}
+          <RefreshButton loading={dir.refreshing} onClick={dir.refresh} />
+        </>
+      }
     >
       {isExpanded ? (
         <TwoPane main={listSection} side={formCard} />
@@ -160,16 +171,8 @@ export default function AddSupplierPage() {
               />
             </form>
           </Modal>
-          {/* floating Add button: fixed bottom-right above the tab bar; opens the Add New Supplier popup */}
-          <button
-            type="button"
-            onClick={() => setIsAddOpen(true)}
-            aria-label="Add Supplier"
-            title="Add Supplier"
-            className="no-print fixed right-4 bottom-[calc(4.6rem+env(safe-area-inset-bottom))] z-30 flex size-14 items-center justify-center rounded-full bg-gold-sheen text-brand-900 shadow-gold ring-4 ring-white/80 transition hover:brightness-105 focus-visible:ring-gold-300 focus-visible:outline-none active:scale-95 sm:right-6"
-          >
-            <UserPlus className="size-6" aria-hidden />
-          </button>
+          {/* phones: the shared floating Add button above the tab bar opens the Add New Supplier popup */}
+          <FloatingAddButton label="Add Supplier" onClick={() => setIsAddOpen(true)} />
         </>
       )}
 
