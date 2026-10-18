@@ -185,9 +185,14 @@ const invalid = (message) => ({ title: 'Check the details', message });
  * Stage 1 (my DC). `catalogue` = product shortcuts (products must come from it so they can be sold / stocked under
  * the same name); `availableGrey` = kg of that grey product in stock (null = unknown, not checked here).
  */
-export function validateIssue(form, { catalogue = null } = {}) {
+export function validateIssue(form, { catalogue = null, lots = null, existingId = null } = {}) {
   if (!String(form.dcNo ?? '').trim()) return missing('Please enter the DC number.');
   if (!form.dcDate) return missing('Please select the DC date.');
+  if (lots) {
+    const wanted = formatDcNo(form.dcNo).toLowerCase();
+    if (lots.some((l) => l.id !== existingId && formatDcNo(l.dcNo).toLowerCase() === wanted))
+      return invalid(`${formatDcNo(form.dcNo)} is already used by another lot. Use a different DC number.`);
+  }
   if (!String(form.greyDescription ?? '').trim()) return missing('Please select the grey fabric being sent.');
   if (!(toNum(form.greyQty) > 0)) return missing('Please enter the quantity (kg) being sent for dyeing.');
   if (toNum(form.greyRolls) < 0) return invalid('Roll count cannot be negative.');

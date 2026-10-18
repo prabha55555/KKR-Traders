@@ -413,22 +413,23 @@ export function computeAccountBalances({
 
 /**
  * Loads all related financial collections from db (using memory cache when available)
- * and computes live account balances.
+ * and computes live account balances. STRICT: a failed read throws (a balance built from a partial read would look
+ * real), so callers must catch and show an error / unknown state.
  */
 export async function loadLiveAccountBalances() {
   const [banks, cash, sales, purchases, exps, fin, txs, sPayments, pPayments, sReturns, pReturns] =
     await Promise.all([
-      db.getAllBankAccounts().catch(() => []),
-      db.getCashSettings().catch(() => ({ openingBalance: 0 })),
-      db.getAllInvoices().catch(() => []),
-      db.getAllPurchaseBills().catch(() => []),
-      db.getAllExpenses().catch(() => []),
-      db.getAllFinanceRecords().catch(() => []),
-      db.getAllAccountTransactions().catch(() => []),
-      db.getAllPayments().catch(() => []),
-      db.getAllPurchasePayments().catch(() => []),
-      db.getAllReturns().catch(() => []),
-      db.getAllPurchaseReturns().catch(() => []),
+      db.getAllBankAccounts(),
+      db.getCashSettings(),
+      db.getAllInvoices(),
+      db.getAllPurchaseBills(),
+      db.getAllExpenses(),
+      db.getAllFinanceRecords(),
+      db.getAllAccountTransactions(),
+      db.getAllPayments(),
+      db.getAllPurchasePayments(),
+      db.getAllReturns(),
+      db.getAllPurchaseReturns(),
     ]);
 
   return computeAccountBalances({

@@ -3,19 +3,31 @@
  * browser tab, for core/admin.js ADMIN_MINUTES), the page shows this sign-in card instead of the settings.
  */
 import { Lock, LockOpen, Settings, ShieldCheck } from 'lucide-react';
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { adminUnlockedUntil, isAdminUnlocked, lockAdmin, subscribeAdmin, unlockAdmin } from '@/core/admin';
 import { VENDOR } from '@/core/branding';
-import { Badge, Button, Card, Page, SectionHeader, TextField } from '@/ui';
+import { Badge, Button, Card, Page, SectionHeader, TextField, useFeedback } from '@/ui';
+import { isSettingsDirty } from './dirtyGuard';
+
+/** How often an open Settings page re-checks that the administrator's 30 minutes have not run out. */
+const EXPIRY_CHECK_MS = 30_000;
 
 /** Is the administrator signed in (re-renders on unlock / lock)? */
 export function useAdminUnlocked() {
-  return useSyncExternalStore(
+  const unlocked = useSyncExternalStore(
     subscribeAdmin,
     () => isAdminUnlocked(),
     () => false,
   );
+  const [, tick] = useState(0);
+  // the unlock ends by time, not by an event: re-check so the form disappears when it expires
+  useEffect(() => {
+    if (!unlocked) return undefined;
+    const timer = setInterval(() => tick((n) => n + 1), EXPIRY_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [unlocked]);
+  return unlocked && isAdminUnlocked();
 }
 
 function AdminSignIn() {
@@ -93,7 +105,21 @@ function AdminSignIn() {
 /** Settings content for the administrator; the sign-in card for anyone else. */
 export function AdminGate({ children }) {
   const unlocked = useAdminUnlocked();
+  const { confirm } = useFeedback();
   if (!unlocked) return <AdminSignIn />;
+  const onLock = async () => {
+    if (
+      isSettingsDirty() &&
+      !(await confirm({
+        title: 'Lock Settings?',
+        message: 'You have unsaved changes. Locking Settings will discard them.',
+        tone: 'danger',
+        confirmText: 'Lock and discard',
+      }))
+    )
+      return;
+    lockAdmin();
+  };
   const until = new Date(adminUnlockedUntil());
   return (
     <>
@@ -101,7 +127,7 @@ export function AdminGate({ children }) {
         <Badge tone="success" icon={ShieldCheck}>
           Administrator · until {until.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </Badge>
-        <Button variant="outlineWarning" size="sm" icon={Lock} onClick={lockAdmin}>
+        <Button variant="outlineWarning" size="sm" icon={Lock} onClick={onLock}>
           Lock Settings
         </Button>
       </div>

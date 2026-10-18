@@ -128,7 +128,13 @@ function ConfirmDialog({ state, onAnswer }) {
   const danger = opts?.tone === 'danger';
   const warning = opts?.tone === 'warning';
   return (
-    <Modal open={!!state} onClose={() => onAnswer(false)} size="sm" layer="z-[60]">
+    <Modal
+      open={!!state}
+      onClose={() => onAnswer(false)}
+      size="sm"
+      layer="z-[60]"
+      ariaLabel={opts?.title ?? 'Confirm'}
+    >
       <div className="flex flex-col items-center text-center">
         <span
           className={cn(

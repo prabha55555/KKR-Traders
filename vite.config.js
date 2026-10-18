@@ -3,20 +3,20 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { checkFirebaseEnv } from './scripts/firebaseEnvCheck.mjs';
 
 const THEME_COLOR = '#0c1022';
 
 /**
  * Prints which Firebase project a build / dev server talks to: every customer's build must show ITS OWN project
  * (set VITE_FIREBASE_* in `.env.<customer>.local` and build with `--mode <customer>`; see docs/NEW_CUSTOMER_SETUP.md).
+ * Fails the build when a customer mode has no (or only partial) VITE_FIREBASE_* settings.
  */
 function firebaseProjectNotice() {
   return {
     name: 'firebase-project-notice',
     configResolved(config) {
-      const project =
-        config.env.VITE_FIREBASE_PROJECT_ID ||
-        'sriram-96e71 (original installation: no VITE_FIREBASE_* settings found)';
+      const project = checkFirebaseEnv(config.mode, config.env);
       config.logger.info(`  Firebase project: ${project}`);
     },
   };
@@ -78,6 +78,13 @@ export default defineConfig({
       workbox: {
         // The app shell is precached so the PWA opens offline; Firestore data comes from its own IndexedDB cache.
         globPatterns: ['**/*.{js,css,html,svg,png,jpg,ico,webmanifest,woff2}'],
+        // jsPDF's optional chunks (its own html2canvas, canvg `index.es`, DOMPurify) load only for doc.html() / SVG,
+        // which the app never calls (platform/pdf.js renders with html2canvas-pro + addImage): not worth precaching.
+        globIgnores: [
+          '**/assets/html2canvas-!(pro)*.js',
+          '**/assets/index.es-*.js',
+          '**/assets/purify.es-*.js',
+        ],
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,

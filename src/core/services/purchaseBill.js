@@ -6,6 +6,7 @@ import {
   buildProductLines,
   calcPurchaseTotals,
   calcSubtotal,
+  invoiceNoProblem,
   suggestPurchaseInvoiceNumber,
   totalRolls,
 } from '@/core/billing';
@@ -13,7 +14,7 @@ import { CREDIT_LINE } from '@/core/branding';
 import { purchaseAckLine } from '@/core/business';
 import { db } from '@/core/db';
 import { toNum, todayISO } from '@/core/format';
-import { PURCHASE_LEDGER, sameParty } from '@/core/ledger';
+import { PURCHASE_LEDGER, roundMoney, sameParty } from '@/core/ledger';
 import { PAYMENT_METHODS, normalizeMethod, sumByMethod } from '@/core/paymentMethods';
 import { CASH_LABEL, accountLabel, accountLabelWithBank } from '@/core/accountLabel';
 import { invalidateStocksCache } from '@/features/overview/stocks/stocksService';
@@ -33,7 +34,7 @@ export function emptyPurchaseForm() {
   };
 }
 export function purchaseFormTotals(form) {
-  const subtotal = calcSubtotal(form.rows);
+  const subtotal = calcSubtotal(form.rows, { requirePositiveQty: true });
   return {
     subtotal,
     ...calcPurchaseTotals({
@@ -50,6 +51,8 @@ export function purchaseFormTotals(form) {
 export function validatePurchaseBill(form, shortcuts) {
   if (!form.invoiceNo.trim())
     return { title: 'Missing Information', message: 'Please enter the Invoice No.' };
+  const badNo = invoiceNoProblem(form.invoiceNo);
+  if (badNo) return badNo;
   if (!form.invoiceDate) return { title: 'Missing Information', message: 'Please select an Invoice Date.' };
   if (!form.supplierName.trim())
     return { title: 'Missing Information', message: 'Please enter the Supplier Name.' };
@@ -90,18 +93,18 @@ export function buildPurchaseBill(form) {
     supplierName: form.supplierName.trim(),
     supplierAddress: form.supplierAddress.trim(),
     products,
-    subtotal,
+    subtotal: roundMoney(subtotal),
     previousBalance: form.previousBalance,
     manualPreviousBalance: toNum(form.manualPreviousBalance),
     discount: toNum(form.discountAmount),
-    grandTotal,
+    grandTotal: roundMoney(grandTotal),
     ...(form.bankAccountId ? { bankAccountId: form.bankAccountId } : {}),
     payment: {
       cash: toNum(form.cash),
       account: toNum(form.account),
       bankAccountId: form.bankAccountId || null,
-      totalPaid,
-      balanceDue,
+      totalPaid: roundMoney(totalPaid),
+      balanceDue: roundMoney(balanceDue),
     },
   };
 }

@@ -7,7 +7,7 @@ import { todayISO } from '@/core/format';
  * The "search by date + search by name / reason + clear" row of the overview pages.
  * Supports quick date filters (All Dates, Today, This Month — tap the active one again to clear it) and optional extra
  * filter slots. `dateLabel` names the date field when it is not a search (e.g. "Interest as of" on the finance records,
- * where the date changes the computed figures).
+ * where the date changes the computed figures). `active` = an extra filter is chosen (keeps Clear enabled).
  */
 export default function FilterBar({
   date,
@@ -19,9 +19,11 @@ export default function FilterBar({
   quickDates = false,
   extraFilters,
   dateLabel,
+  active = false,
 }) {
   const hasDate = typeof onDateChange === 'function';
-  const filtering = (hasDate && !!date) || !!text;
+  // `active`: an extra filter (e.g. Cash / Account chips) is on, so Clear has something to reset
+  const filtering = (hasDate && !!date) || !!text || !!active;
   const today = todayISO();
   const thisMonth = today.slice(0, 7);
 

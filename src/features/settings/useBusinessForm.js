@@ -8,6 +8,7 @@ import {
   validateBusiness,
 } from '@/core/business';
 import { useBusiness } from '@/hooks/useBusiness';
+import { setSettingsDirty } from './dirtyGuard';
 
 /** Every business setting, in the order of DEFAULT_BUSINESS (also the order the form shows them). */
 export const BUSINESS_FIELDS = Object.keys(DEFAULT_BUSINESS);
@@ -38,6 +39,8 @@ export function useBusinessForm() {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
+  /** fields the user edited since the form last matched the saved details: only these are written over the stored ones */
+  const touched = useRef(new Set());
 
   // The saved details the form was last in step with: when they change (read from the database, saved on another
   // screen) a form the user has not touched follows them; edits in progress are kept.
@@ -53,7 +56,10 @@ export function useBusinessForm() {
     if (!alive.current) return result;
     setLoadFailed(!result?.ok);
     // a successful read: the form shows exactly what is saved (nothing typed yet when the page opens / retries)
-    if (result?.ok) setForm(toForm(result.values));
+    if (result?.ok) {
+      touched.current.clear();
+      setForm(toForm(result.values));
+    }
     setReady(true);
     return result;
   }, []);
@@ -72,6 +78,7 @@ export function useBusinessForm() {
   }, [read]);
 
   const setField = useCallback((key, value) => {
+    touched.current.add(key);
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => {
       if (!e[key]) return e;
@@ -82,6 +89,7 @@ export function useBusinessForm() {
   }, []);
 
   const reset = useCallback(() => {
+    touched.current.clear();
     setForm(toForm(saved));
     setErrors({});
   }, [saved]);
@@ -103,7 +111,8 @@ export function useBusinessForm() {
     busy.current = true;
     setSaving(true);
     try {
-      const clean = await saveBusiness(form);
+      const clean = await saveBusiness(form, { changed: [...touched.current] });
+      touched.current.clear();
       setForm(toForm(clean));
       return { ok: true, values: clean };
     } catch (e) {
@@ -115,6 +124,20 @@ export function useBusinessForm() {
     }
   };
 
+  const dirty = differs(form, saved);
+  // unsaved edits: the browser asks before the tab is closed / reloaded, and "Lock Settings" asks before discarding
+  useEffect(() => {
+    setSettingsDirty(dirty);
+    if (!dirty) return undefined;
+    const warn = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+  useEffect(() => () => setSettingsDirty(false), []);
+
   return {
     ready,
     loadFailed,
@@ -122,7 +145,7 @@ export function useBusinessForm() {
     form,
     errors,
     saving,
-    dirty: differs(form, saved),
+    dirty,
     saved,
     setField,
     save,

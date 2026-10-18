@@ -7,12 +7,13 @@ import {
   buildProductLines,
   calcSalesTotals,
   calcSubtotal,
+  invoiceNoProblem,
   suggestSalesInvoiceNumber,
   saveCustomerDetails,
 } from '@/core/billing';
 import { db } from '@/core/db';
 import { toNum, todayISO } from '@/core/format';
-import { SALES_LEDGER, normalizePhone, sameParty } from '@/core/ledger';
+import { SALES_LEDGER, normalizePhone, roundMoney, sameParty } from '@/core/ledger';
 import { PAYMENT_METHODS, foldBreakdown, normalizeMethod } from '@/core/paymentMethods';
 import { invalidateStocksCache } from '@/features/overview/stocks/stocksService';
 export function emptySalesForm() {
@@ -52,6 +53,8 @@ export function salesFormTotals(form) {
 /** Utils.validateForm. `shortcuts` = the product catalogue; products must come from it (pass null to skip). */
 export function validateSalesBill(form, shortcuts) {
   if (!form.invoiceNo.trim()) return { title: 'Missing Information', message: 'Please enter the Invoice No' };
+  const badNo = invoiceNoProblem(form.invoiceNo);
+  if (badNo) return badNo;
   if (!form.invoiceDate) return { title: 'Missing Information', message: 'Please select an invoice date' };
   if (!form.customerName.trim())
     return { title: 'Missing Information', message: 'Please enter customer name' };
@@ -95,15 +98,15 @@ export function buildSalesInvoice(form) {
     customerAddress: form.customerAddress,
     customerPhone: form.customerPhone,
     products,
-    subtotal,
+    subtotal: roundMoney(subtotal),
     previousBalance: form.previousBalance,
     manualPreviousBalance: toNum(form.manualPreviousBalance),
     discountAmount: toNum(form.discountAmount),
-    grandTotal,
+    grandTotal: roundMoney(grandTotal),
     paymentBreakdown,
     bankAccountId: form.bankAccountId || null,
-    amountPaid: totalPaid,
-    balanceDue,
+    amountPaid: roundMoney(totalPaid),
+    balanceDue: roundMoney(balanceDue),
     manualBillImage: form.manualBillImage || null,
     createdAt: new Date().toISOString(),
   };

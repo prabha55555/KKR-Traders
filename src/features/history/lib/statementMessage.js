@@ -1,7 +1,7 @@
 /** WhatsApp text of the combined statement (shareCombinedStatementViaWhatsApp) and the phone check its sender uses. */
 import { COUNTRY_CODE, CREDIT_LINE } from '@/core/branding';
 import { getBusiness, printName, sharePhonesOf } from '@/core/business';
-import { digitsOnly, formatCurrency, formatDateIN } from '@/core/format';
+import { digitsOnly, formatCurrency, formatDateIN, toNum } from '@/core/format';
 import { foldBreakdown } from '@/core/paymentMethods';
 import { balanceReturnsOf, invoiceDue, refundedReturnsOf } from './statement';
 import { displayInvoiceNo } from './types';
@@ -17,7 +17,7 @@ function invoiceBlock(invoice, isLast, labels) {
     '💰 *BILL SUMMARY:*',
     `   Current Bill: ${rs(invoice.subtotal)}`,
   ];
-  if (invoice.previousBalance > 0) lines.push(`   Previous Balance: ${rs(invoice.previousBalance)}`);
+  if (toNum(invoice.previousBalance) !== 0) lines.push(`   Previous Balance: ${rs(invoice.previousBalance)}`);
   if (invoice.discountAmount) lines.push(`   Discount Amount: -${rs(invoice.discountAmount)}`);
   lines.push(`   Total Amount: ${rs(invoice.grandTotal)}`, `   Amount Paid: ${rs(invoice.amountPaid)}`);
   const pb = foldBreakdown(invoice.paymentBreakdown);

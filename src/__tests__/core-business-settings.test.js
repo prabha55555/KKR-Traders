@@ -5,7 +5,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CREDIT_LINE, VENDOR } from '@/core/branding';
 import {
-  BUNDLED_LOGO,
   DEFAULT_BUSINESS,
   bankLines,
   businessSource,
@@ -42,7 +41,12 @@ const GANESH = {
   upiId: 'ganesh@sbi',
   billTerms: 'Goods once sold cannot be taken back\nSubject to Erode jurisdiction',
 };
-afterEach(() => vi.restoreAllMocks());
+// saving needs the administrator's unlock, as core/admin.js stores it (the tests never contain the password)
+beforeEach(() => window.sessionStorage.setItem('admin_unlocked_until', String(Date.now() + 10 * 60_000)));
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.sessionStorage.clear();
+});
 
 describe('business details', () => {
   test('no business details are built into the app: without saved Settings everything is blank', async () => {
@@ -125,6 +129,13 @@ describe('business details', () => {
     );
     expect(getBusiness().name).toBe('Ganesh Textiles');
     await expect(saveBusiness({ name: '' })).rejects.toThrow(/business name/);
+  });
+
+  test('saving is refused unless the administrator is unlocked', async () => {
+    window.sessionStorage.clear();
+    const save = vi.spyOn(db, 'saveBusinessSettings').mockResolvedValue();
+    await expect(saveBusiness(GANESH)).rejects.toThrow(/Only the administrator/);
+    expect(save).not.toHaveBeenCalled();
   });
 
   test('derived values: initials, bank lines, acknowledgement line', () => {

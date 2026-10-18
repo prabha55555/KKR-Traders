@@ -70,7 +70,7 @@ export const HistoryInvoiceCard = memo(function HistoryInvoiceCard({ invoice, la
         </div>
         <div className="shrink-0 text-right text-xs tabular-nums">
           <div className="font-semibold text-emerald-700">Paid {rs(invoice.amountPaid)}</div>
-          <div className={cn('font-semibold', due > 0 ? 'text-red-600' : 'text-slate-500')}>
+          <div className={cn('font-semibold', due > 0.005 ? 'text-red-600' : 'text-slate-500')}>
             Due {rs(due)}
           </div>
         </div>

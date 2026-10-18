@@ -250,6 +250,29 @@ describe('other processing pages render', () => {
     expect(await screen.findByText('B-001')).toBeInTheDocument();
     expect(screen.getByText('Due ₹500.00')).toBeInTheDocument();
   });
+  test('a combing batch: "Add Payment" from its payment history opens the COMBING pay form', async () => {
+    stubDb([]);
+    db.getAllCombingBatches.mockResolvedValue([
+      {
+        id: 'CB-001',
+        batchId: 'CB-001',
+        batchDate: '2026-10-18',
+        processorName: 'Old Mill',
+        status: 'IN_PROCESS',
+        input: { description: 'Grey', qty: 40, unit: 'Kgs' },
+        output: [],
+        totalCombingCost: 800,
+        payments: [],
+      },
+    ]);
+    renderPage(<OldBatchesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Payments/ }));
+    const history = await screen.findByRole('dialog');
+    fireEvent.click(within(history).getAllByRole('button', { name: /Make First Payment|Add Payment/ })[0]);
+    // the combing form (not the dyeing one): the type survives the history modal closing itself
+    expect(await screen.findByText(/Pay Mill \/ Processor — Batch CB-001/)).toBeInTheDocument();
+    expect(screen.queryByText(/Pay Dyer/)).toBeNull();
+  });
   test('an old batch can be deleted for good (after confirming)', async () => {
     stubDb([]);
     const batch = {

@@ -102,7 +102,12 @@ export async function loadPurchaseForEdit(invoiceNo) {
  * count as paid. (The web floored the grand total at zero, losing a supplier credit; it is kept now, like sales.)
  */
 export function purchaseEditTotals(form) {
-  const subtotal = round2(form.rows.reduce((sum, r) => sum + round2(rowAmount(r.qty, r.rate)), 0));
+  const subtotal = round2(
+    buildProductLines(form.rows, { requirePositiveQty: true }).reduce(
+      (sum, l) => sum + round2(rowAmount(l.qty, l.rate)),
+      0,
+    ),
+  );
   const grandTotal =
     subtotal + round2(form.previousBalance) + toNum(form.manualPreviousBalance) - toNum(form.discountAmount);
   const totalPaid = toNum(form.cash) + toNum(form.account) + form.additionalPaymentsTotal;

@@ -17,7 +17,8 @@ export function TotalInvoicesClickable({ count, invoiceNumbers, entityName, modu
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="font-medium text-brand-600 hover:text-brand-800 hover:underline focus:outline-none"
+        aria-label={`View the ${count} invoices of ${entityName}`}
+        className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg font-semibold text-brand-600 underline-offset-2 hover:text-brand-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
       >
         {count}
       </button>

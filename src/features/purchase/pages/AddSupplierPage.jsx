@@ -4,7 +4,7 @@
  * Wide desktops (xl): add form as a side card; everything narrower: form on top, directory below.
  */
 import { Save, UserPlus, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Badge,
   Button,
@@ -32,7 +32,11 @@ export default function AddSupplierPage() {
   const dir = useSupplierDirectory();
 
   const { isExpanded } = useBreakpoint();
-  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(() => !!dir.phoneParam);
+  // a `?phone=` handed over by the Purchase Bill screen opens the add form (also when the route params arrive later)
+  useEffect(() => {
+    if (dir.phoneParam) setIsAddOpen(true);
+  }, [dir.phoneParam]);
   const pager = usePagination(dir.visible, { resetKey: dir.query });
 
   if (dir.loading && dir.suppliers.length === 0) {
@@ -106,7 +110,12 @@ export default function AddSupplierPage() {
       <p className="mb-4 text-[13px] text-slate-500">
         Phone number and name are required; address is optional.
       </p>
-      <SupplierFormFields value={dir.newSupplier} onChange={dir.setNewSupplier} idPrefix="new-supplier" />
+      <SupplierFormFields
+        value={dir.newSupplier}
+        onChange={dir.setNewSupplier}
+        idPrefix="new-supplier"
+        errors={dir.errors}
+      />
       <Button type="submit" variant="primary" icon={UserPlus} fullWidth loading={dir.adding} className="mt-5">
         Add Supplier
       </Button>
@@ -171,6 +180,7 @@ export default function AddSupplierPage() {
                 value={dir.newSupplier}
                 onChange={dir.setNewSupplier}
                 idPrefix="mob-new-supplier"
+                errors={dir.errors}
               />
             </form>
           </Modal>
@@ -198,7 +208,11 @@ export default function AddSupplierPage() {
           <form id={EDIT_FORM_ID} onSubmit={submitEdit}>
             <SupplierFormFields
               value={dir.editing.draft}
-              onChange={(draft) => dir.setEditing({ ...dir.editing, draft })}
+              onChange={(draft) => {
+                dir.clearEditErrors();
+                dir.setEditing({ ...dir.editing, draft });
+              }}
+              errors={dir.editErrors}
               idPrefix="edit-supplier"
             />
             <p className="mt-3 text-xs text-slate-500">

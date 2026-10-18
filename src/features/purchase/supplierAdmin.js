@@ -18,6 +18,15 @@ export function validateSupplierEdit(input) {
   if (!phone || digitsOnly(phone).length < 10) return 'Please enter a valid phone number.';
   return null;
 }
+/** Per-field messages (phone / name) for the inline errors under the inputs; {} when valid. */
+export function supplierFieldErrors(input) {
+  const { phone, name } = trimmed(input);
+  const errors = {};
+  if (!phone || digitsOnly(phone).length < 10)
+    errors.phone = 'Enter a valid phone number (at least 10 digits).';
+  if (!name) errors.name = 'Supplier name is required.';
+  return errors;
+}
 /** Directory search box (the web page had none): case-insensitive match on name, phone or address. */
 export function filterSupplierDirectory(suppliers, query) {
   const q = query.toLowerCase().trim();

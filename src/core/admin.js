@@ -32,6 +32,15 @@ function session() {
 }
 const notify = () => listeners.forEach((fn) => fn());
 
+/** (Re)starts the lock timer for the unlock time stored on this tab; an expired / missing one is cleared. */
+function armLockTimer() {
+  clearTimeout(lockTimer);
+  lockTimer = null;
+  const left = Number(session()?.getItem(KEY) ?? 0) - Date.now();
+  if (left > 0) lockTimer = setTimeout(lockAdmin, left);
+  else if (session()?.getItem(KEY) != null) lockAdmin();
+}
+
 /** Is the administrator signed in on this tab right now? */
 export function isAdminUnlocked(now = Date.now()) {
   const until = Number(session()?.getItem(KEY) ?? 0);
@@ -80,8 +89,7 @@ export async function unlockAdmin(username, password) {
   } catch {
     return false;
   }
-  clearTimeout(lockTimer);
-  lockTimer = setTimeout(lockAdmin, ADMIN_MINUTES * 60_000);
+  armLockTimer();
   notify();
   return true;
 }
@@ -98,4 +106,11 @@ export async function setClientLogin({ username, password, confirmPassword }) {
   const record = await makeLoginRecord(username, password);
   await storeLoginRecord(record);
   return record.username;
+}
+
+// after a reload the unlock time is still in sessionStorage: the 30-minute timer must run again
+try {
+  armLockTimer();
+} catch {
+  // no storage: nothing to re-arm
 }

@@ -55,7 +55,7 @@ export const sortNewestFirst = (invoices) => [...invoices].sort(compareLedgerOrd
 /** Oldest first in ledger order (the "Easy" ledger lines). */
 export const sortOldestFirst = (invoices) => [...invoices].sort(compareLedgerOrder);
 /** The bill's own amount (no carried balance): the view's `billAmount`, else subtotal − discount. */
-const billAmountOf = (i) => (i.billAmount ?? toNum(i.subtotal) - toNum(i.discountAmount)) || 0;
+export const billAmountOf = (i) => (i.billAmount ?? toNum(i.subtotal) - toNum(i.discountAmount)) || 0;
 /** Returns that lowered the balance (older views without the split: all of them). */
 export const balanceReturnsOf = (i) => toNum(i.balanceReturns ?? i.totalReturns);
 /** Returns refunded in cash / to an account (they do not change what is owed). */

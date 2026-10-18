@@ -21,6 +21,7 @@ export function Modal({
   dismissable = true,
   className,
   layer = 'z-50',
+  ariaLabel,
 }) {
   const titleId = useId();
   const panelRef = useRef(null);
@@ -35,8 +36,33 @@ export function Modal({
     const token = {};
     openStack.push(token);
     const onKey = (e) => {
-      if (e.key === 'Escape' && dismissable && openStack[openStack.length - 1] === token)
-        closeRef.current?.();
+      if (openStack[openStack.length - 1] !== token) return;
+      if (e.key === 'Escape' && dismissable) closeRef.current?.();
+      // Tab stays inside the dialog (it would otherwise walk into the page behind it)
+      if (e.key === 'Tab' && panelRef.current) {
+        const items = [
+          ...panelRef.current.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        ].filter((el) => el.offsetParent !== null || el === document.activeElement);
+        if (items.length === 0) {
+          e.preventDefault();
+          return;
+        }
+        const first = items[0];
+        const last = items[items.length - 1];
+        const active = document.activeElement;
+        if (!panelRef.current.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        } else if (e.shiftKey && (active === first || active === panelRef.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     // move focus into the dialog (the panel itself, so no keyboard pops up on phones)
@@ -63,6 +89,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : ariaLabel}
         tabIndex={-1}
         className={cn(
           'relative flex max-h-[92dvh] w-full animate-sheet-in flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop outline-none',
@@ -93,7 +120,7 @@ export function Modal({
         ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">{children}</div>
         {footer ? (
-          <footer className="pb-safe flex flex-wrap justify-end gap-2 border-t border-line bg-slate-50/70 px-4 py-3 sm:px-6 sm:py-3.5">
+          <footer className="flex flex-wrap justify-end gap-2 border-t border-line bg-slate-50/70 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-3.5 sm:pb-[max(0.875rem,env(safe-area-inset-bottom))]">
             {footer}
           </footer>
         ) : null}

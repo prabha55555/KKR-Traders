@@ -7,6 +7,7 @@ import {
   addSupplier,
   filterSupplierDirectory,
   removeSupplier,
+  supplierFieldErrors,
   updateSupplier,
   validateNewSupplier,
   validateSupplierEdit,
@@ -17,7 +18,13 @@ export function useSupplierDirectory() {
   const { toast, confirm } = useFeedback();
   const [suppliers, setSuppliers] = useState([]);
   const [query, setQuery] = useState('');
-  const [newSupplier, setNewSupplier] = useState(EMPTY_SUPPLIER);
+  const [newSupplier, setNewSupplierRaw] = useState(EMPTY_SUPPLIER);
+  const [errors, setErrors] = useState({});
+  const [editErrors, setEditErrors] = useState({});
+  const setNewSupplier = (value) => {
+    setErrors({});
+    setNewSupplierRaw(value);
+  };
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -27,12 +34,13 @@ export function useSupplierDirectory() {
   // "Add Supplier" button of the Purchase Bill screen hands over the phone number it could not find
   const { phone: phoneParam } = useRouteParams().params;
   useEffect(() => {
-    if (typeof phoneParam === 'string' && phoneParam) setNewSupplier((s) => ({ ...s, phone: phoneParam }));
+    if (typeof phoneParam === 'string' && phoneParam) setNewSupplierRaw((s) => ({ ...s, phone: phoneParam }));
   }, [phoneParam]);
   const visible = useMemo(() => filterSupplierDirectory(suppliers, query), [suppliers, query]);
   const add = async () => {
     const message = validateNewSupplier(newSupplier);
     if (message) {
+      setErrors(supplierFieldErrors(newSupplier));
       toast('Invalid Information', message, 'error');
       return;
     }
@@ -42,7 +50,8 @@ export function useSupplierDirectory() {
         toast('Duplicate Supplier', 'A supplier with this phone number already exists.', 'error');
         return;
       }
-      setNewSupplier(EMPTY_SUPPLIER);
+      setNewSupplierRaw(EMPTY_SUPPLIER);
+      setErrors({});
       setQuery('');
       await reload();
       toast('Supplier Added', 'Supplier added successfully!', 'success');
@@ -55,15 +64,18 @@ export function useSupplierDirectory() {
       setAdding(false);
     }
   };
-  const startEdit = (supplier) =>
+  const startEdit = (supplier) => {
+    setEditErrors({});
     setEditing({
       original: supplier,
       draft: { phone: supplier.phone || '', name: supplier.name || '', address: supplier.address || '' },
     });
+  };
   const saveEdit = async () => {
     if (!editing) return;
     const message = validateSupplierEdit(editing.draft);
     if (message) {
+      setEditErrors(supplierFieldErrors(editing.draft));
       toast('Invalid Information', message, 'error');
       return;
     }
@@ -113,6 +125,10 @@ export function useSupplierDirectory() {
     refresh,
     newSupplier,
     setNewSupplier,
+    errors,
+    editErrors,
+    clearEditErrors: () => setEditErrors({}),
+    phoneParam: typeof phoneParam === 'string' ? phoneParam : '',
     adding,
     add,
     editing,

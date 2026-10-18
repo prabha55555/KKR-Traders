@@ -44,6 +44,9 @@ function SummaryItem({ label, children }) {
 
 /** `showRolls`: the product is counted in rolls (a Rolls column + total; entries without rolls show '-'). */
 function HistorySection({ kind, entries, onSelectBill, showRolls }) {
+  // the average rate is over the purchase lines only (return lines excluded), like the Avg Purchase Rate tile
+  const positiveQty = entries.reduce((sum, e) => sum + (e.qty > 0 ? e.qty : 0), 0);
+  const positiveCost = entries.reduce((sum, e) => sum + (e.qty > 0 ? e.amount : 0), 0);
   const columns = [
     { key: 'date', header: 'Date', nowrap: true, value: (e) => historyDate(e.date) },
     {
@@ -146,9 +149,7 @@ function HistorySection({ kind, entries, onSelectBill, showRolls }) {
                 <span className="font-semibold text-slate-600">
                   Avg Rate:{' '}
                   <strong className="text-emerald-700">
-                    {historyQty(entries) > 0
-                      ? formatRupees(historyTotal(entries) / historyQty(entries))
-                      : '-'}
+                    {positiveQty > 0 ? formatRupees(positiveCost / positiveQty) : '-'}
                   </strong>
                 </span>
               ) : null}
@@ -181,10 +182,7 @@ export default function StockDetailModal({ row, onClose }) {
       entry.isCombingReceipt ||
       entry.isCombingIssue ||
       entry.isDyeingReceipt ||
-      entry.isDyeingIssue ||
-      String(rawNo).startsWith('CB-') ||
-      String(rawNo).startsWith('B-') ||
-      String(rawNo).startsWith('Batch');
+      entry.isDyeingIssue;
     if (processingEntry && !processingOn) return;
     onClose();
     if (entry.isProcessingIssue || entry.isProcessingReceipt || entry.isProcessingReturn) {
@@ -192,16 +190,8 @@ export default function StockDetailModal({ row, onClose }) {
       nav.push(processingLotLink(entry));
       return;
     }
-    if (entry.isCombingReceipt || entry.isCombingIssue || String(rawNo).startsWith('CB-')) {
-      nav.push('/processing/old');
-      return;
-    }
-    if (
-      entry.isDyeingReceipt ||
-      entry.isDyeingIssue ||
-      String(rawNo).startsWith('B-') ||
-      String(rawNo).startsWith('Batch')
-    ) {
+    // only the explicit flags decide: a supplier bill numbered "B-123" is still a purchase bill
+    if (entry.isCombingReceipt || entry.isCombingIssue || entry.isDyeingReceipt || entry.isDyeingIssue) {
       nav.push('/processing/old');
       return;
     }

@@ -33,6 +33,7 @@ import {
   partyOpening,
   purchaseLedgerChanges,
   resolveParty,
+  roundMoney,
   returnsTotalsByInvoice,
   salesLedgerChanges,
 } from './ledger';
@@ -262,10 +263,7 @@ export class Database {
     }
   }
   async getAllPayments() {
-    return this._load('payments', () => this._all('payments'), {
-      memory: false,
-      onError: 'empty',
-    });
+    return this._load('payments', () => this._all('payments'), { onError: 'empty' });
   }
   /** Raw delete of one payment document (no invoice recalculation). */
   async deletePaymentDoc(paymentId) {
@@ -320,8 +318,12 @@ export class Database {
       split[method] = Math.max(0, split[method] - toNum(paymentAmount));
       invoice.paymentBreakdown = split;
     }
-    invoice.amountPaid = Math.max(0, invoice.amountPaid - paymentAmount);
-    invoice.balanceDue = invoice.grandTotal - invoice.amountPaid;
+    // legacy bills may have no amountPaid: derive it like the ledger does (grandTotal - balanceDue)
+    const paidBefore = isAmountValue(invoice.amountPaid)
+      ? toNum(invoice.amountPaid)
+      : toNum(invoice.grandTotal) - toNum(invoice.balanceDue);
+    invoice.amountPaid = roundMoney(Math.max(0, paidBefore - toNum(paymentAmount)));
+    invoice.balanceDue = roundMoney(toNum(invoice.grandTotal) - invoice.amountPaid);
     await this.saveInvoice(invoice);
     if (syncLedger) await this.syncSalesLedger(invoice);
   }
@@ -533,10 +535,7 @@ export class Database {
     return paymentId;
   }
   async getAllPurchasePayments() {
-    return this._load('purchasePayments', () => this._all('purchase_payments'), {
-      memory: false,
-      onError: 'empty',
-    });
+    return this._load('purchasePayments', () => this._all('purchase_payments'), { onError: 'empty' });
   }
   async getPurchasePaymentsByInvoice(invoiceNo) {
     try {
@@ -591,8 +590,10 @@ export class Database {
           split[method] = Math.max(0, split[method] - toNum(paymentAmount));
         bill.paymentBreakdown = split;
       }
-      bill.amountPaid = Math.max(0, (bill.amountPaid || bill.payment?.totalPaid || 0) - paymentAmount);
-      bill.balanceDue = bill.grandTotal - bill.amountPaid;
+      bill.amountPaid = roundMoney(
+        Math.max(0, toNum(bill.amountPaid || bill.payment?.totalPaid || 0) - toNum(paymentAmount)),
+      );
+      bill.balanceDue = roundMoney(toNum(bill.grandTotal) - bill.amountPaid);
       // Keep the nested payment object in sync if it exists
       if (bill.payment) {
         bill.payment.totalPaid = bill.amountPaid;
@@ -983,7 +984,8 @@ export class Database {
         })
         .filter((u) => u.fields && u.id !== undefined && u.id !== null && u.id !== '');
       await this._applyUpdates(spec.bills, updates);
-      this._cache[spec.cacheKey] = null;
+      // invalidate (not just null the entry): an in-flight read that started before the batch must not cache old data
+      this.invalidate(spec.cacheKey);
       return rows;
     } catch (error) {
       console.error(`Error syncing the ${spec.label} ledger:`, error);

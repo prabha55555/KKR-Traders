@@ -8,6 +8,7 @@
 import { purchaseAmountPaid } from '@/core/billing';
 import { db } from '@/core/db';
 import { formatCurrency, todayISO, toNum } from '@/core/format';
+import { roundMoney } from '@/core/ledger';
 import { foldBreakdown, foldPurchasePayment, normalizeMethod } from '@/core/paymentMethods';
 import { paymentTimestamp, totalOf } from '../lib/payments';
 import { userError } from '../lib/types';
@@ -74,8 +75,8 @@ export function statementPayments(bill, payments) {
 export function applyAdditionalPurchasePayment(bill, amounts) {
   const current = foldBreakdown(bill.paymentBreakdown) ?? ZERO;
   const added = foldBreakdown(amounts);
-  const newAmountPaid = (bill.amountPaid || bill.payment?.totalPaid || 0) + totalOf(amounts);
-  const balanceDue = bill.grandTotal - newAmountPaid;
+  const newAmountPaid = roundMoney(toNum(bill.amountPaid || bill.payment?.totalPaid || 0) + totalOf(amounts));
+  const balanceDue = roundMoney(toNum(bill.grandTotal) - newAmountPaid);
   // the bill keeps the bank of the money paid WITH it; the new payment's bank goes on its own payment record (taking it
   // here made the next edit move the first payment to the later bank)
   const bankAccountId =

@@ -17,7 +17,7 @@ const valueToChoice = (value) => (value === '' ? null : value === 'custom' ? 'cu
 
 const cleanQty = (qty) => {
   const n = Number(qty);
-  return Number.isFinite(n) ? Number(n.toFixed(2)).toString() : '0';
+  return Number.isFinite(n) ? Number(n.toFixed(3)).toString() : '0';
 };
 
 export function ReturnItemEditor({ index, item, products, returnedQty, onChange, onRemove }) {

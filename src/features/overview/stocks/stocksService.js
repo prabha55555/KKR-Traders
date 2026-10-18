@@ -1,6 +1,9 @@
 import { db } from '@/core/db';
 import { buildStockMap, computeStocks } from './stocksLogic';
-/** Loads purchases, sales and opening stocks and derives the stock rows + financial summary. */
+/**
+ * Loads purchases, sales and opening stocks and derives the stock rows + financial summary. The reads that feed
+ * quantities are STRICT: a failed one throws instead of showing partial stock as real figures.
+ */
 export async function loadStocks() {
   const [
     purchaseBills,
@@ -13,15 +16,15 @@ export async function loadStocks() {
     combingBatches,
     processingLots,
   ] = await Promise.all([
-    db.getAllPurchaseBills().catch(() => []),
-    db.getAllInvoices().catch(() => []),
-    db.getAllOpeningStocks().catch(() => []),
+    db.getAllPurchaseBills(),
+    db.getAllInvoices(),
+    db.getAllOpeningStocks(),
     db.getAllProductMetadata().catch(() => []),
-    db.getAllReturns().catch(() => []),
-    db.getAllPurchaseReturns().catch(() => []),
-    db.getAllDyeingBatches ? db.getAllDyeingBatches().catch(() => []) : Promise.resolve([]),
-    db.getAllCombingBatches ? db.getAllCombingBatches().catch(() => []) : Promise.resolve([]),
-    db.getAllProcessingLots ? db.getAllProcessingLots().catch(() => []) : Promise.resolve([]),
+    db.getAllReturns(),
+    db.getAllPurchaseReturns(),
+    db.getAllDyeingBatches ? db.getAllDyeingBatches() : Promise.resolve([]),
+    db.getAllCombingBatches ? db.getAllCombingBatches() : Promise.resolve([]),
+    db.getAllProcessingLots ? db.getAllProcessingLots() : Promise.resolve([]),
   ]);
   return computeStocks(
     purchaseBills || [],
@@ -63,14 +66,10 @@ export async function getStockQuantityMap(forceRefresh = false) {
   if (!forceRefresh && _stocksCache && now - _stocksCacheTime < 15000) {
     return _stocksCache;
   }
-  try {
-    const { rows } = await loadStocks();
-    const map = buildStockMap(rows);
-    _stocksCache = map;
-    _stocksCacheTime = now;
-    return map;
-  } catch (err) {
-    console.error('Failed to load stock map:', err);
-    return new Map();
-  }
+  // a failed read throws (callers show their error state); nothing partial is ever cached
+  const { rows } = await loadStocks();
+  const map = buildStockMap(rows);
+  _stocksCache = map;
+  _stocksCacheTime = now;
+  return map;
 }

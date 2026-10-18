@@ -211,7 +211,7 @@ describe('Supplier Details page (shared party layout)', () => {
   it('the invoice count lists the bills and opens one in Purchase History', async () => {
     await renderSuppliers();
     const abc = within(screen.getByText('ABC Mills').closest('tr'));
-    fireEvent.click(abc.getByRole('button', { name: '1' }));
+    fireEvent.click(abc.getByRole('button', { name: /^View the 1 invoices of ABC Mills/ }));
     const dialog = await screen.findByRole('dialog', { name: "ABC Mills's Invoices" });
     fireEvent.click(within(dialog).getByRole('button', { name: '012' }));
     expect(await screen.findByText('at /purchase/history?search=012')).toBeInTheDocument();

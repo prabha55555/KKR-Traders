@@ -52,7 +52,7 @@ const rs = (amount) => `₹${formatCurrency(amount)}`;
 
 /** 'Paid' | 'Partially Paid' | 'Unpaid' – purely a visual reading of the invoice figures. */
 export function invoiceStatusText(invoice) {
-  if (invoiceDue(invoice) <= 0) return 'Paid';
+  if (invoiceDue(invoice) < 0.005) return 'Paid';
   return invoice.amountPaid > 0 ? 'Partially Paid' : 'Unpaid';
 }
 
@@ -260,7 +260,17 @@ export function InvoiceSummaryBox({ invoice }) {
           value={rs(invoice.subtotal)}
           className="border-b border-line pb-2"
         />
-        <Line label="Previous Balance:" value={rs(invoice.previousBalance)} valueClassName="text-red-600" />
+        <Line
+          label="Previous Balance:"
+          value={rs(invoice.previousBalance)}
+          valueClassName={
+            toNum(invoice.previousBalance) > 0.005
+              ? 'text-red-600'
+              : toNum(invoice.previousBalance) < -0.005
+                ? 'text-emerald-700'
+                : 'text-slate-600'
+          }
+        />
         {invoice.discountAmount ? (
           <Line
             label="Discount Amount:"
@@ -315,7 +325,9 @@ export function InvoiceSummaryBox({ invoice }) {
       <div
         className={cn(
           'flex items-baseline justify-between gap-3 border-t px-3 py-2.5 font-bold',
-          'border-red-200 bg-red-50 text-red-600',
+          due > 0.005
+            ? 'border-red-200 bg-red-50 text-red-600'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-700',
         )}
       >
         <span className="text-sm">{adjusted > 0 ? 'Current Adjusted Balance Due:' : 'Balance Due:'}</span>

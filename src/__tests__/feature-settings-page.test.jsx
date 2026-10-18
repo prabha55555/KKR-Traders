@@ -10,8 +10,9 @@ import { NAV_CATEGORIES, NavMenu } from '@/app/ModuleLayout';
 import { AppRoutes } from '@/app/routes';
 import { PASS_B64, SESSION_KEYS, USER_B64 } from '@/core/auth';
 import { VENDOR } from '@/core/branding';
-import { BUNDLED_LOGO, getBusiness } from '@/core/business';
+import { getBusiness } from '@/core/business';
 import { db } from '@/core/db';
+import { AdminGate } from '@/features/settings/AdminGate';
 import SettingsPage from '@/features/settings/SettingsPage';
 import { fitWithin, resizeLogo } from '@/features/settings/logoImage';
 import { FeedbackProvider } from '@/ui/Feedback';
@@ -177,13 +178,25 @@ describe('Settings page — business details', () => {
     expect(saveBusiness.mock.calls[0][0]).toMatchObject({ logo: '' });
   });
 
-  test('the logo shipped with the app is shown as "Default logo" and can be replaced or removed', async () => {
-    stubDb({ ...STORED, logo: BUNDLED_LOGO });
+  test('no logo is built into the app: a stored "bundled" value (old installations) is simply no logo', async () => {
+    stubDb({ ...STORED, logo: 'bundled' });
     renderPage();
-    expect(await screen.findByText('Default logo')).toBeInTheDocument();
-    expect(screen.getByAltText('Logo preview')).toHaveAttribute('src', expect.stringContaining('logo'));
-    expect(screen.getByRole('button', { name: 'Change logo' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Remove logo' })).toBeInTheDocument();
+    expect(await screen.findByText('No logo')).toBeInTheDocument();
+    expect(screen.queryByText('Default logo')).toBeNull();
+    expect(screen.queryByAltText('Logo preview')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Upload logo' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove logo' })).toBeNull();
+  });
+
+  test('the logo label is tied to its field and the hint is described', async () => {
+    stubDb();
+    renderPage();
+    const picker = await screen.findByLabelText('Logo picture');
+    expect(picker).toHaveAttribute('id', 'business-logo-file');
+    expect(document.querySelector('label[for="business-logo-file"]')).not.toBeNull();
+    expect(document.getElementById(picker.getAttribute('aria-describedby'))).toHaveTextContent(
+      /Printed at the top of every bill/,
+    );
   });
 
   test('Reset goes back to the saved details', async () => {
@@ -308,5 +321,41 @@ describe('logo picture', () => {
     await expect(resizeLogo(new File(['x'], 'notes.txt', { type: 'text/plain' }))).rejects.toThrow(
       /image file/,
     );
+  });
+});
+
+describe('Settings page — unsaved edits and the full-size preview', () => {
+  test('unsaved edits: the browser is asked before the tab closes; Lock Settings asks before discarding', async () => {
+    stubDb();
+    wrap(
+      <AdminGate>
+        <SettingsPage />
+      </AdminGate>,
+    );
+    fireEvent.change(await nameField(), { target: { value: 'Something Else' } });
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Lock Settings' }));
+    expect(
+      await screen.findByText(/unsaved changes. Locking Settings will discard them/),
+    ).toBeInTheDocument();
+    // "keep editing" leaves it unlocked
+    fireEvent.click(screen.getByRole('button', { name: /Cancel/ }));
+    await waitFor(() => expect(screen.queryByText(/Locking Settings will discard/)).toBeNull());
+    expect(window.sessionStorage.getItem('admin_unlocked_until')).not.toBeNull();
+    // a clean form does not block the tab closing
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    const clean = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+  });
+
+  test('"Full-size preview" opens the bill in a dialog', async () => {
+    stubDb();
+    renderPage();
+    await nameField();
+    fireEvent.click(screen.getByRole('button', { name: 'Full-size preview' }));
+    expect(await screen.findByTitle('Sales bill full-size preview')).toBeInTheDocument();
   });
 });

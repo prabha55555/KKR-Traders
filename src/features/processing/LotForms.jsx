@@ -6,9 +6,10 @@
  * Each form shows the weight loss / cost it implies while typing, so mistakes are visible before saving.
  */
 import { Link } from 'react-router';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ProductDescriptionInput } from '@/components/bill/ProductDescriptionInput';
 import { formatCurrency, todayISO, toNum } from '@/core/format';
+import { lookupStock } from '@/features/overview/stocks/stocksLogic';
 import { Button, DateField, Grid, Modal, NumberField, SelectField, TextField, cn } from '@/ui';
 import {
   LOT_STATUS,
@@ -104,6 +105,11 @@ function Summary({ rows }) {
 }
 
 function FormModal({ open, onClose, title, formId, saving, submitLabel, error, children }) {
+  const errorRef = useRef(null);
+  // the form can be long: bring a new error into view so it is not missed below the fold
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [error]);
   return (
     <Modal
       open={open}
@@ -124,6 +130,7 @@ function FormModal({ open, onClose, title, formId, saving, submitLabel, error, c
     >
       {error ? (
         <p
+          ref={errorRef}
           role="alert"
           className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700"
         >
@@ -166,8 +173,9 @@ export function IssueModal({ open, onClose, data, existing = null, onSaved, conf
             combingUnitId: existing.combingUnit?.id ?? '',
             combingRate: existing.combingRate ? String(existing.combingRate) : '',
             notes: existing.notes ?? '',
+            greyRate: '',
           }
-        : { ...emptyLot(todayISO()), dcNo: suggestNextDcNo(data.lots), dyeingCharge: '' },
+        : { ...emptyLot(todayISO()), dcNo: suggestNextDcNo(data.lots), dyeingCharge: '', greyRate: '' },
     );
     // reset only when the form opens or another lot is picked: a background reload (new lot objects) must not wipe
     // what is being typed
@@ -181,6 +189,14 @@ export function IssueModal({ open, onClose, data, existing = null, onSaved, conf
     () => (form.greyDescription ? availableGreyRolls(data.stockMap, form.greyDescription, existing) : null),
     [data.stockMap, form.greyDescription, existing],
   );
+
+  // average purchase rate of the chosen grey (0 = stock came without a priced purchase, e.g. opening stock only)
+  const stockGreyRate = useMemo(() => {
+    if (!form.greyDescription.trim()) return null;
+    if (existing && String(existing.grey?.description ?? '').trim() === form.greyDescription.trim())
+      return toNum(existing.grey?.rate);
+    return toNum(lookupStock(data.stockMap, form.greyDescription)?.avgPurchaseRate);
+  }, [data.stockMap, form.greyDescription, existing]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -206,6 +222,7 @@ export function IssueModal({ open, onClose, data, existing = null, onSaved, conf
         stockMap: data.stockMap,
         catalogue: data.shortcuts,
         existing,
+        lots: data.lots,
       });
       onSaved(lot, { isNew: !existing });
     } catch (err) {
@@ -255,6 +272,21 @@ export function IssueModal({ open, onClose, data, existing = null, onSaved, conf
             onChange={(greyQty) => patch({ greyQty })}
           />
         </Grid>
+        {stockGreyRate === 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <p role="status" className="font-semibold">
+              No purchase rate for this grey — its cost would count as ₹0, understating the finished cost.
+            </p>
+            <div className="mt-2 max-w-xs">
+              <NumberField
+                label="Grey rate (₹/kg) — optional"
+                value={form.greyRate}
+                onChange={(greyRate) => patch({ greyRate })}
+                hint="Used as the grey cost per kg of this lot"
+              />
+            </div>
+          </div>
+        ) : null}
         <ProductField
           label="Finished product (after dyeing & combing)"
           value={form.finishedDescription}

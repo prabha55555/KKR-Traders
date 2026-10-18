@@ -4,7 +4,7 @@
  *  - ReturnHistoryModal  lists the returns and deletes a wrong one
  */
 import { RotateCcw, Trash2 } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ProductDescriptionInput } from '@/components/bill/ProductDescriptionInput';
 import { formatCurrency, formatDateIN, todayISO, toNum } from '@/core/format';
 import {
@@ -31,6 +31,11 @@ export function AddReturnModal({ open, onClose, lot, shortcuts, stockMap, onSave
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const errorRef = useRef(null);
+  // a long form: bring a new error into view
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [error]);
   useEffect(() => {
     if (!open || !lot) return;
     setError('');
@@ -75,6 +80,7 @@ export function AddReturnModal({ open, onClose, lot, shortcuts, stockMap, onSave
     <Modal
       open={open}
       onClose={saving ? undefined : onClose}
+      dismissable={!saving}
       title={`Add return — lot ${formatDcNo(lot.dcNo)}`}
       footer={
         <>
@@ -90,6 +96,7 @@ export function AddReturnModal({ open, onClose, lot, shortcuts, stockMap, onSave
       <form id={formId} onSubmit={submit} className="space-y-4" noValidate>
         {error ? (
           <p
+            ref={errorRef}
             role="alert"
             className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700"
           >

@@ -5,8 +5,10 @@
  *  - LotPaymentHistoryModal  the payments made, with delete
  */
 import { Trash2, Wallet } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { accountLabel } from '@/core/accountLabel';
+import { getBusiness } from '@/core/business';
+import { moduleInPlan } from '@/core/modules';
 import { formatCurrency, formatDateIN, todayISO, toNum } from '@/core/format';
 import {
   Button,
@@ -65,6 +67,11 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const errorRef = useRef(null);
+  // a long form: bring a new error into view
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [error]);
   const t = lot ? lotTotals(lot) : null;
   useEffect(() => {
     if (!open || !lot) return;
@@ -83,6 +90,7 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lot?.id]);
   if (!lot) return null;
+  const financeAvailable = moduleInPlan('finance', getBusiness().modulePlan);
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
   const pick = (r) => {
     setRole(r);
@@ -117,6 +125,7 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
     <Modal
       open={open}
       onClose={saving ? undefined : onClose}
+      dismissable={!saving}
       size="md"
       title={`Add payment — lot ${formatDcNo(lot.dcNo)}`}
       footer={
@@ -155,6 +164,7 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
       <form id={formId} onSubmit={submit} className="mt-4 space-y-3.5" noValidate>
         {error ? (
           <p
+            ref={errorRef}
             role="alert"
             className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700"
           >
@@ -170,7 +180,8 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
           onChange={(method) => patch({ method })}
           options={[
             { value: 'cash', label: 'Cash' },
-            { value: 'account', label: 'Account' },
+            // no Finance module on this plan: there are no bank accounts to pay from
+            ...(financeAvailable || bankAccounts.length ? [{ value: 'account', label: 'Account' }] : []),
           ]}
         />
         {form.method === 'account' ? (
@@ -183,7 +194,9 @@ export function LotPaymentModal({ open, onClose, lot, bankAccounts = [], onSaved
             />
           ) : (
             <p className="text-xs font-medium text-amber-700">
-              Add a bank account in Finance first, or pay by Cash.
+              {financeAvailable
+                ? 'Add a bank account in Finance first, or pay by Cash.'
+                : 'No bank accounts are available on this plan. Pay by Cash, or ask your administrator.'}
             </p>
           )
         ) : null}

@@ -1,24 +1,22 @@
 import { ImageOff, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 
-import bundledLogoUrl from '@/assets/brand/logo.png';
-import { BUNDLED_LOGO } from '@/core/business';
+import { safeLogo } from '@/core/business';
 import { Button, Field, useFeedback } from '@/ui';
 import { resizeLogo } from './logoImage';
 
-/** The logo as an <img> source: the uploaded picture, the logo file shipped with the app, or '' (no logo). */
-export const logoPreviewSrc = (logo) => (logo === BUNDLED_LOGO ? bundledLogoUrl : logo || '');
+/** The logo as an <img> source: the uploaded picture, or '' (no logo; an unsafe / old 'bundled' value is no logo). */
+export const logoPreviewSrc = (logo) => safeLogo(logo);
 
 /**
- * Business logo: preview, upload (shrunk on the device, see logoImage.js) and remove. `value` is a data URL, '' or
- * BUNDLED_LOGO (the logo shipped with the app — shown as "Default logo", can be replaced or removed).
+ * Business logo: preview, upload (shrunk on the device, see logoImage.js) and remove. `value` is a data URL or ''.
  */
 export function LogoField({ id, value, onChange, error }) {
   const { toast } = useFeedback();
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const src = logoPreviewSrc(value);
-  const isDefault = value === BUNDLED_LOGO;
+  const hintId = `${id}-hint`;
 
   const onPick = async (e) => {
     const file = e.target.files?.[0];
@@ -35,11 +33,7 @@ export function LogoField({ id, value, onChange, error }) {
   };
 
   return (
-    <Field
-      label="Logo"
-      error={error}
-      hint="Printed at the top of every bill. A PNG with a transparent background looks best; it is resized to 400 px on this device."
-    >
+    <Field label="Logo" htmlFor={`${id}-file`} error={error}>
       <div className="flex flex-wrap items-center gap-3 sm:gap-4">
         <figure className="m-0 flex shrink-0 flex-col items-center gap-1">
           <div className="flex size-24 items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 p-1.5">
@@ -52,13 +46,11 @@ export function LogoField({ id, value, onChange, error }) {
               </span>
             )}
           </div>
-          {isDefault ? (
-            <figcaption className="text-[11px] font-semibold text-slate-500">Default logo</figcaption>
-          ) : null}
         </figure>
         <div className="flex min-w-0 flex-wrap gap-2">
           <Button
             id={id}
+            aria-describedby={error ? undefined : hintId}
             variant="outlineGold"
             size="sm"
             icon={Upload}
@@ -74,8 +66,16 @@ export function LogoField({ id, value, onChange, error }) {
           ) : null}
         </div>
       </div>
+      {error ? null : (
+        <p id={hintId} className="mt-1.5 text-xs text-slate-500">
+          Printed at the top of every bill. A PNG with a transparent background looks best; it is resized to
+          400 px on this device.
+        </p>
+      )}
       <input
         ref={inputRef}
+        id={`${id}-file`}
+        aria-describedby={error ? undefined : hintId}
         type="file"
         accept="image/png,image/jpeg,image/webp,image/svg+xml,image/*"
         className="hidden"

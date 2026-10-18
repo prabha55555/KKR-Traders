@@ -183,7 +183,7 @@ describe('Customer Details page (shared party layout)', () => {
   it('the invoice count lists the invoices and opens one in Sales History', async () => {
     await renderPage();
     const ravi = within(screen.getByText('Ravi Textiles').closest('tr'));
-    fireEvent.click(ravi.getByRole('button', { name: '1' }));
+    fireEvent.click(ravi.getByRole('button', { name: /^View the 1 invoices of Ravi Textiles/ }));
     const dialog = await screen.findByRole('dialog', { name: "Ravi Textiles's Invoices" });
     fireEvent.click(within(dialog).getByRole('button', { name: '12' }));
     expect(await screen.findByText('at /sales/history?search=12')).toBeInTheDocument();

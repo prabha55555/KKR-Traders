@@ -145,7 +145,7 @@ export default function DashboardPage() {
       </header>
 
       {/* ------------------------------------------------------------ content */}
-      <main className="pb-safe relative mx-auto -mt-20 max-w-7xl px-4 pb-12 sm:-mt-24 sm:px-6 lg:px-8">
+      <main className="relative mx-auto -mt-20 max-w-7xl px-4 pb-[max(3rem,env(safe-area-inset-bottom))] sm:-mt-24 sm:px-6 lg:px-8">
         {!isBusinessConfigured() ? (
           <div className="relative mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold-300 bg-gold-50 p-4 shadow-card">
             <div className="min-w-0">

@@ -346,7 +346,12 @@ export default function SettingsPage() {
             <span className="text-xs font-medium text-slate-500">All changes saved</span>
           )}
         </div>
-        <Button variant="neutral" icon={RotateCcw} onClick={biz.reset} disabled={!biz.dirty || biz.saving}>
+        <Button
+          variant="outlineWarning"
+          icon={RotateCcw}
+          onClick={biz.reset}
+          disabled={!biz.dirty || biz.saving}
+        >
           Reset
         </Button>
         <Button

@@ -34,6 +34,9 @@ const PIE_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b
 /** Quota health colour: blue while there is plenty left, amber from 70 %, red from 90 %. */
 const quotaTone = (percent) => (percent >= 90 ? 'danger' : percent >= 70 ? 'warning' : 'info');
 
+/** Badge colour of the worst quota: green while healthy, amber from 70 %, red from 90 %. */
+const badgeTone = (percent) => (percent >= 90 ? 'danger' : percent >= 70 ? 'warning' : 'success');
+
 export function FirestoreUsageSection({ data }) {
   const [stats, setStats] = useState(getFirestoreUsageStats);
 
@@ -48,6 +51,14 @@ export function FirestoreUsageSection({ data }) {
   }, [data]);
 
   const { today, session, limits } = stats;
+
+  const worstPercent = Math.max(
+    today.readQuotaPercent || 0,
+    today.writeQuotaPercent || 0,
+    today.deleteQuotaPercent || 0,
+    storage.storagePercent || 0,
+  );
+  const usageTone = badgeTone(worstPercent);
 
   const pieData = useMemo(() => {
     return storage.collections
@@ -85,7 +96,7 @@ export function FirestoreUsageSection({ data }) {
       <SectionHeader
         title="Firestore Free Tier Usage (Spark Plan)"
         icon={Database}
-        right={<Badge tone="success">100% Free Tier (₹0.00)</Badge>}
+        right={<Badge tone={usageTone}>100% Free Tier (₹0.00)</Badge>}
         className="mb-1"
       />
       <p className="mb-5 text-xs text-slate-500 sm:text-sm">
@@ -208,9 +219,13 @@ export function FirestoreUsageSection({ data }) {
                 <Sparkles className="size-4 text-gold-600" aria-hidden />
                 <h3 className="text-sm font-bold text-brand-800">Operations Breakdown</h3>
               </div>
-              <Badge tone="success">
+              <Badge tone={usageTone}>
                 <ShieldCheck className="mr-1 inline size-3.5 align-[-3px]" aria-hidden />
-                Optimal Efficiency
+                {usageTone === 'danger'
+                  ? 'Quota almost used up'
+                  : usageTone === 'warning'
+                    ? 'Quota running high'
+                    : 'Optimal Efficiency'}
               </Badge>
             </div>
 

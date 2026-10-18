@@ -99,6 +99,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(false);
+  const [serverError, setServerError] = useState('');
   const [busy, setBusy] = useState(false);
   const userRef = useRef(null);
   const passRef = useRef(null);
@@ -110,7 +111,14 @@ export default function LoginPage() {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
-    const ok = await login(username, password);
+    setServerError('');
+    let ok = false;
+    try {
+      ok = await login(username, password);
+    } catch (err) {
+      // the stored login could not be read (no connection, no copy on this device): sign-in is refused
+      setServerError(err?.message || 'Could not verify your login. Please try again.');
+    }
     if (!ok) {
       setBusy(false);
       setError(true);
@@ -191,12 +199,12 @@ export default function LoginPage() {
             />
           </div>
 
-          {error ? (
+          {error || serverError ? (
             <p
               className="mt-4 flex items-center gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 ring-1 ring-red-200"
               role="alert"
             >
-              <AlertCircle className="size-4 shrink-0" /> Invalid username or password
+              <AlertCircle className="size-4 shrink-0" /> {serverError || 'Invalid username or password'}
             </p>
           ) : null}
 

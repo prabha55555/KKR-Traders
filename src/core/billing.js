@@ -14,9 +14,21 @@ import {
   returnsTotalsByInvoice,
   roundMoney,
 } from './ledger';
+/** Firestore document ids cannot contain '/', nor be '.' / '..': a clear message for such an invoice number, else null. */
+export function invoiceNoProblem(invoiceNo) {
+  const no = String(invoiceNo ?? '').trim();
+  if (no.includes('/') || no === '.' || no === '..') {
+    return {
+      title: 'Invalid Invoice No',
+      message: "The invoice number cannot contain '/' and cannot be '.' or '..'. Please change it.",
+    };
+  }
+  return null;
+}
 export const rowAmount = (qty, rate) => toNum(qty) * toNum(rate);
-export function calcSubtotal(rows) {
-  return (rows || []).reduce((sum, r) => sum + rowAmount(r.qty, r.rate), 0);
+/** Sum of exactly the rows buildProductLines keeps (same filter, same `opts`), so the bill never charges unlisted rows. */
+export function calcSubtotal(rows, opts = {}) {
+  return buildProductLines(rows || [], opts).reduce((sum, l) => sum + l.amount, 0);
 }
 /**
  * Rows with a description become product lines; `sno` is sequential. `rolls` (the roll count, optional — 0 when not
@@ -25,7 +37,7 @@ export function calcSubtotal(rows) {
 export function buildProductLines(rows, opts = {}) {
   const lines = [];
   rows.forEach((row) => {
-    const description = row.description.trim();
+    const description = String(row.description ?? '').trim();
     const qty = toNum(row.qty);
     const rate = toNum(row.rate);
     if (!description) return;

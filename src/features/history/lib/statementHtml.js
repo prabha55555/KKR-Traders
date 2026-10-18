@@ -83,7 +83,7 @@ function wrap(title, watermarkText, logoSrc, partyInfoHtml, body) {
         ${biz.phones ? `<div class="company-sub">Cell: ${esc(biz.phones)}</div>` : ''}
         ${biz.gstin ? `<div class="company-sub">GSTIN: ${esc(biz.gstin)}</div>` : ''}
       </div>
-      ${logoSrc ? `<div class="header-center"><img src="${logoSrc}" alt="${esc(biz.name)}" /></div>` : ''}
+      ${logoSrc ? `<div class="header-center"><img src="${esc(logoSrc)}" alt="${esc(biz.name)}" /></div>` : ''}
       <div class="header-right">
         ${partyInfoHtml || ''}
       </div>
@@ -176,9 +176,10 @@ export function buildInvoiceStatementHtml(input) {
   const balanceReturns = toNum(input.balanceReturns ?? invoice.balanceReturns ?? totalReturns);
   const refundedReturns = Math.max(0, toNum(totalReturns) - balanceReturns);
   const party = labels.party;
-  const currentBill = invoice.subtotal || invoice.grandTotal;
+  // fall back to the grand total only when no subtotal is stored (a zero-subtotal bill must not print the carried balance)
+  const currentBill = invoice.subtotal ?? invoice.grandTotal;
   const summary = [`<div>Current Bill Amount: ${rs(currentBill)}</div>`];
-  if (invoice.previousBalance > 0)
+  if (toNum(invoice.previousBalance) !== 0)
     summary.push(`<div>Previous Balance: ${rs(invoice.previousBalance)}</div>`);
   if (invoice.discountAmount > 0) summary.push(`<div>Discount Amount: -${rs(invoice.discountAmount)}</div>`);
   summary.push(`<div class="bold">Total Amount: ${rs(invoice.grandTotal)}</div>`);

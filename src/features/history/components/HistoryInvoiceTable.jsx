@@ -121,7 +121,7 @@ export function buildInvoiceColumns(labels, actions) {
         const previous = toNum(i.previousBalance);
         if (!previous) return <None />;
         return (
-          <span className={cn('font-semibold', previous > 0 ? 'text-red-600' : 'text-emerald-700')}>
+          <span className={cn('font-semibold', previous > 0.005 ? 'text-red-600' : 'text-emerald-700')}>
             {money(previous)}
           </span>
         );
@@ -199,7 +199,9 @@ export function buildInvoiceColumns(labels, actions) {
         const due = invoiceDue(i);
         return (
           <span>
-            <span className={cn('text-[14px] font-extrabold', due > 0 ? 'text-red-600' : 'text-emerald-700')}>
+            <span
+              className={cn('text-[14px] font-extrabold', due > 0.005 ? 'text-red-600' : 'text-emerald-700')}
+            >
               {money(due)}
             </span>
             {balanceReturnsOf(i) > 0 ? <Caption className="text-slate-500">after returns</Caption> : null}

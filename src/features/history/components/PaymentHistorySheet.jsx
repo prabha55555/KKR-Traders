@@ -75,6 +75,14 @@ export function PaymentHistorySheet({
       title={title ?? `Payment History - ${invoiceNoLabel(invoiceNo)}`}
       actions={
         <>
+          <Button variant="neutral" onClick={onClose} className="flex-1 sm:flex-none">
+            Close
+          </Button>
+          {onUndoAll && payments.length > 0 ? (
+            <Button variant="outlineDanger" icon={Undo2} onClick={onUndoAll} className="flex-1 sm:flex-none">
+              Undo All Payments
+            </Button>
+          ) : null}
           {onAddPayment ? (
             <Button variant="success" icon={Plus} onClick={onAddPayment} className="flex-1 sm:flex-none">
               Add Payment

@@ -18,12 +18,13 @@
 import { Calendar, FileSearch } from 'lucide-react';
 import { formatCurrency } from '@/core/format';
 import { Badge, EmptyState, ErrorState, Pagination, usePagination } from '@/ui';
+import { billAmountOf } from '../lib/statement';
 import { HistoryInvoiceGroupBody } from './HistoryInvoiceTable';
 import { InvoiceListSkeleton } from './Skeleton';
 
 function DateHeading({ group, onClick }) {
   const count = `${group.totalInvoices} Invoice${group.totalInvoices > 1 ? 's' : ''}`;
-  const dayTotal = group.invoices.reduce((sum, invoice) => sum + (Number(invoice.grandTotal) || 0), 0);
+  const dayTotal = group.invoices.reduce((sum, invoice) => sum + billAmountOf(invoice), 0);
   return (
     <div className="sticky top-[calc(6.5rem+env(safe-area-inset-top))] z-10 -mx-1 bg-canvas/85 px-1 py-2 backdrop-blur-md lg:top-14">
       <button

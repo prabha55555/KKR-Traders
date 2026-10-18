@@ -17,7 +17,8 @@
  * adds 0, and rolls never touch the quantities or the money.
  */
 import { formatDateIN, formatInvoiceNo, invoiceNoLabel, toNum } from '@/core/format';
-import { PURCHASE_LEDGER, SALES_LEDGER, billAmount, isBalanceReturn } from '@/core/ledger';
+import { PURCHASE_LEDGER, SALES_LEDGER, isBalanceReturn } from '@/core/ledger';
+import { billOwnAmount } from '../billOwnAmount';
 import { returnValue } from '@/features/overview/revenue/revenueLogic';
 import { LOT_STATUS, formatDcNo, lotStockMovements } from '@/features/processing/lotLogic';
 const round3 = (n) => Math.round(n * 1000) / 1000;
@@ -91,7 +92,7 @@ export function computeStocks(
   let totalPurchases = 0;
   purchaseBills.forEach((bill) => {
     // the bill's own amount: grandTotal also carries the supplier's previous balance, which would be counted again
-    totalPurchases += billAmount(bill, PURCHASE_LEDGER);
+    totalPurchases += billOwnAmount(bill, PURCHASE_LEDGER);
     if (!bill.products || !Array.isArray(bill.products)) return;
     bill.products.forEach((product) => {
       if (!product.description) return;
@@ -142,7 +143,7 @@ export function computeStocks(
 
   salesInvoices.forEach((invoice) => {
     // the invoice's own amount: grandTotal also carries the customer's previous balance, which would be counted again
-    totalSales += billAmount(invoice, SALES_LEDGER);
+    totalSales += billOwnAmount(invoice, SALES_LEDGER);
     cashReceived += toNum(invoice.amountPaid);
     if (!invoice.products || !Array.isArray(invoice.products)) return;
     invoice.products.forEach((product) => {

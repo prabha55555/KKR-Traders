@@ -130,16 +130,19 @@ export function LotsView({ mode }) {
     };
     if (mode === 'completed') {
       const done = all.filter(({ lot }) => lot.status === LOT_STATUS.RECEIVED);
-      const grey = done.reduce((s, { t }) => s + t.greyQty, 0);
       const fin = done.reduce((s, { t }) => s + t.finalQty, 0);
+      // loss on what the units actually processed (kg returned unprocessed is not a loss)
+      const lossKg = done.reduce((s, { t }) => s + t.totalLossQty, 0);
+      const processed = done.reduce((s, { t }) => s + t.dyerProcessedQty, 0);
+      const lossPct = processed > 0 ? Math.round((lossKg / processed) * 10000) / 100 : null;
       return [
         { label: 'Lots received', value: done.length, icon: CheckCircle2, tone: 'success' },
         { label: 'Finished kg received', value: kg(fin), icon: Factory, tone: 'brand' },
         {
           label: 'Average weight loss',
-          value: grey > 0 ? `${Math.round(((grey - fin) / grey) * 10000) / 100}%` : '—',
+          value: lossPct !== null ? `${lossPct}%` : '—',
           icon: Scale,
-          tone: 'danger',
+          tone: lossPct > 0 ? 'danger' : 'success',
         },
         dueKpi,
       ];

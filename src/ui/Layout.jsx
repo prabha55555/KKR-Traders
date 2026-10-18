@@ -113,7 +113,7 @@ export function ChoiceChips({ value, onChange, options, label, className }) {
             aria-checked={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              'min-h-9 rounded-full border px-4 text-sm font-semibold transition duration-150',
+              'min-h-10 rounded-full border px-4 text-sm font-semibold transition duration-150',
               active
                 ? 'border-brand-800 bg-linear-to-b from-brand-600 to-brand-800 text-gold-200 shadow-sm'
                 : 'border-slate-300 bg-white text-slate-700 hover:border-gold-400 hover:bg-gold-50',

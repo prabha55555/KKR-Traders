@@ -9,6 +9,7 @@
  * SECURITY NOTE: this is a client-side gate only. Anyone who can reach the Firestore project can read/write its data
  * regardless of this screen (see firestore.rules). Move to Firebase Auth + real rules for production.
  */
+import { scopedKey } from '@/core/projectScope';
 import { storage } from '@/platform';
 
 export const SESSION_HOURS = 24;
@@ -17,9 +18,18 @@ export const SESSION_HOURS = 24;
 export const USER_B64 = 'U1NKU05Z';
 export const PASS_B64 = 'MjcxODE1';
 
-export const SESSION_KEYS = { auth: 'isAuthenticated', username: 'username', loginTime: 'loginTime' };
+// Namespaced by Firebase project (core/projectScope.js): another customer's build on the same origin never shares them.
+export const SESSION_KEYS = {
+  auth: scopedKey('isAuthenticated'),
+  username: scopedKey('username'),
+  loginTime: scopedKey('loginTime'),
+};
 
-const LOGIN_CACHE_KEY = 'login_settings_v1';
+/** Shown when the stored login cannot be read (no connection and no copy on this device). */
+export const LOGIN_UNREADABLE_MESSAGE =
+  'Could not reach the server to verify your login — check your connection and try again.';
+
+const LOGIN_CACHE_KEY = scopedKey('login_settings_v1');
 const ITERATIONS = 150_000;
 
 /** The built-in login (no login stored yet). */
@@ -82,14 +92,22 @@ function readLoginCache() {
 }
 function writeLoginCache(record) {
   try {
-    if (record) storage.set(LOGIN_CACHE_KEY, JSON.stringify(record));
-    else storage.remove(LOGIN_CACHE_KEY);
+    // a refused write (storage full) must not leave the older, possibly outdated copy behind
+    if (record) {
+      if (!storage.set(LOGIN_CACHE_KEY, JSON.stringify(record))) storage.remove(LOGIN_CACHE_KEY);
+    } else storage.remove(LOGIN_CACHE_KEY);
   } catch {
     // only the offline copy is lost
   }
 }
 
-/** The stored login of this business: from Firestore (copied to the device), else the device copy; null = none set. */
+/**
+ * The stored login of this business: from Firestore (copied to the device), else — when the database cannot be read —
+ * the copy on this device. Resolves null ONLY when the database was read and holds no login ("confirmed none": the
+ * built-in login may then be used). When the database cannot be read and this device has no copy, it throws
+ * (message: LOGIN_UNREADABLE_MESSAGE) — otherwise a client whose login was changed could be bypassed with the
+ * built-in login just by going offline on a fresh device.
+ */
 export async function loadLoginRecord() {
   try {
     const { db } = await import('@/core/db');
@@ -99,7 +117,9 @@ export async function loadLoginRecord() {
     return record?.passwordHash ? record : null;
   } catch (e) {
     console.warn('Login settings could not be read; using the copy on this device.', e);
-    return readLoginCache();
+    const cached = readLoginCache();
+    if (cached?.passwordHash) return cached;
+    throw new Error(LOGIN_UNREADABLE_MESSAGE);
   }
 }
 

@@ -52,7 +52,11 @@ export function calculateFinanceStats(record, targetDate) {
       : targetDate || record.endDate;
   const totalInterestAccrued = computeInterest(principal, rate, record.startDate, interestUntil);
 
-  const payments = record.payments || [];
+  // "as of" a day: only the payments made on or before it count (a later payment had not happened yet)
+  const asOf = targetDate ? String(targetDate).slice(0, 10) : '';
+  const payments = (record.payments || []).filter(
+    (p) => !asOf || !p.date || String(p.date).slice(0, 10) <= asOf,
+  );
   const totalPaid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
   const totalPayable = principal + totalInterestAccrued;

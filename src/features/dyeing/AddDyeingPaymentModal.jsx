@@ -1,10 +1,19 @@
-import { AlertTriangle, Banknote, Landmark, Save } from 'lucide-react';
+import { AlertTriangle, Save } from 'lucide-react';
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import { accountLabel } from '@/core/accountLabel';
 import { formatCurrency, todayISO } from '@/core/format';
 import { loadLiveAccountBalances } from '@/features/finance/accountsLogic';
-import { Button, DateField, Modal, NumberField, SelectField, TextField, useFeedback } from '@/ui';
+import {
+  Button,
+  ChoiceChips,
+  DateField,
+  Modal,
+  NumberField,
+  SelectField,
+  TextField,
+  useFeedback,
+} from '@/ui';
 
 import { calcBatchPaymentStats } from './dyeingLogic';
 import { addDyeingBatchPayment } from './dyeingService';
@@ -16,6 +25,7 @@ export function AddDyeingPaymentModal({ open, batch, onClose, onPaymentAdded }) 
   const amountId = useId();
   const [saving, setSaving] = useState(false);
   const [liveBalances, setLiveBalances] = useState(null);
+  const [balancesFailed, setBalancesFailed] = useState(false);
 
   const stats = useMemo(() => {
     return calcBatchPaymentStats(batch);
@@ -41,9 +51,14 @@ export function AddDyeingPaymentModal({ open, batch, onClose, onPaymentAdded }) 
         reference: '',
         notes: '',
       });
+      setLiveBalances(null);
+      setBalancesFailed(false);
       loadLiveAccountBalances()
         .then((b) => setLiveBalances(b))
-        .catch(console.error);
+        .catch((err) => {
+          console.error(err);
+          setBalancesFailed(true);
+        });
     }
   }, [open, batch]);
 
@@ -167,7 +182,9 @@ export function AddDyeingPaymentModal({ open, batch, onClose, onPaymentAdded }) 
             </div>
             <div className="shrink-0 text-right">
               <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Balance Due</div>
-              <div className="font-display text-base font-extrabold text-red-600 tabular-nums">
+              <div
+                className={`font-display text-base font-extrabold tabular-nums ${stats.balanceDue > 0 ? 'text-red-600' : 'text-emerald-700'}`}
+              >
                 ₹{formatCurrency(stats.balanceDue)}
               </div>
             </div>
@@ -230,32 +247,15 @@ export function AddDyeingPaymentModal({ open, batch, onClose, onPaymentAdded }) 
         {/* Payment Mode Selector */}
         <div className="space-y-1.5">
           <span className="block text-[13px] font-semibold tracking-wide text-slate-600">Payment Mode *</span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleModeChange('Cash')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-xs font-bold shadow-2xs transition ${
-                form.mode === 'Cash'
-                  ? 'border-emerald-500 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-500/20'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <Banknote className="size-4 text-emerald-600" />
-              <span>Cash</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleModeChange('Bank')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 text-xs font-bold shadow-2xs transition ${
-                form.mode === 'Bank'
-                  ? 'border-blue-500 bg-blue-50/80 text-blue-900 ring-2 ring-blue-500/20'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <Landmark className="size-4 text-blue-600" />
-              <span>Account</span>
-            </button>
-          </div>
+          <ChoiceChips
+            label="Payment mode"
+            value={form.mode}
+            onChange={handleModeChange}
+            options={[
+              { value: 'Cash', label: 'Cash' },
+              { value: 'Bank', label: 'Account' },
+            ]}
+          />
         </div>
 
         {/* Bank Account Selection (Account mode) + its live balance */}
@@ -267,7 +267,7 @@ export function AddDyeingPaymentModal({ open, batch, onClose, onPaymentAdded }) 
               onChange={handleBankChange}
               options={bankAccountOptions}
             />
-            {selectedBank && (
+            {selectedBank && liveBalances && (
               <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
                 <span className="text-slate-600">Available:</span>
                 <span className="font-bold text-slate-900 tabular-nums">
@@ -283,7 +283,11 @@ export function AddDyeingPaymentModal({ open, batch, onClose, onPaymentAdded }) 
           <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
             <span className="text-slate-600">Physical Cash Drawer:</span>
             <span className="font-bold text-slate-900 tabular-nums">
-              ₹{formatCurrency(cashBalance)} available
+              {liveBalances
+                ? `₹${formatCurrency(cashBalance)} available`
+                : balancesFailed
+                  ? 'Unavailable'
+                  : 'Loading…'}
             </span>
           </div>
         )}

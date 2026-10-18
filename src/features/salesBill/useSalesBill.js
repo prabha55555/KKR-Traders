@@ -257,7 +257,17 @@ export function useSalesBill() {
           }
           if (!invoice) return;
         } else {
-          invoice = buildSalesInvoice(snapshot.form);
+          // a payment added later from History is not in the form: print the stored bill (read fresh) instead
+          invoice = null;
+          if (snapshot.persistedNo) {
+            try {
+              db.invalidate('invoices');
+              invoice = await db.getInvoice(snapshot.persistedNo);
+            } catch (error) {
+              console.error('Error reading the saved bill, using the form:', error);
+            }
+          }
+          invoice = invoice ?? buildSalesInvoice(snapshot.form);
         }
         if (kind === 'pdf') {
           await loading.run(

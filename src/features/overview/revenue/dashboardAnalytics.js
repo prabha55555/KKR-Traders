@@ -16,10 +16,10 @@ import {
   subMonths,
 } from 'date-fns';
 import { purchaseAmountPaid } from '@/core/billing';
+import { billOwnAmount } from '../billOwnAmount';
 import {
   PURCHASE_LEDGER,
   SALES_LEDGER,
-  billAmount,
   groupParties,
   partySummary,
   returnsTotalsByInvoice,
@@ -304,9 +304,9 @@ export function partyOfBill(kind, bills) {
 }
 
 /** What a sales invoice itself billed (no carried previous balance). */
-export const salesBillValue = (bill) => billAmount(bill, SALES_LEDGER);
+export const salesBillValue = (bill) => billOwnAmount(bill, SALES_LEDGER);
 /** What a purchase bill itself billed (no carried previous balance). */
-export const purchaseBillValue = (bill) => billAmount(bill, PURCHASE_LEDGER);
+export const purchaseBillValue = (bill) => billOwnAmount(bill, PURCHASE_LEDGER);
 /** Amount paid on a purchase bill (nested `payment.totalPaid` or top-level `amountPaid`). */
 export const purchasePaid = (bill) => toNum(purchaseAmountPaid(bill));
 /** A sales invoice's own amount less the goods returned against it (`computedReturns`, see prepareDashboardData). */

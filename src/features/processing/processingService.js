@@ -86,8 +86,21 @@ export function availableGreyRolls(stockMap, description, existingLot = null) {
  * Stage 1 — create (or correct) my DC. `existing` = the stored lot when editing (later stages and payments are kept).
  * The grey value per kg is the product's average purchase cost at the time of issue.
  */
-export async function saveIssue(form, { dyers, combingUnits, stockMap, catalogue, existing = null }) {
-  const problem = validateIssue(form, { catalogue });
+export async function saveIssue(
+  form,
+  { dyers, combingUnits, stockMap, catalogue, existing: given = null, lots = null },
+) {
+  // the stage fields are applied on the lot as stored NOW, so a payment / return added elsewhere is not lost
+  const existing = given ? await freshLot(given) : null;
+  let allLots = lots;
+  if (!allLots) {
+    try {
+      allLots = await db.getAllProcessingLots();
+    } catch {
+      allLots = null; // cannot check the DC number offline: the other checks still run
+    }
+  }
+  const problem = validateIssue(form, { catalogue, lots: allLots, existingId: existing?.id });
   if (problem) throw err(problem);
   const greyQty = toNum(form.greyQty);
   if (existing) {
@@ -103,11 +116,37 @@ export async function saveIssue(form, { dyers, combingUnits, stockMap, catalogue
   const dyer = dyers.find((d) => d.id === form.dyerId);
   if (!dyer) throw err({ title: 'Missing Information', message: 'Please select the dyeing unit.' });
   const combingUnit = form.combingUnitId ? combingUnits.find((c) => c.id === form.combingUnitId) : null;
+  // payments are tied to the unit they were made to: the unit cannot be swapped under them
+  if (
+    existing &&
+    existing.dyer?.id &&
+    existing.dyer.id !== dyer.id &&
+    (existing.dyeingPayments ?? []).length
+  ) {
+    throw err({
+      title: 'Cannot change the dyeing unit',
+      message: `Payments have already been made to ${existing.dyer.name || 'the dyeing unit'} on this lot. Delete those payments first to change the unit.`,
+    });
+  }
+  if (
+    existing &&
+    !existing.dyeing &&
+    existing.combingUnit?.id &&
+    (form.combingUnitId || '') !== existing.combingUnit.id &&
+    (existing.combingPayments ?? []).length
+  ) {
+    throw err({
+      title: 'Cannot change the combing unit',
+      message: `Payments have already been made to ${existing.combingUnit.name || 'the combing unit'} on this lot. Delete those payments first to change the unit.`,
+    });
+  }
   const greyDescription = form.greyDescription.trim();
   const sameGrey = existing && String(existing.grey?.description ?? '').trim() === greyDescription;
-  const rate = sameGrey
+  const stockRate = sameGrey
     ? toNum(existing.grey?.rate)
     : toNum(lookupStock(stockMap, greyDescription)?.avgPurchaseRate);
+  // no priced purchase behind this grey: the rate typed on the form (if any) is the grey cost per kg
+  const rate = stockRate > 0 ? stockRate : Math.max(0, toNum(form.greyRate));
 
   const lot = {
     ...(existing ?? {}),
@@ -137,7 +176,8 @@ export async function saveIssue(form, { dyers, combingUnits, stockMap, catalogue
 }
 
 /** Stage 2 — the dyeing unit's DC: dyed fabric sent on to the combing unit. */
-export async function saveDyed(lot, form, { combingUnits }) {
+export async function saveDyed(given, form, { combingUnits }) {
+  const lot = await freshLot(given);
   const problem = validateDyed(form, lot);
   if (problem) throw err(problem);
   {
@@ -152,6 +192,12 @@ export async function saveDyed(lot, form, { combingUnits }) {
   }
   const combingUnit = combingUnits.find((c) => c.id === form.combingUnitId);
   if (!combingUnit) throw err({ title: 'Missing Information', message: 'Please select the combing unit.' });
+  if (lot.combingUnit?.id && lot.combingUnit.id !== combingUnit.id && (lot.combingPayments ?? []).length) {
+    throw err({
+      title: 'Cannot change the combing unit',
+      message: `Payments have already been made to ${lot.combingUnit.name || 'the combing unit'} on this lot. Delete those payments first to change the unit.`,
+    });
+  }
   const qty = toNum(form.qty);
   const updated = {
     ...lot,
@@ -168,7 +214,8 @@ export async function saveDyed(lot, form, { combingUnits }) {
 }
 
 /** Stage 3 — the combing unit's DC: processed fabric received. The finished product enters stock now. */
-export async function saveReceived(lot, form) {
+export async function saveReceived(given, form) {
+  const lot = await freshLot(given);
   const problem = validateReceived(form, lot);
   if (problem) throw err(problem);
   const updated = {
@@ -192,7 +239,8 @@ export async function saveReceived(lot, form) {
  * Step back one stage (a DC entered by mistake): Received -> At Combing (finished stock removed again), or
  * At Combing -> At Dyeing (the dyeing unit's DC cleared). Payments are kept.
  */
-export async function undoLastStage(lot) {
+export async function undoLastStage(given) {
+  const lot = await freshLot(given);
   let updated;
   if (lot.status === LOT_STATUS.RECEIVED) {
     updated = { ...lot, status: LOT_STATUS.AT_COMBING, received: null, receivedAt: null };
@@ -217,13 +265,14 @@ export async function undoLastStage(lot) {
 
 /** Deletes a lot (its grey goes back to stock) and the finance entries of its payments. */
 export async function deleteLot(lot) {
-  for (const p of [...(lot.dyeingPayments ?? []), ...(lot.combingPayments ?? [])]) {
-    try {
-      await db.deleteAccountTransaction(p.id);
-    } catch (e) {
-      console.warn('Failed to delete the finance entry of a lot payment:', p.id, e);
-    }
+  // Finance entries go FIRST and a failure stops here: Finance refuses to undo `lot_pay_*` entries, so deleting the lot
+  // first and then failing on an entry would leave an orphan nobody can remove. This way a failure leaves the lot (and
+  // its payments) intact and the delete can simply be retried.
+  const fresh = await freshLot(lot);
+  for (const p of [...(fresh.dyeingPayments ?? []), ...(fresh.combingPayments ?? [])]) {
+    await db.deleteAccountTransaction(p.id);
   }
+  db.invalidate('account_transactions');
   await db.deleteProcessingLot(lot.id);
   invalidateStocksCache();
   db.invalidate('account_transactions');
@@ -313,16 +362,26 @@ export async function addLotPayment(given, role, payment) {
   const key = PAYMENT_KEY[role];
   const updated = { ...lot, [key]: [...(lot[key] ?? []), record] };
   await db.saveProcessingLot(updated);
-  await db.saveAccountTransaction({
-    id,
-    date: record.date,
-    type: 'expense',
-    category: PAYMENT_CATEGORY[role],
-    amount,
-    fromAccount: account ? payment.bankAccountId : 'cash',
-    bankAccountId: record.bankAccountId,
-    notes: `Lot ${formatDcNo(lot.dcNo)} (${unit.name})${record.reference ? ` - Ref: ${record.reference}` : ''}`,
-  });
+  try {
+    await db.saveAccountTransaction({
+      id,
+      date: record.date,
+      type: 'expense',
+      category: PAYMENT_CATEGORY[role],
+      amount,
+      fromAccount: account ? payment.bankAccountId : 'cash',
+      bankAccountId: record.bankAccountId,
+      notes: `Lot ${formatDcNo(lot.dcNo)} (${unit.name})${record.reference ? ` - Ref: ${record.reference}` : ''}`,
+    });
+  } catch (e) {
+    // the finance entry failed: take the payment back off the lot so a retry does not add it twice
+    try {
+      await db.saveProcessingLot(lot);
+    } catch (restoreError) {
+      console.warn('Could not restore the lot after a failed payment:', restoreError);
+    }
+    throw e;
+  }
   db.invalidate('account_transactions');
   return updated;
 }
@@ -332,13 +391,11 @@ export async function deleteLotPayment(given, role, paymentId) {
   const lot = await freshLot(given);
   const key = PAYMENT_KEY[role];
   const updated = { ...lot, [key]: (lot[key] ?? []).filter((p) => p.id !== paymentId) };
-  await db.saveProcessingLot(updated);
-  try {
-    await db.deleteAccountTransaction(paymentId);
-  } catch (e) {
-    console.warn('Failed to delete the finance entry of a lot payment:', paymentId, e);
-  }
+  // finance entry first: if it fails nothing changed and the delete can be retried; the other way round would leave a
+  // finance entry no screen can remove (Finance blocks Undo on lot payments)
+  await db.deleteAccountTransaction(paymentId);
   db.invalidate('account_transactions');
+  await db.saveProcessingLot(updated);
   return updated;
 }
 

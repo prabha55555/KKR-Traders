@@ -1,5 +1,5 @@
 /** Supplier Details records → the shared party details components (`@/components/party`). Mapping only. */
-import { formatRupees } from '@/core/format';
+import { formatRupees, toNum } from '@/core/format';
 import { buildPartyStatTiles } from '@/components/party/partyStats';
 import { PARTY_KINDS } from '@/components/party/kinds';
 
@@ -33,7 +33,7 @@ export function toSupplierRow(supplier) {
     address: supplier.address,
     invoiceCount: String(supplier.totalBills),
     invoiceNumbers: supplier.allInvoiceNumbers,
-    openingBalance: formatRupees(supplier.openingBalance),
+    openingBalance: formatRupees(toNum(supplier.openingBalance) + toNum(supplier.totalManualAdjustments)),
     amount: formatRupees(supplier.totalAmount),
     paid: formatRupees(supplier.totalPaid),
     discount: formatRupees(supplier.totalDiscount),

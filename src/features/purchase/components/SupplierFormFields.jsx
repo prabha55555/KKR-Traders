@@ -5,7 +5,13 @@ import { cn, TextField } from '@/ui';
  * Phone / name / address inputs shared by the "Add New Supplier" card and the edit sheet. Wrap in a <form> so Enter
  * submits (the original fields were single-line inputs). `layout="row"` puts the fields side by side from `sm` up.
  */
-export function SupplierFormFields({ value, onChange, layout = 'stack', idPrefix = 'supplier' }) {
+export function SupplierFormFields({
+  value,
+  onChange,
+  layout = 'stack',
+  idPrefix = 'supplier',
+  errors = {},
+}) {
   const set = (key) => (v) => onChange({ ...value, [key]: v });
   return (
     <div className={cn('grid gap-3.5', layout === 'row' && 'sm:grid-cols-3 xl:grid-cols-1')}>
@@ -19,6 +25,7 @@ export function SupplierFormFields({ value, onChange, layout = 'stack', idPrefix
         leftIcon={Phone}
         value={value.phone}
         onChange={set('phone')}
+        error={errors.phone}
       />
       <TextField
         id={`${idPrefix}-name`}
@@ -28,6 +35,7 @@ export function SupplierFormFields({ value, onChange, layout = 'stack', idPrefix
         leftIcon={Truck}
         value={value.name}
         onChange={set('name')}
+        error={errors.name}
       />
       <TextField
         id={`${idPrefix}-address`}

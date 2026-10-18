@@ -9,6 +9,9 @@
 import { formatCurrency, toNum } from '@/core/format';
 import { compareLedgerOrder, partyBills } from '@/core/ledger';
 import { normalizeMethod } from '@/core/paymentMethods';
+/** Quantities keep 3 decimals (metres / kg); floats like 0.1 + 0.2 are rounded away before any comparison. */
+const round3 = (n) => Math.round((toNum(n) + Number.EPSILON) * 1000) / 1000;
+const QTY_TOLERANCE = 0.0005;
 /** A blank return line; `rolls` = optional roll count (never part of the amount). */
 export const newReturnItem = (key) => ({
   key,
@@ -33,12 +36,12 @@ export function aggregatePartyProducts(bills) {
       if (!productMap.has(desc)) {
         productMap.set(desc, {
           description: desc,
-          qty: Number(toNum(p.qty).toFixed(2)),
+          qty: round3(p.qty),
           rate: Number(toNum(p.rate).toFixed(2)),
         });
       } else {
         const existing = productMap.get(desc);
-        existing.qty = Number((existing.qty + toNum(p.qty)).toFixed(2));
+        existing.qty = round3(existing.qty + toNum(p.qty));
         if (p.rate) existing.rate = Number(toNum(p.rate).toFixed(2));
       }
     }
@@ -138,11 +141,11 @@ export function validateReturnDraft(input) {
       const maxQty = toNum(products[item.choice]?.qty);
       const alreadyReturned =
         alreadyReturnedQty(existingReturns, description) + (pending.get(description) ?? 0);
-      if (qty + alreadyReturned > maxQty) {
+      if (qty + alreadyReturned > maxQty + QTY_TOLERANCE) {
         return {
           ok: false,
           title: 'Error',
-          message: `Cannot return ${qty} items. Only ${maxQty - alreadyReturned} items available for return for "${description}".`,
+          message: `Cannot return ${qty} items. Only ${Math.max(0, round3(maxQty - alreadyReturned))} items available for return for "${description}".`,
         };
       }
       pending.set(description, (pending.get(description) ?? 0) + qty);

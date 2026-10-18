@@ -1,5 +1,4 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAnalytics } from 'firebase/analytics';
 import {
   getFirestore,
   initializeFirestore,
@@ -59,17 +58,24 @@ export const firebaseConfig = resolveFirebaseConfig();
 
 let app = null;
 let firestore = null;
-let analytics = null;
+let analytics = null; // promise: the analytics SDK is loaded on first use, not in the main bundle
 
 export function getFirebaseApp() {
   if (!app) app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   return app;
 }
 
+/** Starts Google Analytics (lazily imported) when the project has a measurement id; resolves null otherwise / on failure. */
 export function getFirebaseAnalytics() {
-  // analytics only when the project has a measurement id
-  if (!firebaseConfig.measurementId) return null;
-  if (!analytics) analytics = getAnalytics(getFirebaseApp());
+  if (!firebaseConfig.measurementId) return Promise.resolve(null);
+  if (!analytics) {
+    analytics = import('firebase/analytics')
+      .then(({ getAnalytics }) => getAnalytics(getFirebaseApp()))
+      .catch((e) => {
+        console.warn('Analytics is not available.', e);
+        return null;
+      });
+  }
   return analytics;
 }
 

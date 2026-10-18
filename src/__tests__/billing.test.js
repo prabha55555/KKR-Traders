@@ -34,9 +34,9 @@ describe('totals', () => {
   test('subtotal = sum(qty*rate) with parseFloat(x)||0 coercion', () => {
     expect(
       calcSubtotal([
-        { qty: '2', rate: '10.5' },
-        { qty: '', rate: '5' },
-        { qty: 3, rate: '2' },
+        { description: 'A', qty: '2', rate: '10.5' },
+        { description: 'B', qty: '', rate: '5' },
+        { description: 'C', qty: 3, rate: '2' },
       ]),
     ).toBe(27);
   });
@@ -109,7 +109,8 @@ describe('totals', () => {
       'Yarn',
       'Silk',
     ]);
-    expect(calcSubtotal(rows)).toBe(8028);
+    // the subtotal counts exactly the lines buildProductLines keeps (the blank-description row is not charged)
+    expect(calcSubtotal(rows)).toBe(8025);
     expect(totalRolls(buildProductLines(rows))).toBe(18);
     expect(totalRolls([{ rolls: '3' }, {}, null, { rolls: 'x' }])).toBe(3);
   });

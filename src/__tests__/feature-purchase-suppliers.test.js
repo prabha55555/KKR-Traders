@@ -80,7 +80,7 @@ describe('aggregateSuppliers (processSupplierData on the supplier ledger)', () =
   test("amount = the bills' own amounts, paid = stored paid, balance = ledger closing of the latest bill", () => {
     const abc = result[0];
     expect(abc.totalBills).toBe(3);
-    expect(abc.totalAmount).toBe(1550); // 500 + 100 + (1000 - 50): no carried balance
+    expect(abc.totalAmount).toBe(1600); // 500 + 100 + 1000: the subtotals (before the 50 discount), like Customer Details
     expect(abc.totalPaid).toBe(940); // top-level 500 + nested 40 + nested 400
     expect(abc.totalDiscount).toBe(50);
     expect(abc.openingBalance).toBe(0);
@@ -142,7 +142,7 @@ describe('aggregateSuppliers (processSupplierData on the supplier ledger)', () =
     ];
     expect(aggregateSuppliers(one, returns)[0]).toMatchObject({ totalReturns: 400, balanceDue: 900 });
   });
-  test("opening balance is the ledger opening; a bill's opening-balance entry is part of its amount", () => {
+  test("opening balance is the ledger opening; a bill's opening-balance entry is shown in Opening, not in Amount", () => {
     const opened = [
       unpaid({
         invoiceNo: '001',
@@ -154,8 +154,9 @@ describe('aggregateSuppliers (processSupplierData on the supplier ledger)', () =
     ];
     const [s] = aggregateSuppliers(opened);
     expect(s.openingBalance).toBe(250);
-    expect(s.totalAmount).toBe(130);
-    expect(s.balanceDue).toBe(380); // 250 + 130 - 0
+    expect(s.totalManualAdjustments).toBe(30);
+    expect(s.totalAmount).toBe(100);
+    expect(s.balanceDue).toBe(380); // (250 + 30) + 100 - 0
   });
   test('same name with different phones = two suppliers; same phone typed differently = one', () => {
     const list = aggregateSuppliers([
@@ -212,7 +213,7 @@ describe('supplierStats', () => {
     expect(supplierStats(aggregateSuppliers(bills))).toEqual({
       totalSuppliers: 2,
       totalBills: 4,
-      totalAmount: 1750,
+      totalAmount: 1800,
       totalPaid: 940,
       totalDiscount: 50,
       totalBalance: 810,

@@ -7,6 +7,9 @@ import { storage } from '@/platform';
 
 const AuthContext = createContext(null);
 
+const SESSION_KEY_NAMES = Object.values(SESSION_KEYS);
+const SESSION_CHECK_MS = 60_000;
+
 function readSession() {
   if (storage.get(SESSION_KEYS.auth) !== 'true') return { ok: false, username: null };
   if (isSessionExpired(storage.get(SESSION_KEYS.loginTime))) {
@@ -19,16 +22,31 @@ function readSession() {
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(() => readSession());
 
-  const refresh = useCallback(() => setSession(readSession()), []);
+  // the previous state object is kept when nothing changed, so consumers do not re-render for nothing
+  const refresh = useCallback(
+    () =>
+      setSession((prev) => {
+        const next = readSession();
+        return prev.ok === next.ok && prev.username === next.username ? prev : next;
+      }),
+    [],
+  );
 
-  // Re-check expiry when the PWA returns to the foreground or another tab logs in / out.
+  // Re-check expiry when the PWA returns to the foreground, every minute while the tab is visible (an always-open
+  // tab expires after 24 h), and when another tab logs in / out.
   useEffect(() => {
     const onVisible = () => document.visibilityState === 'visible' && refresh();
+    // other localStorage writes (e.g. the Firestore usage tracker) are not session changes
+    const onStorage = (e) => {
+      if (e.key === null || SESSION_KEY_NAMES.includes(e.key)) refresh();
+    };
+    const timer = setInterval(onVisible, SESSION_CHECK_MS);
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('storage', refresh);
+    window.addEventListener('storage', onStorage);
     return () => {
+      clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('storage', refresh);
+      window.removeEventListener('storage', onStorage);
     };
   }, [refresh]);
 

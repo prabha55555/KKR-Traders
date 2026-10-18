@@ -28,7 +28,7 @@ export default function SupplierDetailsPage() {
 
   const { loading, error, refresh } = useFocusLoad(async () => {
     const [b, r, s] = await Promise.all([
-      db.getAllPurchaseBills(),
+      db.getAllPurchaseBills({ strict: true }),
       db.getAllPurchaseReturns(),
       db.getAllSuppliers(),
     ]);

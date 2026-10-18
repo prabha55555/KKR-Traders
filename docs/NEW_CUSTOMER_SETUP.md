@@ -37,7 +37,9 @@ VITE_FIREBASE_MEASUREMENT_ID=
 ```
 
 Files named `.env.*.local` are not committed to git (see `.gitignore`); keep a copy of each customer's file somewhere
-safe. If any required value is missing the app stops with a clear message instead of connecting to a wrong project.
+safe. The build **fails** (and names what is missing) when the mode is a customer mode and the file is absent, or when
+only some of the required values (API key, auth domain, project id, app id) are filled in — so a build can never
+silently connect to another customer's project.
 
 ## 3. Build and deploy
 
@@ -47,10 +49,14 @@ npx vite build --mode ganesh
 ```
 
 The build prints **`Firebase project: ganesh-textiles-billing`** — make sure it is the customer's project, then deploy
-the `dist/` folder to the customer's hosting (Firebase Hosting: `firebase deploy --only hosting --project
-ganesh-textiles-billing`, or any static host with HTTPS — sign-in hashing needs HTTPS).
+the `dist/` folder to the customer's hosting (Firebase Hosting, configured by the `hosting` block of `firebase.json`:
+`firebase deploy --only hosting --project ganesh-textiles-billing`, or any static host with HTTPS — sign-in hashing
+needs HTTPS).
 
-A build **without** an env file uses the original installation's project (`sriram-96e71`).
+Only plain `development` / `production` builds **without** any `VITE_FIREBASE_*` use the original installation's
+project (`sriram-96e71`). The login, session and business-detail copies kept on a device are namespaced by Firebase
+project id, so two customers' builds on one origin never share them. (After upgrading from a build without this,
+signed-in users sign in once more.)
 
 ## 4. First sign-in and Settings (with the customer)
 
@@ -73,7 +79,9 @@ A build **without** an env file uses the original installation's project (`srira
    - Purchase acknowledgement closing line
    - Bill sharing (WhatsApp): town and phone numbers
 5. In the **Client login** card set the client's **own username and password** (stored as a secure one-way hash in
-   their database; the client's current password is not needed). The default login stops working for them.
+   their database; the client's current password is not needed). The default login stops working for them. If the
+client's login cannot be read (no connection and no copy on that device) sign-in is refused with "Could not reach the
+server to verify your login — check your connection", so the default login cannot be used to get around a changed one.
 
 Everything — the menu, dashboard, sales and purchase bills, printed invoices, statements, dyeing DCs, WhatsApp
 messages, reminders and the purchase acknowledgement — uses these settings immediately. When the client needs a change
@@ -104,7 +112,10 @@ Keep the administrator password private: anyone with it can change any client's 
 
 ## No business details in the code
 
-No business's name, address, phone, GST number or logo is written in the source code — not even the first client's.
+No business's name, address, phone, GST number or logo is written in the source code or shipped in the build — not
+even the first client's (its logo file is kept outside the bundle in `docs/customer-assets/first-client-logo.png`; upload
+it on the Settings page if that customer needs it). The login card shows Brightlight's own logo. A logo must be a
+png / jpeg / webp image; anything else is ignored.
 Every installation shows exactly what was saved on its Settings page (until then the bills have no business name and
 the dashboard says the details are not set up). After **Save settings** the new details apply at once everywhere — in
 this tab, other open tabs and other devices — and are kept on each device for offline use. If the saved details

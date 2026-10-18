@@ -5,6 +5,8 @@
  */
 import { db } from '@/core/db';
 import { updateSubsequentInvoices } from '@/core/billing';
+import { toNum } from '@/core/format';
+import { roundMoney } from '@/core/ledger';
 import { foldBreakdown } from '@/core/paymentMethods';
 import { sumPaymentAmounts } from '../lib/lookups';
 import { paymentTimestamp, totalOf } from '../lib/payments';
@@ -19,11 +21,17 @@ import { userError } from '../lib/types';
 export function applyAdditionalPayment(invoice, amounts) {
   const current = foldBreakdown(invoice.paymentBreakdown) ?? { cash: 0, account: 0 };
   const added = foldBreakdown(amounts);
-  const newAmountPaid = invoice.amountPaid + totalOf(amounts);
+  // a legacy bill without `amountPaid`: derive it like the ledger does (grandTotal - balanceDue)
+  const hasPaid =
+    invoice.amountPaid !== undefined && invoice.amountPaid !== null && invoice.amountPaid !== '';
+  const paidBefore = hasPaid
+    ? toNum(invoice.amountPaid)
+    : toNum(invoice.grandTotal) - toNum(invoice.balanceDue);
+  const newAmountPaid = roundMoney(paidBefore + totalOf(amounts));
   const updated = {
     ...invoice,
     amountPaid: newAmountPaid,
-    balanceDue: invoice.grandTotal - newAmountPaid,
+    balanceDue: roundMoney(toNum(invoice.grandTotal) - newAmountPaid),
     paymentBreakdown: {
       cash: current.cash + added.cash,
       account: current.account + added.account,

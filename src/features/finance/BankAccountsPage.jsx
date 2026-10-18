@@ -26,6 +26,7 @@ import {
   ChoiceChips,
   DataTable,
   EmptyState,
+  ErrorState,
   Page,
   StatCard,
   StatGrid,
@@ -133,20 +134,20 @@ export default function BankAccountsPage() {
   const [txDateFilter, setTxDateFilter] = useState('');
   const [txSearchFilter, setTxSearchFilter] = useState('');
 
-  const { loading, refresh } = useFocusLoad(async () => {
-    try {
+  const { loading, error, refresh } = useFocusLoad(async () => {
+    {
       const [banks, cash, sales, purchases, exps, fin, txs, sPays, pPays, sRets, pRets] = await Promise.all([
         db.getAllBankAccounts(),
         db.getCashSettings(),
-        db.getAllInvoices().catch(() => []),
-        db.getAllPurchaseBills().catch(() => []),
-        db.getAllExpenses().catch(() => []),
-        db.getAllFinanceRecords().catch(() => []),
-        db.getAllAccountTransactions().catch(() => []),
-        db.getAllPayments().catch(() => []),
-        db.getAllPurchasePayments().catch(() => []),
-        db.getAllReturns().catch(() => []),
-        db.getAllPurchaseReturns().catch(() => []),
+        db.getAllInvoices(),
+        db.getAllPurchaseBills(),
+        db.getAllExpenses(),
+        db.getAllFinanceRecords(),
+        db.getAllAccountTransactions(),
+        db.getAllPayments(),
+        db.getAllPurchasePayments(),
+        db.getAllReturns(),
+        db.getAllPurchaseReturns(),
       ]);
 
       setBankAccounts(banks || []);
@@ -160,9 +161,6 @@ export default function BankAccountsPage() {
       setPurchasePayments(pPays || []);
       setSalesReturns(sRets || []);
       setPurchaseReturns(pRets || []);
-    } catch (e) {
-      console.error('Failed to load financial accounts:', e);
-      toast('Error', 'Failed to load financial balances', 'error');
     }
   });
 
@@ -505,6 +503,9 @@ export default function BankAccountsPage() {
 
       {loading ? (
         <SkeletonRows count={4} />
+      ) : error ? (
+        // a failed load must not look like "no accounts yet" (₹0 everywhere and an Add button)
+        <ErrorState message="The bank and cash balances could not be loaded." onRetry={refresh} />
       ) : activeTab === 'accounts' ? (
         <div className="space-y-4">
           {/* BANK ACCOUNTS LIST */}
@@ -785,7 +786,7 @@ export default function BankAccountsPage() {
       )}
 
       {/* Floating Add for mobile */}
-      <FloatingAddButton onClick={() => setEditingAccount({})} label="Add Bank Account" />
+      {error ? null : <FloatingAddButton onClick={() => setEditingAccount({})} label="Add Bank Account" />}
 
       {/* MODALS */}
       {viewingAccount && activeViewingAccount && (

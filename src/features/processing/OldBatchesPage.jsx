@@ -239,7 +239,9 @@ export default function OldBatchesPage() {
           replace(modal.type, batch);
           setModal((m) => (m ? { ...m, batch } : m));
         }}
-        onOpenAddPayment={(batch) => setModal((m) => ({ ...m, kind: 'pay', batch }))}
+        // the history modal closes itself first (modal -> null), so the type is taken from the one that was open
+        // the history modal closes itself first (modal -> null), so the type is taken from the one that was open
+        onOpenAddPayment={(batch) => setModal({ kind: 'pay', type: modal?.type, batch })}
       />
     </Page>
   );

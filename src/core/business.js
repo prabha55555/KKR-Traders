@@ -9,7 +9,9 @@
  * the device so the app starts — and prints — with them offline; loadBusiness() refreshes them from Firestore and
  * saveBusiness() writes them. Screens use the useBusiness() hook (src/hooks/useBusiness.js).
  */
+import { isAdminUnlocked } from '@/core/admin';
 import { DEFAULT_MODULE_PLAN, isModulePlan, moduleInPlan } from '@/core/modules';
+import { scopedKey } from '@/core/projectScope';
 import { storage } from '@/platform';
 
 /** Every setting with its value when nothing is entered (blank = left off the bills / messages). */
@@ -23,7 +25,7 @@ export const DEFAULT_BUSINESS = Object.freeze({
   ownerName: '',
   /** dashboard heading — blank = "Welcome to <name>" */
   welcomeMessage: '',
-  /** logo as an image data URL; '' = no logo; BUNDLED_LOGO = the logo file shipped with the app */
+  /** logo as a png / jpeg / webp image data URL (see safeLogo); '' = no logo */
   logo: '',
   /** initials in the watermark of bills and statements — blank = initials of the name */
   monogram: '',
@@ -59,11 +61,15 @@ export const DEFAULT_BUSINESS = Object.freeze({
   modulePlan: DEFAULT_MODULE_PLAN,
 });
 
-/** `logo` value meaning "the logo file that ships with the app" (a business may choose it on the Settings page). */
-export const BUNDLED_LOGO = 'bundled';
-
-const CACHE_KEY = 'business_settings_v1';
+const CACHE_KEY = scopedKey('business_settings_v1');
 const FIELDS = Object.keys(DEFAULT_BUSINESS);
+
+/** The only logo values that are accepted: a png / jpeg / webp image as a base64 data URL. */
+const LOGO_PATTERN = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+/** Is this a logo value that is safe to put in an <img src> of a printed page? */
+export const isSafeLogo = (value) => typeof value === 'string' && LOGO_PATTERN.test(value);
+/** The value if it is a safe logo, else '' (no logo; also what an old stored 'bundled' value becomes). */
+export const safeLogo = (value) => (isSafeLogo(value) ? value : '');
 
 /** Only known fields, as trimmed strings (multi-line text keeps its line breaks), on top of the defaults. */
 export function normalizeBusiness(values = {}) {
@@ -73,6 +79,8 @@ export function normalizeBusiness(values = {}) {
     out[k] = String(values[k]).trim();
   });
   if (!isModulePlan(out.modulePlan)) out.modulePlan = DEFAULT_MODULE_PLAN;
+  // the logo is written into printed HTML: anything but an image data URL is dropped
+  out.logo = safeLogo(out.logo);
   return out;
 }
 
@@ -91,18 +99,20 @@ function readCache() {
  */
 function writeCache(values) {
   try {
-    storage.set(CACHE_KEY, JSON.stringify(values));
+    // storage.set reports a refused write (quota) with false instead of throwing
+    if (values && storage.set(CACHE_KEY, JSON.stringify(values))) return;
+    storage.remove(CACHE_KEY);
   } catch {
-    try {
-      storage.remove(CACHE_KEY);
-    } catch {
-      // storage blocked: nothing kept
-    }
+    // storage blocked: nothing kept
   }
 }
 
 // ------------------------------------------------------------------ current details + listeners
 const cached = readCache();
+// NOTE (fresh device, database unreadable): with no copy on the device the details are the defaults, i.e. module plan
+// 'all' (the plan of installations from before plans existed). That is deliberate (a locked-out client is worse than a
+// brief extra menu), and it is never written to the device copy: only a successful read (applyStored) caches anything,
+// so the real plan applies as soon as the database can be read.
 let current = normalizeBusiness(cached ?? {});
 /** true once the business has saved its details (a stored copy was read) */
 let configured = Boolean(cached?.name);
@@ -235,23 +245,58 @@ export function validateBusiness(values) {
   if (v.bankIfsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(v.bankIfsc)) {
     errors.bankIfsc = 'IFSC should be 11 characters, like SBIN0001234.';
   }
-  if (v.logo && v.logo !== BUNDLED_LOGO && v.logo.length > 900_000) {
+  if (v.logo && v.logo.length > 900_000) {
     errors.logo = 'The logo image is too large. Please choose a smaller picture.';
   }
   return errors;
 }
 
-/** Saves the details (Settings page) and makes them current everywhere at once. Throws on invalid input. */
-export async function saveBusiness(values) {
-  const clean = normalizeBusiness(values);
-  const errors = validateBusiness(clean);
-  if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
-  clean.gstin = clean.gstin.toUpperCase();
-  clean.bankIfsc = clean.bankIfsc.toUpperCase();
+/** How long a database call may take before saving gives up (offline, a write never settles). */
+export const SAVE_TIMEOUT_MS = 15_000;
+const SAVE_TIMEOUT_MESSAGE =
+  'Saving is taking too long — you may be offline. Please check your internet connection and try again.';
+
+/** The promise's result, or a rejection after `ms` (the timer never keeps running afterwards). */
+function withTimeout(promise, ms = SAVE_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(SAVE_TIMEOUT_MESSAGE)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Saves the details (Settings page) and makes them current everywhere at once. Throws on invalid input, when the
+ * administrator is not signed in, and when the database does not answer within SAVE_TIMEOUT_MS (offline): the page
+ * then shows the message and the administrator retries.
+ *
+ * `changed` (field names the user edited): the stored document is re-read and only those fields are put on top of it,
+ * so fields changed elsewhere in the meantime (e.g. the module plan) are not reverted by an old form. Without it the
+ * whole `values` document is written.
+ */
+export async function saveBusiness(values, { changed } = {}) {
+  if (!isAdminUnlocked())
+    throw new Error('Only the administrator can save Settings. Please unlock Settings again.');
+  const check = (v) => {
+    const clean = normalizeBusiness(v);
+    const errors = validateBusiness(clean);
+    if (Object.keys(errors).length) throw new Error(Object.values(errors)[0]);
+    clean.gstin = clean.gstin.toUpperCase();
+    clean.bankIfsc = clean.bankIfsc.toUpperCase();
+    return clean;
+  };
+  let clean = check(values);
   const { db } = await import('@/core/db');
   await db.init();
+  if (Array.isArray(changed)) {
+    const stored = await withTimeout(Promise.resolve(db.getBusinessSettings()));
+    if (stored) {
+      const edits = Object.fromEntries(changed.filter((k) => FIELDS.includes(k)).map((k) => [k, clean[k]]));
+      clean = check({ ...stored, ...edits });
+    }
+  }
   // the whole document is written (every field), so nothing old can survive next to the new details
-  await db.saveBusinessSettings(clean);
+  await withTimeout(Promise.resolve(db.saveBusinessSettings(clean)));
   writeCache(clean);
   publish(clean, true, 'database');
   return clean;

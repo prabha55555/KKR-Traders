@@ -4,7 +4,7 @@
  */
 export const TEST_BUSINESS = {
   name: 'Santhamani Textiles',
-  logo: 'bundled',
+  logo: '',
   monogram: 'SS',
   address: 'No.16/1, 25A, Thirumalai Nagar South, 1st Street, TIRUPUR - 641 602.',
   phones: '90872 93268, 9092779599',

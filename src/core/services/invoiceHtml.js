@@ -186,7 +186,7 @@ export function invoiceBody(input) {
       </div>
       <div class="logo-container">
         <div class="tagline">${esc(biz.tagline)}</div>
-        ${logoSrc ? `<img src="${logoSrc}" alt="${esc(biz.name)} Logo" />` : ''}
+        ${logoSrc ? `<img src="${esc(logoSrc)}" alt="${esc(biz.name)} Logo" />` : ''}
       </div>
       <div class="invoice-title">
         <h2>${esc(biz.salesBillTitle || 'ESTIMATED COPY')} <br><span style="font-size: 11px; color: #777;">(${copyType === 'BOTH' ? 'ORIGINAL' : copyType})</span></h2>
@@ -321,7 +321,7 @@ export function invoiceBody(input) {
         }
         <div class="payment-row" style="font-weight: bold; color: #111;">
           <span>${balanceReturns > 0 ? 'Adjusted Balance Due:' : 'Balance Due:'}</span>
-          <span class="${dueShown > 0 ? 'amount-negative' : 'amount-positive'}">Rs. ${formatCurrency(dueShown)}</span>
+          <span class="${dueShown > 0.005 ? 'amount-negative' : 'amount-positive'}">Rs. ${formatCurrency(dueShown)}</span>
         </div>
       </div>
     </div>

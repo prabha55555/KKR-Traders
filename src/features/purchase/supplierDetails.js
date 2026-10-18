@@ -1,11 +1,12 @@
 /** Supplier Details page — port of js/supplier-details.js (aggregation, stats, search, phone masking, CSV export). */
-import { digitsOnly } from '@/core/format';
+import { digitsOnly, toNum } from '@/core/format';
 import {
   groupParties,
   normalizePhone,
   PURCHASE_LEDGER,
   partySummary,
   returnsTotalsByInvoice,
+  roundMoney,
 } from '@/core/ledger';
 function cleanInvoiceNo(invoiceNo) {
   let inv = invoiceNo.toString();
@@ -24,6 +25,7 @@ const emptySupplier = (key, name, phone, address) => ({
   totalDiscount: 0,
   totalReturns: 0,
   openingBalance: 0,
+  totalManualAdjustments: 0,
   allInvoiceNumbers: [],
   invoiceNos: [],
   lastInvoiceDate: null,
@@ -44,8 +46,9 @@ const directoryKey = (ds) => {
  * suppliers of the directory that have no bill yet.
  *  - balanceDue    = what is owed now: the ledger closing of the latest bill (carried balances counted once, only
  *                    balance-settled returns lower it, negative = an advance / credit with the supplier)
- *  - totalAmount   = Σ the bills' own amounts (subtotal + opening-balance entry − discount, no carried balance)
- *  - openingBalance = the supplier's ledger opening (so opening + amount − paid − balance returns = balance)
+ *  - totalAmount   = Σ the bills' subtotals (before discount, no opening-balance entries, no carried balance) — like Customer Details
+ *  - openingBalance = the supplier's ledger opening; the page shows it plus totalManualAdjustments (the bills' opening-balance entries),
+ *                    so opening + amount − discount − paid − balance returns = balance
  *  - totalPaid     = Σ the stored paid amounts · totalReturns = every return (refunds included)
  * Name / phone / address come from the supplier's latest bill (address falls back to older bills, then the directory).
  */
@@ -75,12 +78,18 @@ export function aggregateSuppliers(bills, returns = [], directorySuppliers = [])
     const s = emptySupplier(group.key, name, group.phone || listed?.phone || '', address);
     const summary = partySummary(PURCHASE_LEDGER, group.bills, { returnsByInvoice });
     s.totalBills = group.bills.length;
-    s.totalAmount = summary.billed;
+    // same definitions as Customer Details: Amount = the bills' subtotals (before discount, without the opening-balance
+    // entries typed on bills) and those entries are shown in Opening, so Opening + Amount - Paid - Discount - returns
+    // reconciles with the unchanged ledger balance
+    s.totalDiscount = roundMoney(group.bills.reduce((sum, b) => sum + PURCHASE_LEDGER.discount(b), 0));
+    s.totalManualAdjustments = roundMoney(
+      group.bills.reduce((sum, b) => sum + toNum(b.manualPreviousBalance), 0),
+    );
+    s.totalAmount = roundMoney(summary.billed + s.totalDiscount - s.totalManualAdjustments);
     s.totalPaid = summary.paid;
     s.totalReturns = summary.returns;
     s.openingBalance = summary.opening;
     s.balanceDue = summary.balance;
-    s.totalDiscount = group.bills.reduce((sum, b) => sum + PURCHASE_LEDGER.discount(b), 0);
     s.lastInvoiceDate = summary.latest?.invoiceDate || null;
     group.bills.forEach((bill) => {
       if (bill.invoiceNo) s.allInvoiceNumbers.push(cleanInvoiceNo(bill.invoiceNo));

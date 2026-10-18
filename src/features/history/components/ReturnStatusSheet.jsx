@@ -85,6 +85,14 @@ export function ReturnStatusSheet({
       title={`Return Status - ${invoiceNoLabel(invoiceNo)}`}
       actions={
         <>
+          <Button variant="neutral" onClick={onClose} className="flex-1 sm:flex-none">
+            Close
+          </Button>
+          {onUndoAll && returns.length > 0 ? (
+            <Button variant="outlineDanger" icon={Undo2} onClick={onUndoAll} className="flex-1 sm:flex-none">
+              Undo All Returns
+            </Button>
+          ) : null}
           {onAddReturn ? (
             <Button variant="warning" icon={Plus} onClick={onAddReturn} className="flex-1 sm:flex-none">
               Add Return

@@ -51,21 +51,28 @@ src/features/   screens grouped by area (sales bill, history, customers, purchas
 
 ## Configuration
 
-Firebase uses the `billing-56b7b` project. The remaining Firebase settings can be overridden with
-`VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_STORAGE_BUCKET`,
-`VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, and `VITE_FIREBASE_MEASUREMENT_ID` in `.env.local`.
-`VITE_FIREBASE_PROJECT_ID` is intentionally rejected if it is not `billing-56b7b`, preventing accidental writes to
-the old database.
+Every customer has **their own Firebase project**. The build reads it from `VITE_FIREBASE_*` variables
+(`VITE_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_STORAGE_BUCKET`, `_MESSAGING_SENDER_ID`, `_APP_ID`, optional
+`_MEASUREMENT_ID`) in an env file: copy `.env.example` to `.env.<customer>.local` (git-ignored) and build with
+`npx vite build --mode <customer>`. See [`docs/NEW_CUSTOMER_SETUP.md`](docs/NEW_CUSTOMER_SETUP.md).
+
+* Every build / dev server prints **`Firebase project: <id>`** — check it before deploying.
+* A customer mode (anything but `development` / `production`) with no env file, and any build with only some of the
+  required variables (API key, auth domain, project id, app id), **fails** instead of connecting to a wrong project.
+* `development` / `production` builds without any `VITE_FIREBASE_*` use the original installation (`sriram-96e71`).
+* The login and business-details copies kept on the device are namespaced by project id, so two customers' builds
+  opened on the same origin (e.g. `localhost`) never share them.
 
 ## Firestore rules (required for data to load)
 
 The app reads and writes Firestore directly from the browser. If every page shows **"Missing or insufficient
 permissions"**, the project's security rules are still the locked default and must be updated once:
 
-* **Console:** Firebase Console → project `billing-56b7b` → Firestore Database → *Rules* → paste the contents of
+* **Console:** Firebase Console → the customer's project → Firestore Database → *Rules* → paste the contents of
   [`firestore.rules`](firestore.rules) → *Publish*.
-* **CLI:** `firebase login` (with the account that owns the project), then `firebase deploy --only firestore:rules`
-  (`firebase.json` and `.firebaserc` are included).
+* **CLI:** `firebase login` (with the account that owns the project), then `firebase deploy --only firestore:rules --project <project-id>`
+  (`firebase.json` and `.firebaserc` are included; `firebase.json` also has the `hosting` block, so
+  `firebase deploy --only hosting --project <project-id>` publishes `dist/`).
 
 `firestore.rules` is fully open (`allow read, write: if true`), which is only acceptable for a short demo. For a
 time-boxed demo use this condition instead (replace the date), and move to Firebase Authentication before real use:

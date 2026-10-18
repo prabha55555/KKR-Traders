@@ -5,13 +5,13 @@
  *  - Dashboard: the greeting, welcome heading, tagline and browser tab title;
  *  - WhatsApp: how the business signs shared statements and purchase acknowledgements.
  */
-import { Eye, LayoutDashboard, MessageCircle, Receipt } from 'lucide-react';
+import { Eye, LayoutDashboard, Maximize2, MessageCircle, Receipt } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { CREDIT_LINE } from '@/core/branding';
 import { normalizeBusiness, printName, purchaseAckLine, sharePhonesOf } from '@/core/business';
 import { buildInvoiceHtml } from '@/core/services/invoiceHtml';
-import { Card, ChoiceChips, SectionHeader } from '@/ui';
+import { Button, Card, ChoiceChips, Modal, SectionHeader, cn } from '@/ui';
 import { logoPreviewSrc } from './LogoField';
 
 /** A4 at 96 dpi: the printed bill is laid out for this page size. */
@@ -57,10 +57,14 @@ function useWidth(ref) {
   return width;
 }
 
-function BillPreview({ business, logo }) {
+/**
+ * The sample bill scaled to the width of its frame. In the full-size dialog (`minScale`) it is never smaller than that
+ * scale: a narrow phone screen scrolls sideways instead of shrinking the A4 page to an unreadable size.
+ */
+function BillPreview({ business, logo, minScale = 0 }) {
   const frameRef = useRef(null);
   const width = useWidth(frameRef);
-  const scale = width > 0 ? Math.min(1, width / PAGE_WIDTH) : 0.45;
+  const scale = width > 0 ? Math.max(minScale, Math.min(1, width / PAGE_WIDTH)) : Math.max(minScale, 0.45);
   const html = useMemo(
     () => buildInvoiceHtml({ invoice: SAMPLE_INVOICE, business, logoSrc: logoPreviewSrc(logo) }),
     [business, logo],
@@ -68,17 +72,25 @@ function BillPreview({ business, logo }) {
   return (
     <div
       ref={frameRef}
-      className="relative overflow-hidden rounded-xl border border-slate-300 bg-white shadow-inner"
-      style={{ height: Math.round(PAGE_HEIGHT * scale) }}
+      className={cn(
+        'relative rounded-xl border border-slate-300 bg-white shadow-inner',
+        minScale ? 'overflow-x-auto overflow-y-hidden' : 'overflow-hidden',
+      )}
+      style={{ height: Math.round(PAGE_HEIGHT * scale) + (minScale ? 12 : 0) }}
     >
-      <iframe
-        title="Sales bill preview"
-        srcDoc={html}
-        sandbox=""
-        tabIndex={-1}
-        className="pointer-events-none absolute top-0 left-0 origin-top-left border-0 bg-white"
-        style={{ width: PAGE_WIDTH, height: PAGE_HEIGHT, transform: `scale(${scale})` }}
-      />
+      <div
+        className="relative"
+        style={{ width: Math.round(PAGE_WIDTH * scale), height: Math.round(PAGE_HEIGHT * scale) }}
+      >
+        <iframe
+          title={minScale ? 'Sales bill full-size preview' : 'Sales bill preview'}
+          srcDoc={html}
+          sandbox=""
+          tabIndex={-1}
+          className="pointer-events-none absolute top-0 left-0 origin-top-left border-0 bg-white"
+          style={{ width: PAGE_WIDTH, height: PAGE_HEIGHT, transform: `scale(${scale})` }}
+        />
+      </div>
     </div>
   );
 }
@@ -144,14 +156,27 @@ function WhatsAppPreview({ business }) {
   );
 }
 
+/** A cheap fingerprint of a (up to 900 KB) logo data URL: its length and ~1000 sampled characters. */
+function logoKey(logo) {
+  if (!logo) return '';
+  const step = Math.max(1, Math.floor(logo.length / 1000));
+  let hash = 0;
+  for (let i = 0; i < logo.length; i += step) hash = (hash * 31 + logo.charCodeAt(i)) | 0;
+  return `${logo.length}:${hash}`;
+}
+
 export function BusinessPreview({ values, username }) {
   const [view, setView] = useState('bill');
+  const [fullSize, setFullSize] = useState(false);
   const typed = normalizeBusiness(values);
+  // re-built only when a typed value changes (the logo is compared by its fingerprint, not stringified every render)
+  const { logo: typedLogo, ...typedRest } = typed;
+  const key = `${JSON.stringify(typedRest)}|${logoKey(typedLogo)}`;
   // a blank name still shows where it will print
   const business = useMemo(
     () => (typed.name ? typed : { ...typed, name: 'Your Business Name' }),
-    // re-built only when a typed value changes
-    [JSON.stringify(typed)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [key],
   );
 
   return (
@@ -166,7 +191,19 @@ export function BusinessPreview({ values, username }) {
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
             <Receipt className="size-3.5" aria-hidden /> Printed / shared sales bill
           </p>
-          <BillPreview business={business} logo={typed.logo} />
+          <BillPreview business={business} logo={business.logo} />
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Maximize2}
+            className="mt-2"
+            onClick={() => setFullSize(true)}
+          >
+            Full-size preview
+          </Button>
+          <Modal open={fullSize} onClose={() => setFullSize(false)} title="Sales bill preview" size="xl">
+            <BillPreview business={business} logo={business.logo} minScale={0.6} />
+          </Modal>
         </div>
       ) : view === 'dashboard' ? (
         <div>

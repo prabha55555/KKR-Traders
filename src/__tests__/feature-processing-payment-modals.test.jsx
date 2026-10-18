@@ -48,7 +48,7 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
       expect(screen.queryByRole('button', { name: /UPI/i })).not.toBeInTheDocument();
 
       // Click on "Account" mode
-      const accountModeButton = screen.getByRole('button', { name: /^Account$/i });
+      const accountModeButton = screen.getByRole('radio', { name: /^Account$/i });
       fireEvent.click(accountModeButton);
 
       // Verify the Select Bank Account dropdown appears and does NOT crash
@@ -66,7 +66,7 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
       expect(screen.getByText(/₹12,000/)).toBeInTheDocument();
 
       // Click back on "Cash" mode
-      const cashModeButton = screen.getByRole('button', { name: /Cash/i });
+      const cashModeButton = screen.getByRole('radio', { name: /Cash/i });
       fireEvent.click(cashModeButton);
       expect(screen.queryByLabelText(/Select Bank Account/i)).not.toBeInTheDocument();
       expect(screen.getByText(/Physical Cash Drawer:/i)).toBeInTheDocument();
@@ -90,7 +90,7 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
       expect(screen.getByText(/Pay Mill \/ Processor — Batch CB-202/i)).toBeInTheDocument();
 
       // Switch to Account
-      const accountModeButton = screen.getByRole('button', { name: /^Account$/i });
+      const accountModeButton = screen.getByRole('radio', { name: /^Account$/i });
       fireEvent.click(accountModeButton);
 
       await waitFor(() => {
@@ -120,7 +120,7 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
         <AddDyeingPaymentModal open={true} batch={mockBatch} onClose={vi.fn()} onPaymentAdded={vi.fn()} />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: /^Account$/i }));
+      fireEvent.click(screen.getByRole('radio', { name: /^Account$/i }));
       await waitFor(() => {
         expect(screen.getByRole('option', { name: 'SBI Current' })).toBeInTheDocument();
       });
@@ -153,7 +153,7 @@ describe('Payment Modals Component Tests (Dyeing & Combing)', () => {
         <AddCombingPaymentModal open={true} batch={mockBatch} onClose={vi.fn()} onPaymentAdded={vi.fn()} />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: /^Account$/i }));
+      fireEvent.click(screen.getByRole('radio', { name: /^Account$/i }));
       await waitFor(() => {
         expect(screen.getByRole('option', { name: 'Canara Bank' })).toBeInTheDocument();
       });

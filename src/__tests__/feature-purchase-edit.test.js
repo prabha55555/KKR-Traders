@@ -232,7 +232,7 @@ describe('buildPurchaseEditBill (exact field set written by the Update button)',
         .sort(),
     );
   });
-  test('rows without a description or quantity are not stored but a quantity-only row still counts toward the subtotal', () => {
+  test('rows without a description or quantity are not stored and not charged', () => {
     const bill = buildPurchaseEditBill({
       ...form,
       rows: [
@@ -242,7 +242,7 @@ describe('buildPurchaseEditBill (exact field set written by the Update button)',
       ],
     });
     expect(bill.products).toEqual([{ description: 'Yarn 30s', qty: 1, rolls: 0, rate: 10, amount: 10 }]);
-    expect(bill.subtotal).toBe(40);
+    expect(bill.subtotal).toBe(10);
   });
   test('validation is the create rules without the shortcut-list rule', () => {
     expect(validatePurchaseBill(form, null)).toBeNull();

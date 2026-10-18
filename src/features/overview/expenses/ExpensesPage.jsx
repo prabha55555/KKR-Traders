@@ -134,10 +134,15 @@ export default function ExpensesPage() {
 
     // Overdraft check for expense payment
     const source = form.paymentSource || 'cash';
-    const amt = parseFloat(form.amount) || 0;
+    // when editing, the balance already has the old amount taken out (same source): only the increase is new money
+    const old = form.id ? expenses.find((e) => e.id === form.id) : null;
+    const oldAmt = old && (old.paymentSource || 'cash') === source ? parseFloat(old.amount) || 0 : 0;
+    const amt = Math.max(0, (parseFloat(form.amount) || 0) - oldAmt);
     try {
       const balances = await loadLiveAccountBalances();
-      if (source === 'cash' && amt > balances.cashBalance) {
+      if (amt <= 0) {
+        // no extra money leaves the account: nothing to warn about
+      } else if (source === 'cash' && amt > balances.cashBalance) {
         const ok = await confirm({
           title: 'Insufficient Cash in Hand',
           message: `Paying ₹${formatCurrency(amt)} in Cash exceeds available cash balance (₹${formatCurrency(balances.cashBalance)}). This will make your cash balance negative. Do you want to proceed anyway?`,
@@ -296,6 +301,7 @@ export default function ExpensesPage() {
         <StatCard icon={Sigma} label="Overall Total" value={rs(totals.total)} tone="danger" />
       </StatGrid>
       <FilterBar
+        active={sourceFilter !== 'all'}
         date={dateTerm}
         onDateChange={setDateTerm}
         text={reasonTerm}
